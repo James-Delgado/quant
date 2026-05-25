@@ -11,7 +11,7 @@ Turns a signal series into an equity curve and a trade log, modelling:
 Signals: +1 = long,  0 = flat,  -1 = short.
 Only one position at a time (no pyramiding in Phase 1).
 
-All cost parameters are explicit — see COST_ASSUMPTIONS.md for sourcing.
+All cost parameters are explicit — see docs/concepts/cost-model.md for sourcing.
 """
 from __future__ import annotations
 
