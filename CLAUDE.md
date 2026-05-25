@@ -24,6 +24,22 @@ see a system reminder about compaction). Do NOT wait to be asked.
 Write it with the Write or Edit tool directly to the sessions file.
 The Stop hook writes the mechanical git state automatically; you supply the narrative.
 
+## Python environment
+
+The project uses a venv at `.venv/`. **Never use `source .venv/bin/activate`** — it
+triggers a permission prompt every time. Instead, call binaries directly:
+
+```bash
+.venv/bin/python script.py
+.venv/bin/pip install package
+.venv/bin/pytest tests/
+.venv/bin/jupyter nbconvert ...
+.venv/bin/ruff check src/
+```
+
+The venv Python already knows its own site-packages. Activation is only needed
+for interactive human shells, not for automated commands.
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill
