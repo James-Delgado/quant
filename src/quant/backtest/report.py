@@ -2,10 +2,18 @@
 from __future__ import annotations
 
 import io
+import math
 
 import pandas as pd
 
 from quant.backtest.harness import BacktestResult
+
+
+def _fmt(val: float | None, spec: str) -> str:
+    """Format val with spec; return '—' for None or NaN."""
+    if val is None or (isinstance(val, float) and math.isnan(val)):
+        return "—"
+    return format(val, spec)
 
 
 def summary_table(result: BacktestResult) -> pd.DataFrame:
@@ -21,9 +29,7 @@ def summary_table(result: BacktestResult) -> pd.DataFrame:
 
 def print_report(result: BacktestResult) -> None:
     """Print a human-readable backtest summary to stdout."""
-    buf = io.StringIO()
-    _write_report(result, buf)
-    print(buf.getvalue())
+    print(format_report(result))
 
 
 def format_report(result: BacktestResult) -> str:
@@ -53,10 +59,8 @@ def _write_report(result: BacktestResult, buf: io.StringIO) -> None:
     }
 
     for key, spec in fmt.items():
-        oos_val = oos.get(key)
-        is_val = is_.get(key)
-        oos_str = format(oos_val, spec) if oos_val is not None else "—"
-        is_str = format(is_val, spec) if is_val is not None else "—"
+        oos_str = _fmt(oos.get(key), spec)
+        is_str = _fmt(is_.get(key), spec)
         buf.write(f"{key:<22} {oos_str:>12} {is_str:>12}\n")
 
     buf.write("=" * 52 + "\n")

@@ -11,6 +11,7 @@ Produces rolling train/test index pairs with two leakage controls:
 """
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterator
 
 import numpy as np
@@ -36,6 +37,13 @@ def walkforward_splits(
                     i + label_horizon >= test_start.
     embargo:        Extra samples to drop from the top of the purged train set.
     """
+    if train_window + test_window > n_samples:
+        warnings.warn(
+            f"train_window ({train_window}) + test_window ({test_window}) "
+            f"exceeds n_samples ({n_samples}): no splits will be generated",
+            stacklevel=2,
+        )
+
     test_start = train_window
     while test_start + test_window <= n_samples:
         test_end = test_start + test_window          # exclusive
