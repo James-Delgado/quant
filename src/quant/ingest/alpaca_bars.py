@@ -15,9 +15,14 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
+from alpaca.data.enums import DataFeed
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest
+from alpaca.data.timeframe import TimeFrame
 from prefect import flow, get_run_logger, task
 
 from quant.config import settings
+from quant.ingest.schemas import ALPACA_BARS_SCHEMA
 from quant.storage import catalog, lake
 
 DATASET = "equity_bars_daily"
@@ -28,13 +33,7 @@ def fetch_bars(symbols: list[str], start: datetime, end: datetime) -> pd.DataFra
     """Pull daily bars from Alpaca's free IEX feed.
 
     Retries 3x: transient network / rate-limit errors should not fail the run.
-    Imports of the SDK are local so the module loads even before deps install.
     """
-    from alpaca.data.enums import DataFeed
-    from alpaca.data.historical import StockHistoricalDataClient
-    from alpaca.data.requests import StockBarsRequest
-    from alpaca.data.timeframe import TimeFrame
-
     client = StockHistoricalDataClient(settings.alpaca_api_key, settings.alpaca_secret_key)
     request = StockBarsRequest(
         symbol_or_symbols=symbols,
@@ -58,17 +57,41 @@ def land_raw(df: pd.DataFrame) -> None:
 
 @task
 def to_processed(df: pd.DataFrame) -> int:
-    """Step 4 — type, add point-in-time stamp, partition by year/month."""
+    """Step 4 — type, add point-in-time stamp, merge with existing, partition by year/month.
+
+    Merge-then-rewrite avoids the PyArrow delete_matching hazard: writing only
+    the incremental slice with delete_matching would erase the rest of the
+    month's partition. Instead, read what we already have, union with the new
+    pull, dedup keeping latest ingested_at, and rewrite the whole dataset.
+    Equity data for 10 symbols × 5 years is ~12 k rows — fast enough to
+    reload on every run.
+    """
     df = df.copy()
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    df = df.drop_duplicates(subset=["symbol", "timestamp"])
-    df["year"] = df["timestamp"].dt.year
-    df["month"] = df["timestamp"].dt.month
-    # `ingested_at` records when WE learned this row — the basis of all
-    # point-in-time correctness downstream.
     df["ingested_at"] = pd.Timestamp.now(tz="UTC")
-    lake.write_processed(df, dataset=DATASET, partition_cols=["year", "month"])
-    return len(df)
+    df["year"] = df["timestamp"].dt.year.astype("int64")
+    df["month"] = df["timestamp"].dt.month.astype("int64")
+
+    existing = lake.read_processed(DATASET)
+    if not existing.empty:
+        existing["timestamp"] = pd.to_datetime(existing["timestamp"], utc=True)
+        existing["ingested_at"] = pd.to_datetime(existing["ingested_at"], utc=True)
+        combined = pd.concat([existing, df], ignore_index=True)
+    else:
+        combined = df
+
+    combined = (
+        combined.sort_values("ingested_at")
+        .drop_duplicates(subset=["symbol", "timestamp"], keep="last")
+        .sort_values(["symbol", "timestamp"])
+        .reset_index(drop=True)
+    )
+    combined["year"] = combined["timestamp"].dt.year.astype("int64")
+    combined["month"] = combined["timestamp"].dt.month.astype("int64")
+
+    ALPACA_BARS_SCHEMA.validate(combined)
+    lake.write_processed(combined, dataset=DATASET, partition_cols=["year", "month"])
+    return len(combined)
 
 
 @flow(name="ingest-alpaca-bars")

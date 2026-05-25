@@ -23,19 +23,19 @@ from quant.ingest.alpaca_bars import ingest_alpaca_bars
 from quant.ingest.fred_macro import ingest_fred_macro
 from quant.ingest.tiingo_eod import ingest_tiingo_eod
 
-INGESTORS = {
-    "alpaca": ingest_alpaca_bars,
-    "tiingo": ingest_tiingo_eod,
-    "fred": ingest_fred_macro,
-}
-
-
 @flow(name="daily-ingest")
 def daily_ingest(backfill: bool = False) -> dict[str, str]:
     """Run every ingestor. Returns a per-source status map."""
     logger = get_run_logger()
     status: dict[str, str] = {}
-    for name, ingestor in INGESTORS.items():
+    # Build dict inside the function so that test patches on module-level names
+    # (quant.flows.daily.ingest_alpaca_bars etc.) are picked up via globals().
+    ingestors = {
+        "alpaca": ingest_alpaca_bars,
+        "tiingo": ingest_tiingo_eod,
+        "fred": ingest_fred_macro,
+    }
+    for name, ingestor in ingestors.items():
         try:
             ingestor(backfill=backfill)
             status[name] = "ok"
