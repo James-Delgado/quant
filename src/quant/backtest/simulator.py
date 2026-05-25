@@ -48,6 +48,18 @@ def simulate(
     trade_log    : pd.DataFrame — columns: date, entry_price, exit_price,
                                   shares, gross_pnl, commission, net_pnl.
     """
+    missing_cols = {"open", "volume"} - set(prices.columns)
+    if missing_cols:
+        raise ValueError(f"prices DataFrame missing required columns: {missing_cols}")
+    if prices[["open", "volume"]].isnull().any().any():
+        raise ValueError("prices contains NaN values in 'open' or 'volume' — cannot simulate")
+    invalid_sigs = set(signals.unique()) - {-1, 0, 1}
+    if invalid_sigs:
+        raise ValueError(
+            f"signals contain values outside {{-1, 0, +1}}: {invalid_sigs}. "
+            "Clip or discretise model output before passing to simulate()."
+        )
+
     opens = prices["open"].to_numpy(dtype=float)
     volumes = prices["volume"].to_numpy(dtype=float)
     sig = signals.to_numpy(dtype=int)
@@ -127,6 +139,34 @@ def simulate(
                     cash += shares * entry_fill - entry_comm   # receive short proceeds
                 position = shares * target
                 entry_price = entry_fill
+
+    # Force-close any position still open at the final bar.
+    # equity[n-1] was already marked using the final open; recompute it after
+    # the slippage/commission costs of the forced exit so the curve is consistent.
+    if position != 0:
+        last_bar = n - 1
+        shares_abs = abs(position)
+        exit_open = opens[last_bar]
+        if position > 0:
+            exit_fill = exit_open * (1.0 - slip)
+            exit_comm = shares_abs * commission_per_share
+            cash += shares_abs * exit_fill - exit_comm
+        else:
+            exit_fill = exit_open * (1.0 + slip)
+            exit_comm = shares_abs * commission_per_share
+            cash -= shares_abs * exit_fill + exit_comm
+        gross = shares_abs * (exit_fill - entry_price) * float(np.sign(position))
+        round_trip_comm = shares_abs * commission_per_share * 2
+        trade_rows.append({
+            "date": dates[last_bar],
+            "entry_price": entry_price,
+            "exit_price": exit_fill,
+            "shares": shares_abs,
+            "gross_pnl": float(gross),
+            "commission": float(round_trip_comm),
+            "net_pnl": float(gross - round_trip_comm),
+        })
+        equity[last_bar] = cash  # update to reflect exit costs
 
     equity_series = pd.Series(equity, index=dates, name="equity")
 

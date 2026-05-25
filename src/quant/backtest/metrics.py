@@ -64,9 +64,10 @@ def compute_metrics(
     max_drawdown = float(drawdowns.min()) if len(drawdowns) > 0 else 0.0
 
     # ── Calmar (annualised return / |max drawdown|) ───────────────────────
+    # NaN when max_drawdown is zero — Calmar is undefined, not infinite.
     calmar = (
         annualized_return / abs(max_drawdown)
-        if max_drawdown < 0 else float("inf")
+        if max_drawdown < 0 else float("nan")
     )
 
     metrics: dict[str, float] = {
@@ -78,7 +79,10 @@ def compute_metrics(
         "annualized_return": annualized_return,
     }
 
-    # ── Trade-level metrics (require trade log) ────────────────────────────
+    # ── Trade-level metrics — always emitted so callers never get KeyError ──
+    hit_rate = 0.0
+    profit_factor = float("nan")  # undefined until we have trade data
+
     if trade_log is not None and len(trade_log) > 0 and "net_pnl" in trade_log.columns:
         pnl = trade_log["net_pnl"].to_numpy(dtype=float)
         wins = pnl[pnl > 0]
@@ -88,9 +92,10 @@ def compute_metrics(
         profit_factor = (
             float(wins.sum() / abs(losses.sum()))
             if len(losses) > 0 and losses.sum() != 0
-            else float("inf")
+            else float("inf")  # all-win trades: profit factor is infinite
         )
-        metrics["hit_rate"] = hit_rate
-        metrics["profit_factor"] = profit_factor
+
+    metrics["hit_rate"] = hit_rate
+    metrics["profit_factor"] = profit_factor
 
     return metrics

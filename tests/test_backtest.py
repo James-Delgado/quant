@@ -15,8 +15,8 @@ Output contracts:
 
   compute_metrics() -> dict[str, float]
       keys: sharpe, sortino, calmar, max_drawdown, total_return,
-            annualized_return, hit_rate (*), profit_factor (*)
-      (*) only present when trade_log is supplied
+            annualized_return, hit_rate, profit_factor
+      hit_rate and profit_factor are always present (0.0/nan when no trade_log)
 
   run_backtest() -> BacktestResult
       fields: oos_metrics, is_metrics, equity_curve, trade_log
@@ -31,6 +31,7 @@ from quant.backtest.walkforward import walkforward_splits
 from quant.backtest.simulator import simulate
 from quant.backtest.metrics import compute_metrics
 from quant.backtest.harness import BacktestResult, run_backtest
+from quant.backtest.report import format_report, summary_table
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +320,62 @@ class TestSimulate:
         )
         assert trade_log.iloc[0]["shares"] <= 10
 
+    def test_short_trade_zero_costs(self):
+        """Short entry at open=110, exit at open=90, no costs.
+
+        shares = floor(10_000 / 110) = 90
+        gross_pnl = 90 × (110 − 90) = 1_800   (profitable short)
+        final equity = 10_000 + 1_800 = 11_800
+        """
+        dates = pd.date_range("2024-01-02", periods=5, freq="B")
+        prices = pd.DataFrame(
+            {
+                "open":   [100.0, 110.0, 90.0, 90.0, 90.0],
+                "high":   [105.0, 115.0, 95.0, 95.0, 95.0],
+                "low":    [ 95.0, 105.0, 85.0, 85.0, 85.0],
+                "close":  [100.0, 110.0, 90.0, 90.0, 90.0],
+                "volume": [1_000_000.0] * 5,
+            },
+            index=dates,
+        )
+        signals = pd.Series([-1, 0, 0, 0, 0], index=dates)
+        equity_curve, trade_log = simulate(
+            prices, signals,
+            initial_capital=10_000,
+            commission_per_share=0.0,
+            slippage_bps=0.0,
+            liquidity_cap=1.0,
+        )
+        assert len(trade_log) == 1
+        row = trade_log.iloc[0]
+        assert row["entry_price"] == pytest.approx(110.0)
+        assert row["exit_price"] == pytest.approx(90.0)
+        assert row["shares"] == 90
+        assert row["gross_pnl"] == pytest.approx(1_800.0)
+        assert row["net_pnl"] == pytest.approx(1_800.0)
+        assert equity_curve.iloc[-1] == pytest.approx(11_800.0)
+
+    def test_open_position_at_end_is_logged(self, five_bar_prices):
+        """Position open at the last bar is force-closed and logged.
+
+        Signals are all +1 so the long position is never explicitly closed.
+        The simulator must log a closing trade at the final bar's open price.
+        """
+        signals = pd.Series([1, 1, 1, 1, 1], index=five_bar_prices.index)
+        equity_curve, trade_log = simulate(
+            five_bar_prices, signals,
+            initial_capital=10_000,
+            commission_per_share=0.0,
+            slippage_bps=0.0,
+            liquidity_cap=1.0,
+        )
+        assert len(trade_log) == 1, "Force-close must produce exactly one trade row"
+        row = trade_log.iloc[0]
+        assert row["entry_price"] == pytest.approx(110.0)   # fill at bar-1 open
+        assert row["exit_price"] == pytest.approx(120.0)    # force-close at bar-4 open
+        assert row["net_pnl"] == pytest.approx(90 * 10.0)   # 90 shares × $10 gain
+        assert equity_curve.iloc[-1] == pytest.approx(10_000 + 90 * 10.0)
+
     def test_next_bar_execution(self):
         """Signal at bar t fills at bar t+1 open, not bar t close.
 
@@ -445,6 +502,27 @@ class TestComputeMetrics:
         log = pd.DataFrame({"net_pnl": [10.0, 20.0, 5.0]})
         assert compute_metrics(pd.Series(dtype=float), trade_log=log)["hit_rate"] == \
             pytest.approx(1.0)
+
+    def test_all_wins_profit_factor_is_inf(self):
+        """All winning trades → profit_factor = inf (no losses in denominator)."""
+        log = pd.DataFrame({"net_pnl": [10.0, 20.0, 5.0]})
+        assert compute_metrics(pd.Series(dtype=float), trade_log=log)["profit_factor"] == \
+            float("inf")
+
+    def test_hit_rate_profit_factor_always_present(self):
+        """hit_rate and profit_factor are present even when no trade_log is supplied."""
+        metrics = compute_metrics(pd.Series(np.full(50, 0.001)))
+        assert "hit_rate" in metrics
+        assert "profit_factor" in metrics
+        assert metrics["hit_rate"] == pytest.approx(0.0)
+        import math
+        assert math.isnan(metrics["profit_factor"])
+
+    def test_calmar_undefined_when_no_drawdown(self):
+        """calmar is NaN (undefined) when max_drawdown == 0 — not infinity."""
+        import math
+        returns = pd.Series(np.full(50, 0.005))  # always positive → no drawdown
+        assert math.isnan(compute_metrics(returns)["calmar"])
 
 
 # ===========================================================================
@@ -630,6 +708,11 @@ class TestHarnessSelfValidation:
             f"Perfect-foresight Sharpe {sharpe:.3f} should exceed 2."
         )
 
+    def test_no_splits_warning(self):
+        """walkforward_splits warns when train+test > n_samples."""
+        with pytest.warns(UserWarning, match="no splits will be generated"):
+            list(walkforward_splits(5, train_window=10, test_window=3))
+
     def test_purging_eliminates_label_overlap(self):
         """Purging removes training samples whose label window overlaps the test period.
 
@@ -662,3 +745,68 @@ class TestHarnessSelfValidation:
                     f"Position {i} with label_horizon={lh} reaches {i + lh}, "
                     f"which overlaps test starting at {test_start}."
                 )
+
+
+# ===========================================================================
+# report.py
+# ===========================================================================
+
+class TestReport:
+    """format_report, print_report, summary_table."""
+
+    @pytest.fixture()
+    def flat_result(self):
+        """BacktestResult from an all-flat strategy (no trades, no drawdown)."""
+        n = 50
+        dates = pd.date_range("2024-01-02", periods=n, freq="B")
+        prices = _make_prices(n)
+        signals = pd.Series(0, index=prices.index)
+        eq, tlog = simulate(
+            prices, signals,
+            initial_capital=10_000,
+            commission_per_share=0.0,
+            slippage_bps=0.0,
+        )
+        returns = eq.pct_change().dropna()
+        metrics = compute_metrics(returns, trade_log=None)
+        from quant.backtest.harness import BacktestResult
+        return BacktestResult(
+            oos_metrics=metrics,
+            is_metrics=metrics,
+            equity_curve=eq,
+            trade_log=tlog,
+            fold_metrics=[metrics],
+        )
+
+    def test_format_report_returns_string(self, flat_result):
+        out = format_report(flat_result)
+        assert isinstance(out, str)
+        assert len(out) > 0
+
+    def test_format_report_contains_sharpe(self, flat_result):
+        assert "sharpe" in format_report(flat_result)
+
+    def test_format_report_no_nan_percent(self, flat_result):
+        """No metric value should render as 'nan%' — NaN values show '—'."""
+        assert "nan%" not in format_report(flat_result)
+
+    def test_format_report_inf_calmar_shows_dash(self, flat_result):
+        """calmar=nan (no drawdown) renders as '—', not 'inf' or 'nan'."""
+        out = format_report(flat_result)
+        import math
+        assert math.isnan(flat_result.oos_metrics["calmar"])
+        assert "inf" not in out
+        assert "nan" not in out
+
+    def test_summary_table_shape_no_trades(self, flat_result):
+        """summary_table always has 8 rows (6 base + hit_rate + profit_factor)."""
+        tbl = summary_table(flat_result)
+        assert tbl.shape == (8, 2)
+        assert list(tbl.columns) == ["OOS", "IS"]
+
+    def test_summary_table_no_nan_in_base_metrics(self, flat_result):
+        """Base metrics (sharpe, sortino, etc.) should be finite numbers."""
+        import math
+        tbl = summary_table(flat_result)
+        for key in ("sharpe", "sortino", "max_drawdown", "total_return", "annualized_return"):
+            assert not math.isnan(tbl.loc[key, "OOS"])

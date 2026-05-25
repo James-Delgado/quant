@@ -22,7 +22,7 @@ from quant.backtest.simulator import simulate
 from quant.backtest.walkforward import walkforward_splits
 
 
-@dataclass
+@dataclass(frozen=True)
 class BacktestResult:
     """Container for a completed backtest run."""
 
@@ -65,6 +65,12 @@ def run_backtest(
     -------
     BacktestResult with oos_metrics, is_metrics, equity_curve, trade_log.
     """
+    if not features.index.equals(prices.index):
+        raise ValueError(
+            "features and prices must have identical DatetimeIndexes — "
+            "align them before calling run_backtest"
+        )
+
     n = len(features)
     splits = list(
         walkforward_splits(
@@ -98,6 +104,7 @@ def run_backtest(
     label_arr = labels.to_numpy()
 
     oos_equity_parts: list[pd.Series] = []
+    oos_returns_parts: list[pd.Series] = []
     oos_trade_parts: list[pd.DataFrame] = []
     is_returns_parts: list[pd.Series] = []
     fold_metrics: list[dict[str, float]] = []
@@ -111,33 +118,37 @@ def run_backtest(
         X_test = feat_arr[test_pos]
 
         model.fit(X_train, y_train)  # type: ignore[attr-defined]
-        oos_signals_arr = np.asarray(model.predict(X_test))  # type: ignore[attr-defined]
+        oos_signals_arr = np.asarray(model.predict(X_test), dtype=int)  # type: ignore[attr-defined]
 
         test_idx = features.index[test_pos]
-        oos_signals = pd.Series(oos_signals_arr.astype(int), index=test_idx)
+        oos_signals = pd.Series(oos_signals_arr, index=test_idx)
         oos_prices = prices.loc[test_idx]
 
         eq, tlog = simulate(oos_prices, oos_signals, **sim_kwargs)  # type: ignore[arg-type]
-        daily_ret = eq.pct_change().dropna()
-        fold_m = compute_metrics(daily_ret, trade_log=tlog if len(tlog) > 0 else None)
+        fold_ret = eq.pct_change().dropna()
+        fold_m = compute_metrics(fold_ret, trade_log=tlog if not tlog.empty else None)
         fold_metrics.append(fold_m)
 
         oos_equity_parts.append(eq)
-        if len(tlog) > 0:
+        oos_returns_parts.append(fold_ret)  # within-fold returns, no cross-fold boundary
+        if not tlog.empty:
             oos_trade_parts.append(tlog)
 
         # IS: re-predict on training data for IS metric comparison
-        is_signals_arr = np.asarray(model.predict(X_train))  # type: ignore[attr-defined]
+        is_signals_arr = np.asarray(model.predict(X_train), dtype=int)  # type: ignore[attr-defined]
         train_idx = features.index[train_pos]
-        is_signals = pd.Series(is_signals_arr.astype(int), index=train_idx)
+        is_signals = pd.Series(is_signals_arr, index=train_idx)
         is_prices = prices.loc[train_idx]
         is_eq, _ = simulate(is_prices, is_signals, **sim_kwargs)  # type: ignore[arg-type]
         is_returns_parts.append(is_eq.pct_change().dropna())
 
     # ── Aggregate OOS ─────────────────────────────────────────────────────
-    if oos_equity_parts:
+    # Concatenate within-fold return series, NOT the equity levels, so that
+    # pct_change() is never computed across fold boundaries (each fold resets
+    # to initial_capital, which would inject a phantom return at every join).
+    if oos_returns_parts:
         equity_curve = pd.concat(oos_equity_parts)
-        oos_returns = equity_curve.pct_change().dropna()
+        oos_returns = pd.concat(oos_returns_parts)
     else:
         equity_curve = pd.Series(dtype=float)
         oos_returns = pd.Series(dtype=float)
