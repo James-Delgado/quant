@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "quant"
 version = "0.1.0"
-description = "Phase 0: data ingestion pipeline and local data lake"
+description = "Quant research platform: data lake, backtest harness, and walk-forward CV"
 requires-python = ">=3.11"
 dependencies = [
     "prefect>=3.0",          # orchestration: flows, tasks, retries, scheduling
@@ -21,10 +21,21 @@ dependencies = [
     "pandas-market-calendars>=4.4",  # trading-day calendar
     "httpx>=0.27",           # HTTP client for any source without an SDK
     "loguru>=0.7",           # readable logging
+    "scikit-learn>=1.4",     # ML models for signal generation and backtesting
+    "numpy>=1.26",           # numerical computing (pinned via pandas/sklearn anyway)
+    "matplotlib>=3.8",       # plotting for research notebooks
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5", "mypy>=1.10", "ipykernel", "jupyterlab"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "ipykernel",
+    "jupyterlab",
+    "nbstripout>=0.6",       # strips notebook outputs before git commit
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
