@@ -1,8 +1,14 @@
 # Phase 1 — Purged Walk-Forward Backtester
 
-> **Spec document.** See `PROJECT_OVERVIEW.md` for full project context. This
-> describes what Phase 1 builds, why, the design, and the exit gate that must
-> be cleared before Phase 2 begins.
+> **Spec document.** See `PHASE_0_INFRASTRUCTURE.md` for full project context.
+> This describes what Phase 1 builds, why, the design, and the exit gate that
+> must be cleared before Phase 2 begins.
+
+> **Status: ✅ COMPLETE** — all exit-gate criteria met. Key commits:
+> `a456b84` (initial implementation), `6e735bf` (review fixes).
+> Implemented modules: `walkforward.py`, `simulator.py`, `metrics.py`,
+> `harness.py`, `report.py`. Test suite: 87 passed / 4 skipped (live API).
+> See `notebooks/01_system_tour.ipynb` for an executed end-to-end demo.
 
 ---
 

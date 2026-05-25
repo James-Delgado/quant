@@ -1,15 +1,111 @@
 # CLAUDE.md — quant project
 
+## Project status
+
+| Phase | Status | Commits |
+|-------|--------|---------|
+| Phase 0 — Data lake & ingestion | ✅ Complete | `7df86c1` |
+| Phase 1 — Purged walk-forward backtester | ✅ Complete | `a456b84`, `6e735bf` |
+| Phase 2 — Predictive modeling (gradient-boosted trees) | 🔜 Next | — |
+
+Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
+`report.py`, 87-test suite (87 passed / 4 skipped), and an executed system-tour
+notebook at `notebooks/01_system_tour.ipynb`.
+
+## Codebase map
+
+```
+src/quant/
+├── config.py                 typed Settings (pydantic-settings), loads .env
+├── storage/
+│   ├── lake.py               write_raw / write_processed / read_processed
+│   └── catalog.py            query(sql) / table(dataset) — DuckDB over Parquet
+├── ingest/
+│   ├── schemas.py            pandera schemas for all three sources
+│   ├── alpaca_bars.py        Alpaca daily OHLCV ingestor
+│   ├── tiingo_eod.py         Tiingo adjusted EOD ingestor
+│   └── fred_macro.py         FRED macro series ingestor
+├── flows/
+│   └── daily.py              Prefect flow: runs all ingestors, isolates failures
+├── backtest/
+│   ├── walkforward.py        purged walk-forward split generator
+│   ├── simulator.py          vectorised trade simulator (next-bar fills, costs)
+│   ├── metrics.py            Sharpe / Sortino / Calmar / drawdown / hit-rate
+│   ├── harness.py            run_backtest() — wires model + data → BacktestResult
+│   ├── report.py             format_report() / summary_table() / print_report()
+│   └── CLAUDE.md             agent instructions for the backtest package
+└── utils/calendar.py         trading-day calendar (gap detection)
+```
+
+Key invariant: **purge + embargo leakage controls must stay intact in
+`walkforward.py` and `harness.py`**. Read `docs/concepts/purging-and-embargo.md`
+before touching split logic. The harness self-tests enforce this automatically.
+
+## Python environment
+
+The project uses a venv at `.venv/`. **Never use `source .venv/bin/activate`** —
+it triggers a permission prompt every time. Call binaries directly:
+
+```bash
+.venv/bin/python   script.py
+.venv/bin/pip      install package
+.venv/bin/pytest   tests/
+.venv/bin/jupyter  nbconvert ...
+.venv/bin/ruff     check src/
+```
+
+The venv Python already has its site-packages on `sys.path`. Activation is a
+shell convenience for interactive prompts only.
+
+## Running things
+
+```bash
+# Full test suite (87 tests, ~16s, no network):
+.venv/bin/pytest tests/ -v
+
+# With coverage:
+.venv/bin/pytest tests/ --cov=src --cov-report=term-missing
+
+# Live API tests (requires .env credentials):
+.venv/bin/pytest tests/ --integration
+
+# Execute the system-tour notebook in place:
+.venv/bin/jupyter nbconvert --to notebook --execute --inplace \
+    --ExecutePreprocessor.timeout=300 notebooks/01_system_tour.ipynb
+
+# Lint / format:
+.venv/bin/ruff check src/ tests/
+.venv/bin/ruff format src/ tests/
+```
+
+## Notebook outputs and git
+
+`nbstripout` is wired as a git filter (`.gitattributes`). Outputs are
+automatically stripped on `git add`. Always commit notebooks before running
+them so the clean baseline is preserved.
+
+## Docs layout
+
+```
+docs/
+├── ENV.md                          environment variables and runtime settings
+├── CONTRIBUTING.md                 dev setup, test instructions, adding ingestors
+├── PHASE_0_INFRASTRUCTURE.md       canonical project overview and architecture
+├── PHASE_1_BACKTESTER.md           backtester spec (purged walk-forward CV)
+├── PHASE_2_MODELING.md             next phase spec (gradient-boosted trees)
+└── concepts/
+    ├── purging-and-embargo.md      deep-dive on leakage controls and embargo sizing
+    ├── cost-model.md               trade simulator cost assumptions and sources
+    └── metrics-glossary.md         definitions for all reported performance metrics
+```
+
 ## Session logging (required)
 
 A living session log lives at:
 `~/.claude/projects/-Users-jamesdelgado-Projects-quant/sessions/YYYY-MM-DD.md`
 
-**When to write a session entry:** At the end of any session where significant
-work was done, OR when the context window is approaching its limit (you will
-see a system reminder about compaction). Do NOT wait to be asked.
-
-**Format — append this block to today's log file:**
+**When to write:** at the end of any session where significant work was done,
+OR when the context window is approaching its limit. Do NOT wait to be asked.
 
 ```markdown
 ## HH:MM UTC — [one-line goal]
@@ -21,33 +117,13 @@ see a system reminder about compaction). Do NOT wait to be asked.
 **Next:** What the next agent/session should do first
 ```
 
-Write it with the Write or Edit tool directly to the sessions file.
-The Stop hook writes the mechanical git state automatically; you supply the narrative.
-
-## Python environment
-
-The project uses a venv at `.venv/`. **Never use `source .venv/bin/activate`** — it
-triggers a permission prompt every time. Instead, call binaries directly:
-
-```bash
-.venv/bin/python script.py
-.venv/bin/pip install package
-.venv/bin/pytest tests/
-.venv/bin/jupyter nbconvert ...
-.venv/bin/ruff check src/
-```
-
-The venv Python already knows its own site-packages. Activation is only needed
-for interactive human shells, not for automated commands.
-
 ## Skill routing
 
-When the user's request matches an available skill, ALWAYS invoke it using the Skill
-tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
+When the user's request matches an available skill, ALWAYS invoke it using the
+Skill tool as your FIRST action.
 
-Key routing rules:
-- Product ideas, "is this worth building", brainstorming → invoke office-hours
-- Bugs, errors, "why is this broken", 500 errors → invoke investigate
+- Product ideas, brainstorming → invoke office-hours
+- Bugs, errors, "why is this broken" → invoke investigate
 - Ship, deploy, push, create PR → invoke ship
 - QA, test the site, find bugs → invoke qa
 - Code review, check my diff → invoke review
