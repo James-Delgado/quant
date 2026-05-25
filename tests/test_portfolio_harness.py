@@ -193,49 +193,59 @@ class TestPortfolioHarnessSelfTests:
             "harness may be suppressing real edge (check signal path)"
         )
 
-    def test_purge_embargo_has_observable_effect(
-        self,
-        features_by_sym: dict[str, pd.DataFrame],
-        labels_by_sym: dict[str, pd.Series],
-        prices_by_sym: dict[str, pd.DataFrame],
-    ) -> None:
-        """Purge/embargo parameters must have observable effect on results.
+    def test_purge_embargo_constraint_satisfied(self) -> None:
+        """No training position's label window must overlap any test position.
 
-        Uses an always-long model (same prediction regardless of training).
-        With label_horizon=0 and embargo=0, walkforward_splits keeps more
-        training samples (no purge gap, no embargo gap) than with the correct
-        label_horizon=1 and embargo=3. The fold splits differ, producing
-        different fold_metrics lists. If the two runs are identical, the
-        harness is ignoring the leakage controls.
+        Directly verifies the purge invariant on the splits produced by
+        walkforward_splits. An AlwaysLongModel cannot detect contamination
+        (its predictions are identical regardless of training data), so the
+        correct approach is to inspect the splits themselves.
         """
-        shared_kwargs = dict(
-            features_by_symbol=features_by_sym,
-            labels_by_symbol=labels_by_sym,
-            prices_by_symbol=prices_by_sym,
-            train_window=TRAIN_W,
-            test_window=TEST_W,
-            step=STEP,
-        )
+        from quant.backtest.walkforward import walkforward_splits
 
-        result_controlled = run_portfolio_backtest(
-            model=AlwaysLongModel(),
-            label_horizon=HORIZON,
-            embargo=EMBARGO,
-            **shared_kwargs,
+        splits = list(
+            walkforward_splits(
+                N,
+                train_window=TRAIN_W,
+                test_window=TEST_W,
+                step=STEP,
+                label_horizon=HORIZON,
+                embargo=EMBARGO,
+            )
         )
+        assert splits, "Expected at least one fold"
+        for train_pos, test_pos in splits:
+            test_start = int(min(test_pos))
+            for tp in train_pos:
+                assert tp + HORIZON < test_start, (
+                    f"Training position {tp} has label window reaching {tp + HORIZON}, "
+                    f"which overlaps test start {test_start} — purge violated"
+                )
 
-        result_leaky = run_portfolio_backtest(
-            model=AlwaysLongModel(),
-            label_horizon=0,
-            embargo=0,
-            **shared_kwargs,
+    def test_without_purge_splits_would_be_contaminated(self) -> None:
+        """Confirms the above test is meaningful: without purge, overlaps exist.
+
+        If this test fails, HORIZON/EMBARGO/TRAIN_W/TEST_W/N are configured
+        such that purge makes no difference — increase HORIZON or shrink STEP.
+        """
+        from quant.backtest.walkforward import walkforward_splits
+
+        leaky_splits = list(
+            walkforward_splits(
+                N,
+                train_window=TRAIN_W,
+                test_window=TEST_W,
+                step=STEP,
+                label_horizon=0,
+                embargo=0,
+            )
         )
-
-        # fold_metrics captures per-fold Sharpe; if purge/embargo are active
-        # they reduce training-set size per fold, changing at minimum the IS
-        # model state (even for AlwaysLong, the number of folds can differ).
-        # At minimum the OOS metrics or fold count must differ.
-        assert (
-            result_controlled.oos_metrics != result_leaky.oos_metrics
-            or result_controlled.fold_metrics != result_leaky.fold_metrics
-        ), "Purge/embargo had no observable effect — controls may be ignored"
+        contaminated = any(
+            tp + HORIZON >= int(min(test_pos))
+            for train_pos, test_pos in leaky_splits
+            for tp in train_pos
+        )
+        assert contaminated, (
+            "Expected some training positions to violate the HORIZON constraint "
+            "when purge/embargo=0 — adjust test parameters"
+        )

@@ -227,6 +227,7 @@ def run_portfolio_backtest(
         common_idx = common_idx.intersection(features_by_symbol[sym].index)
     if len(common_idx) == 0:
         raise ValueError("No common dates across symbols after index intersection")
+    common_idx = common_idx.sort_values()
 
     feat = {s: features_by_symbol[s].loc[common_idx] for s in symbols}
     labs = {s: labels_by_symbol[s].loc[common_idx] for s in symbols}

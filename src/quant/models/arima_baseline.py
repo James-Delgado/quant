@@ -1,9 +1,14 @@
-"""ARIMA(1,1,0) baseline model.
+"""ARIMA(1,0,0) baseline model.
 
 Fixed order (not auto_arima) for two reasons:
   1. Bounds per-fold fit time — auto_arima runs multiple candidate fits.
   2. Keeps the Deflated Sharpe Ratio's N parameter honest: if the ARIMA order
      is selected per-fold it becomes an implicit hyperparameter that inflates N.
+
+Order is (1,0,0) — AR(1) on the returns series without differencing. d=0
+because the label series is already stationary forward returns (I(0)). Using
+d=1 would over-difference a stationary series and produce forecasts that
+converge to a flat constant, carrying no return-predicting signal.
 
 Single-fit-per-fold protocol
 -----------------------------
@@ -16,6 +21,9 @@ When used as a feature column in GBM:
   - At predict time, call predict() or predict_one_step() for each test bar.
   - Pass the forecast as "arima_forecast" in the GBM feature matrix.
   - Do NOT re-fit between test bars — that would use test-period data.
+
+Note on predict_one_step(): always returns the 1-step forecast from the
+training window end — does not update state with realized test-bar returns.
 """
 from __future__ import annotations
 
@@ -24,15 +32,15 @@ from statsmodels.tsa.arima.model import ARIMA
 
 
 class ARIMABaseline:
-    """ARIMA(1,1,0) fitted on the label series once per fold.
+    """AR(1) baseline fitted on the forward-return label series once per fold.
 
     Parameters
     ----------
-    order:  ARIMA (p, d, q) order. Default (1, 1, 0).
-            Do not change without recalculating the DSR N parameter.
+    order:  ARIMA (p, d, q) order. Default (1, 0, 0) — AR(1) on stationary
+            returns. Do not use d=1; the label series is already I(0).
     """
 
-    def __init__(self, order: tuple[int, int, int] = (1, 1, 0)) -> None:
+    def __init__(self, order: tuple[int, int, int] = (1, 0, 0)) -> None:
         self.order = order
         self._fitted: object | None = None
 

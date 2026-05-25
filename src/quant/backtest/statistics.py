@@ -72,6 +72,12 @@ def diebold_mariano(
     errors_a = np.asarray(errors_a, dtype=float)
     errors_b = np.asarray(errors_b, dtype=float)
 
+    if not (np.all(np.isfinite(errors_a)) and np.all(np.isfinite(errors_b))):
+        raise ValueError(
+            "errors_a and errors_b must not contain NaN or Inf — "
+            "clean forecast errors before calling diebold_mariano"
+        )
+
     if errors_a.shape != errors_b.shape:
         raise ValueError(
             f"errors_a and errors_b must have the same shape, "
@@ -106,16 +112,21 @@ def diebold_mariano(
     dm_stat = d_bar / np.sqrt(var_d_bar)
 
     if small_sample_correction:
-        # Harvey, Leybourne & Newbold (1997): multiply by sqrt(correction)
+        # Harvey, Leybourne & Newbold (1997): scale statistic and use t(T-1).
+        # HLN specifies t(T-1) as the reference distribution, not N(0,1).
+        # Using Normal here would partially undo the correction's purpose.
         correction = (T + 1 - 2 * h + h * (h - 1) / T) / T
         dm_stat = dm_stat * np.sqrt(max(correction, 0.0))
+        p_dist = stats.t(df=T - 1)
+    else:
+        p_dist = stats.norm
 
     if alternative == "less":
-        p_value = float(stats.norm.cdf(dm_stat))
+        p_value = float(p_dist.cdf(dm_stat))
     elif alternative == "greater":
-        p_value = float(stats.norm.sf(dm_stat))
+        p_value = float(p_dist.sf(dm_stat))
     elif alternative == "two-sided":
-        p_value = float(2 * stats.norm.sf(abs(dm_stat)))
+        p_value = float(2 * p_dist.sf(abs(dm_stat)))
     else:
         raise ValueError(
             f"alternative must be 'less', 'greater', or 'two-sided', got {alternative!r}"
