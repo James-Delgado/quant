@@ -17,7 +17,12 @@
       "Bash(source .venv/bin/activate*)",
       "Bash(.venv/bin/pytest tests/ -q --tb=short)",
       "Bash(.venv/bin/python -c ' *)",
-      "Bash(.venv/bin/python *)"
+      "Bash(.venv/bin/python *)",
+      "Bash(.venv/bin/pytest tests/test_backtest.py -q --tb=line)",
+      "Bash(.venv/bin/pytest tests/ -q --tb=line --ignore=tests/test_backtest.py)",
+      "Bash(.venv/bin/pytest tests/test_backtest.py -q --tb=short)",
+      "Bash(.venv/bin/pytest -q --tb=short)",
+      "Bash(gh pr *)"
     ]
   },
   "sandbox": {
