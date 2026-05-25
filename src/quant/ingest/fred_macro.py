@@ -9,9 +9,11 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
+from fredapi import Fred
 from prefect import flow, get_run_logger, task
 
 from quant.config import settings
+from quant.ingest.schemas import FRED_MACRO_SCHEMA
 from quant.storage import catalog, lake
 
 DATASET = "macro_fred"
@@ -20,8 +22,6 @@ DATASET = "macro_fred"
 @task(retries=3, retry_delay_seconds=30)
 def fetch_series(series_ids: list[str], start: datetime) -> pd.DataFrame:
     """Pull each FRED series and stack into a long-form DataFrame."""
-    from fredapi import Fred
-
     fred = Fred(api_key=settings.fred_api_key)
     frames: list[pd.DataFrame] = []
     for sid in series_ids:
@@ -59,6 +59,7 @@ def to_processed(df: pd.DataFrame) -> int:
         .drop_duplicates(subset=["series_id", "timestamp"], keep="last")
         .sort_values(["series_id", "timestamp"])
     )
+    FRED_MACRO_SCHEMA.validate(df)
     lake.write_processed(df, dataset=DATASET, partition_cols=None)
     return len(df)
 
@@ -72,9 +73,10 @@ def ingest_fred_macro(backfill: bool = False) -> None:
         start = end - timedelta(days=365 * settings.backfill_years)
         logger.info(f"Backfill run from {start.date()}")
     else:
-        # Macro series get revised, so re-pull a short overlap window.
-        start = last - timedelta(days=14)
-        logger.info(f"Incremental run from {start.date()} (with revision overlap)")
+        # Macro series get revised with long lags: CPI and UNRATE revisions
+        # can arrive 30+ days later. 45-day overlap catches these safely.
+        start = last - timedelta(days=45)
+        logger.info(f"Incremental run from {start.date()} (with 45-day revision overlap)")
 
     df = fetch_series(settings.fred_series, start)
     if df.empty:

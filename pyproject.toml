@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "ipykernel", "jupyterlab"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5", "mypy>=1.10", "ipykernel", "jupyterlab"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -32,3 +32,10 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+markers = [
+    "integration: requires live API credentials (skipped by default; pass --integration to run)",
+]

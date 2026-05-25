@@ -27,6 +27,7 @@ quant/
 │   │   ├── lake.py         Parquet read/write (raw + processed layers)
 │   │   └── catalog.py      DuckDB SQL query layer over the lake
 │   ├── ingest/
+│   │   ├── schemas.py      pandera schemas — catches API drift at ingestion
 │   │   ├── alpaca_bars.py  TEMPLATE ingestor — read this one first
 │   │   ├── tiingo_eod.py   same four-step shape
 │   │   └── fred_macro.py   same shape, with revision-overlap handling
@@ -34,7 +35,15 @@ quant/
 │   │   └── daily.py        orchestrator: runs all ingestors, isolates failures
 │   └── utils/calendar.py   trading-day calendar (gap detection)
 ├── scripts/backfill.py     one-off full historical pull
-├── tests/                  storage smoke tests
+├── tests/
+│   ├── conftest.py         fixtures: lake_root (isolated tmp), mock factories
+│   ├── test_storage.py     lake + catalog layer
+│   ├── test_ingest_alpaca.py
+│   ├── test_ingest_tiingo.py
+│   ├── test_ingest_fred.py
+│   ├── test_flows.py       daily orchestrator (failure isolation)
+│   ├── test_config.py      credential validation
+│   └── test_integration.py live-API smoke tests (--integration flag)
 └── data/                   the lake (gitignored)
     ├── raw/                immutable API pulls — the audit trail
     └── processed/          cleaned, typed, partitioned by year/month
@@ -49,6 +58,20 @@ uv pip install -e ".[dev]"
 
 cp .env.example .env        # then paste in your four free API keys
 ```
+
+## Tests
+
+```bash
+# Unit tests (no network, ~15 seconds):
+pytest
+
+# Live API smoke tests (requires .env credentials, ~30 seconds):
+pytest --integration
+```
+
+The unit suite runs 35 tests across storage, ingest logic, and orchestration —
+all mocked, no network required. Integration tests call the real APIs and verify
+end-to-end ingestion into a temp lake.
 
 ## Run it
 

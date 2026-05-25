@@ -43,7 +43,14 @@ def latest_timestamp(dataset: str, ts_col: str = "timestamp") -> dt.datetime | N
         return None  # dataset has never been written
     if result.empty or pd.isna(result.iloc[0]["m"]):
         return None
-    return pd.Timestamp(result.iloc[0]["m"]).to_pydatetime()
+    ts = pd.Timestamp(result.iloc[0]["m"])
+    # DuckDB may convert TIMESTAMPTZ to local timezone on the way out. Normalize
+    # to UTC so callers get consistent results regardless of system timezone.
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC")
+    else:
+        ts = ts.tz_localize("UTC")
+    return ts.to_pydatetime()
 
 
 def table(dataset: str) -> str:

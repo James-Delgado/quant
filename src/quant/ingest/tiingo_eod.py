@@ -10,8 +10,10 @@ from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 from prefect import flow, get_run_logger, task
+from tiingo import TiingoClient
 
 from quant.config import settings
+from quant.ingest.schemas import TIINGO_EOD_SCHEMA
 from quant.storage import catalog, lake
 
 DATASET = "equity_eod_tiingo"
@@ -20,9 +22,12 @@ DATASET = "equity_eod_tiingo"
 @task(retries=3, retry_delay_seconds=30)
 def fetch_eod(symbols: list[str], start: datetime) -> pd.DataFrame:
     """Fetch one symbol at a time (Tiingo is per-ticker), pausing briefly to
-    stay under the free-tier hourly rate limit."""
-    from tiingo import TiingoClient
+    stay under the free-tier hourly rate limit.
 
+    Tiingo returns a DataFrame with a DatetimeIndex named 'date'. After
+    reset_index() that becomes a column named 'date', which we rename to
+    'timestamp' for consistency with the rest of the lake.
+    """
     client = TiingoClient({"api_key": settings.tiingo_api_key})
     frames: list[pd.DataFrame] = []
     for symbol in symbols:
@@ -34,7 +39,7 @@ def fetch_eod(symbols: list[str], start: datetime) -> pd.DataFrame:
             continue
         if sdf.empty:
             continue
-        sdf = sdf.reset_index().rename(columns={"index": "timestamp", "date": "timestamp"})
+        sdf = sdf.reset_index().rename(columns={"date": "timestamp"})
         sdf["symbol"] = symbol
         frames.append(sdf)
         time.sleep(0.2)  # gentle throttle
@@ -48,14 +53,37 @@ def land_raw(df: pd.DataFrame) -> None:
 
 @task
 def to_processed(df: pd.DataFrame) -> int:
+    """Merge-then-rewrite to avoid the PyArrow delete_matching partition hazard.
+
+    Tiingo timestamps are midnight UTC (00:00:00+00:00); Alpaca uses 04:00 UTC.
+    Both are stored as-is — normalise to date only when joining the two sources.
+    """
     df = df.copy()
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    df = df.drop_duplicates(subset=["symbol", "timestamp"])
-    df["year"] = df["timestamp"].dt.year
-    df["month"] = df["timestamp"].dt.month
     df["ingested_at"] = pd.Timestamp.now(tz="UTC")
-    lake.write_processed(df, dataset=DATASET, partition_cols=["year", "month"])
-    return len(df)
+    df["year"] = df["timestamp"].dt.year.astype("int64")
+    df["month"] = df["timestamp"].dt.month.astype("int64")
+
+    existing = lake.read_processed(DATASET)
+    if not existing.empty:
+        existing["timestamp"] = pd.to_datetime(existing["timestamp"], utc=True)
+        existing["ingested_at"] = pd.to_datetime(existing["ingested_at"], utc=True)
+        combined = pd.concat([existing, df], ignore_index=True)
+    else:
+        combined = df
+
+    combined = (
+        combined.sort_values("ingested_at")
+        .drop_duplicates(subset=["symbol", "timestamp"], keep="last")
+        .sort_values(["symbol", "timestamp"])
+        .reset_index(drop=True)
+    )
+    combined["year"] = combined["timestamp"].dt.year.astype("int64")
+    combined["month"] = combined["timestamp"].dt.month.astype("int64")
+
+    TIINGO_EOD_SCHEMA.validate(combined)
+    lake.write_processed(combined, dataset=DATASET, partition_cols=["year", "month"])
+    return len(combined)
 
 
 @flow(name="ingest-tiingo-eod")
