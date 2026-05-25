@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(~/.claude/skills/gstack/bin/gstack-review-read)",
+      "Read(//Users/jamesdelgado/.local/bin/**)",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(uv --version)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Read(//Users/jamesdelgado/.claude/skills/**)",
+      "Read(//Users/jamesdelgado/.claude/skills/ecc/**)",
+      "Bash(python3 -m json.tool)",
+      "Bash(chmod +x ~/.claude/scripts/session-stop.sh)",
+      "Bash(bash ~/.claude/scripts/session-stop.sh)",
+      "Bash(~/.claude/scripts/session-stop.sh)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(source .venv/bin/activate*)",
+      "Bash(.venv/bin/pytest tests/ -q --tb=short)",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(.venv/bin/python *)"
+    ]
+  },
+  "sandbox": {
+    "enabled": false
+  }
+}
