@@ -76,6 +76,20 @@ class TestDieboldMariano:
         with pytest.raises(ValueError, match="alternative"):
             diebold_mariano(_errors(10, seed=0), _errors(10, seed=1), alternative="bad")
 
+    def test_nan_inputs_raise(self):
+        e = _errors(20)
+        e_nan = e.copy()
+        e_nan[5] = float("nan")
+        with pytest.raises(ValueError, match="NaN or Inf"):
+            diebold_mariano(e_nan, e)
+
+    def test_inf_inputs_raise(self):
+        e = _errors(20)
+        e_inf = e.copy()
+        e_inf[3] = float("inf")
+        with pytest.raises(ValueError, match="NaN or Inf"):
+            diebold_mariano(e, e_inf)
+
     def test_str_repr(self):
         e_a, e_b = _errors(100, 0), _errors(100, 1)
         result = diebold_mariano(e_a, e_b)

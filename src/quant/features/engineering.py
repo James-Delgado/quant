@@ -17,9 +17,14 @@ Excluded:
 """
 from __future__ import annotations
 
+import logging
+import warnings
+
 import duckdb
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from quant.storage.catalog import processed_glob
 
@@ -111,6 +116,18 @@ def _attach_fred_features(
     # Restore UTC timezone on the merged index so callers get a consistent
     # tz-aware DatetimeIndex regardless of whether FRED data was available.
     merged.index = pd.to_datetime(merged.index, utc=True)
+
+    fred_cols = [c for c in _FRED_SERIES if c in merged.columns]
+    if fred_cols:
+        nan_frac = merged[fred_cols].isna().mean()
+        bad = nan_frac[nan_frac > 0]
+        if not bad.empty:
+            warnings.warn(
+                f"ASOF merge produced NaN in FRED columns — possible coverage gap "
+                f"(bars predate earliest FRED observation): {bad.to_dict()}",
+                stacklevel=3,
+            )
+
     return merged
 
 
@@ -136,7 +153,10 @@ def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """
     try:
         df = con.execute(sql, list(_FRED_SERIES)).df()
-    except (duckdb.IOException, duckdb.CatalogException):
+    except (duckdb.IOException, duckdb.CatalogException) as exc:
+        logger.warning(
+            "FRED parquet load failed (%s) — macro features will be absent", exc
+        )
         return pd.DataFrame()
 
     if df.empty:
