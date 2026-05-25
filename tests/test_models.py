@@ -1,10 +1,11 @@
-"""Tests for src/quant/models/arima_baseline.py."""
+"""Tests for src/quant/models/arima_baseline.py and buyandhold_baseline.py."""
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
 from quant.models.arima_baseline import ARIMABaseline
+from quant.models.buyandhold_baseline import BuyAndHoldBaseline
 
 
 def _ar1_series(n: int = 100, phi: float = 0.5, seed: int = 0) -> np.ndarray:
@@ -87,3 +88,31 @@ class TestARIMABaseline:
         p1 = model.predict(np.zeros((10, 2)))
         p2 = model.predict(np.ones((10, 2)))
         np.testing.assert_array_equal(p1, p2)
+
+
+class TestBuyAndHoldBaseline:
+    def test_predict_all_ones(self):
+        model = BuyAndHoldBaseline()
+        model.fit(np.zeros((10, 3)), np.zeros(10))
+        preds = model.predict(np.zeros((20, 3)))
+        np.testing.assert_array_equal(preds, np.ones(20))
+
+    def test_fit_is_noop(self):
+        m1 = BuyAndHoldBaseline()
+        m2 = BuyAndHoldBaseline()
+        m1.fit(np.zeros((5, 2)), np.array([-1.0] * 5))
+        m2.fit(np.ones((5, 2)), np.array([1.0] * 5))
+        np.testing.assert_array_equal(
+            m1.predict(np.zeros((3, 2))), m2.predict(np.zeros((3, 2)))
+        )
+
+    def test_predict_empty_returns_empty(self):
+        model = BuyAndHoldBaseline()
+        model.fit(np.zeros((5, 1)), np.zeros(5))
+        preds = model.predict(np.zeros((0, 1)))
+        assert preds.shape == (0,)
+
+    def test_predict_dtype_float(self):
+        model = BuyAndHoldBaseline()
+        model.fit(np.zeros((5, 1)), np.zeros(5))
+        assert model.predict(np.zeros((3, 1))).dtype == float
