@@ -73,21 +73,29 @@ The unit suite runs 35 tests across storage, ingest logic, and orchestration —
 all mocked, no network required. Integration tests call the real APIs and verify
 end-to-end ingestion into a temp lake.
 
-## Run it
+## Commands
 
-```bash
-# 1. One-time: pull 5 years of history
-python scripts/backfill.py
+<!-- AUTO-GENERATED from pyproject.toml + scripts/ -->
 
-# 2. Thereafter: the daily incremental run (only fetches the gap)
-python -m quant.flows.daily
+| Command | Description |
+|---------|-------------|
+| `uv pip install -e ".[dev]"` | Install package + all dev dependencies |
+| `pytest` | Run unit test suite (35 tests, ~15s, no network) |
+| `pytest --integration` | Run live-API smoke tests (requires `.env` credentials) |
+| `pytest --cov=src --cov-report=term-missing` | Run unit tests with coverage report |
+| `ruff check src/ tests/` | Lint (PEP 8 + style rules) |
+| `ruff format src/ tests/` | Auto-format code |
+| `mypy src/` | Static type checking |
+| `python scripts/backfill.py` | One-time: pull 5 years of history for all sources |
+| `python -m quant.flows.daily` | Run one incremental daily ingest (all sources) |
+| `python -m quant.flows.daily --backfill` | Force a full historical pull |
+| `python -m quant.flows.daily --serve` | Start scheduled ingest daemon (22:30 UTC on weekdays) |
+| `python -m quant.ingest.alpaca_bars` | Run only the Alpaca ingestor |
+| `python -m quant.ingest.tiingo_eod` | Run only the Tiingo ingestor |
+| `python -m quant.ingest.fred_macro` | Run only the FRED ingestor |
+| `prefect server start` | Start Prefect UI at http://127.0.0.1:4200 |
 
-# 3. To run on a schedule (after US close, weekdays):
-python -m quant.flows.daily --serve
-
-# Inspect runs in the Prefect UI:
-prefect server start        # then open http://127.0.0.1:4200
-```
+<!-- END AUTO-GENERATED -->
 
 ## Query the lake
 
@@ -116,6 +124,15 @@ df = catalog.query(f"""
 - **Failure isolation** — one source failing is logged; the others still run.
 - **Sane file sizes** — partitioned by year/month, not by symbol-day, to avoid
   the thousands-of-tiny-files problem that kills query speed.
+
+## Docs
+
+| File | Contents |
+|------|----------|
+| [docs/ENV.md](docs/ENV.md) | All environment variables and runtime settings |
+| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Dev setup, test instructions, adding new ingestors |
+| [docs/PHASE_0_INFRASTRUCTURE.md](docs/PHASE_0_INFRASTRUCTURE.md) | Full project overview, architectural decisions, roadmap |
+| [docs/PHASE_1_BACKTESTER.md](docs/PHASE_1_BACKTESTER.md) | Backtester design (purged walk-forward CV) |
 
 ## Next: Phase 1
 
