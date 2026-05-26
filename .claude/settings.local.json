@@ -25,7 +25,12 @@
       "Bash(gh pr *)",
       "Bash(git *)",
       "Bash(python3 *)",
-      "Bash(/Users/jamesdelgado/Projects/quant/.venv/bin/pytest *)"
+      "Bash(/Users/jamesdelgado/Projects/quant/.venv/bin/pytest *)",
+      "Bash(command -v codex)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-learnings-log *)",
+      "Bash(.venv/bin/pytest *)",
+      "Bash(.venv/bin/ruff check *)",
+      "Bash(.venv/bin/pip install *)"
     ]
   },
   "sandbox": {
