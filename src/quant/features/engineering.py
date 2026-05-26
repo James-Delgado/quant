@@ -137,7 +137,7 @@ def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     A single SQL query per connection — not one per bar.
     Returns empty DataFrame if the lake has no FRED data yet.
     """
-    glob = processed_glob("fred_macro")
+    glob = processed_glob("macro_fred")
     # Use positional parameters for the series filter rather than f-string
     # interpolation, so the list cannot become an injection vector if
     # _FRED_SERIES is ever made configurable.
