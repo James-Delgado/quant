@@ -56,4 +56,5 @@ def generate_labels(prices: pd.Series, horizon: int) -> LabelResult:
         )
 
     forward_return = prices.shift(-horizon) / prices - 1.0
+    forward_return.name = f"fwd_return_{horizon}b"
     return LabelResult(series=forward_return, horizon_bars=horizon)
