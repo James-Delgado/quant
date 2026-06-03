@@ -64,12 +64,12 @@ regularisation; audit features for look-ahead.
 **Threshold:** GBM must beat all six baselines on OOS Sharpe, net of costs.
 
 **Baselines (in order of difficulty):**
-1. Naive (always flat) — zero-cost floor; any real signal beats this.
+1. Naive (always long +1) — zero-cost bull-market floor; any real signal beats this.
 2. Buy-and-hold SPY — the practical benchmark for a long-only investor.
-3. Momentum (sign of trailing 20-day return) — the simplest signal.
-4. ARIMA(1,1,0) — statistical time-series baseline.
+3. Momentum (sign of trailing 21-day return) — the simplest signal.
+4. ARIMA(1,0,0) — AR(1) on the stationary forward-return series; d=0 because labels are already I(0).
 5. Pooled linear / Ridge regression — linear ML baseline, same features as GBM.
-6. Random walk (returns sampled i.i.d. from training distribution).
+6. Random walk (predicts training-window mean return for all test bars).
 
 **Rationale:** Beating only ARIMA is a low bar. The meaningful claim is "a
 nonlinear model adds value over the linear model trained on the same features."
@@ -87,14 +87,16 @@ model imposes costs without compensating return.
 
 ### T4 — Deflated Sharpe Ratio
 
-**Threshold:** DSR > 0.
+**Threshold:** DSR > 0.5.
 
 **Rationale:** The Deflated Sharpe Ratio (Bailey & López de Prado 2012) adjusts
 the observed OOS Sharpe for the number of hyperparameter configurations tried
-(N) and the non-normality of the return distribution. A DSR > 0 means the
-observed Sharpe is unlikely to be purely a result of selection bias across N
-trials. With N=50 (the hard cap on hyperparameter configurations), this is
-achievable when the underlying edge is real.
+(N) and the non-normality of the return distribution. The implementation computes
+DSR as `norm.cdf((sr - E[max_sr]) / se_sr)`, which returns a probability in
+[0, 1]. A DSR > 0.5 means the observed Sharpe is more likely to be a genuine
+edge than a selection-bias artifact across the N trials searched. With N=50 (the
+hard cap on hyperparameter configurations), this is achievable when the
+underlying edge is real.
 
 **Hyperparameter search cap:** N ≤ 50 configurations (RandomizedSearchCV,
 `n_iter=50`). This is both a computational budget and a DSR input. Do not raise
@@ -106,7 +108,7 @@ kurtosis of the strategy returns distribution, T = number of OOS observations.
 **Reference:** Bailey, D., & López de Prado, M. (2012). *The Sharpe Ratio
 Efficient Frontier.* Journal of Risk.
 
-**If not met:** DSR ≤ 0 suggests the result is consistent with overfitting the
+**If not met:** DSR ≤ 0.5 suggests the result is consistent with overfitting the
 hyperparameter space. Reduce N or extend the OOS period.
 
 ---

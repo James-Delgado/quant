@@ -30,8 +30,8 @@ on CPU (no GPU needed), and is comparatively hard to overfit when disciplined.
 1. **Label definition** — per-ticker forward return (return regression, fixed horizon).
 2. **Feature engineering** — a point-in-time-correct feature store.
 3. **The model** — XGBoost / LightGBM, tuned without leakage.
-4. **Six baselines** — naive, buy-and-hold SPY, momentum, ARIMA(1,1,0), Ridge, random walk.
-5. **Evaluation** — all seven models through the Phase 1 harness via `evaluate_panel()`; a comparison report.
+4. **Six baselines** — naive, buy-and-hold SPY, momentum, ARIMA(1,0,0), Ridge, random walk.
+5. **Evaluation** — all seven models through the Phase 1 harness via `run_portfolio_backtest()`; a comparison report.
 
 ---
 
@@ -92,18 +92,22 @@ Do not pass `label_horizon` separately — derive it from `LabelResult.horizon_b
 
 ### The baselines
 
-Six baselines, all run through the same harness with identical parameters via
-`evaluate_panel(models, ...)`:
+Six baselines, all run through the same harness using `run_portfolio_backtest()`,
+which applies `sign(forecast)` internally so continuous-output models (Ridge,
+ARIMA, RandomWalk) are treated identically to discrete-signal models. Use
+`evaluate_panel(models, ...)` when you need to iterate over multiple named models
+in a single call:
 
-1. **Naive (always flat)** — zero-cost floor.
-2. **Buy-and-hold SPY** — the practical benchmark; beating it risk-adjusted is
-   the minimum meaningful bar.
-3. **Momentum** — sign of trailing 20-day return.
-4. **ARIMA(1,1,0)** — fixed order (not auto-ARIMA) to bound fit time; also used
-   as a feature column in GBM (fit once per fold, cached).
+1. **Naive (always long)** — always predicts +1; the zero-effort bull-market floor.
+2. **Buy-and-hold** — always long; identical signal to Naive but tracked separately
+   as the practical benchmark for a long-only investor.
+3. **Momentum** — sign of trailing 21-day return (feature `mom_21d`).
+4. **ARIMA(1,0,0)** — AR(1) on the stationary forward-return series; d=0 because
+   the label is already I(0). Fixed order (not auto-ARIMA) to bound per-fold fit
+   time and keep the DSR's N parameter honest.
 5. **Pooled Ridge regression** — linear ML on the same feature set as GBM. The
-   primary test of whether the nonlinearity adds value.
-6. **Random walk** — returns sampled i.i.d. from the training distribution.
+   primary test of whether non-linearity adds value.
+6. **Random walk** — predicts the training-window mean return for all test bars.
 
 ### Evaluation
 
@@ -133,12 +137,12 @@ Phase 3 may begin only when all six quantitative thresholds in
 | T1 | OOS Sharpe (bootstrapped 95% CI lower bound) | > 0.4 (CI lower > 0.0) |
 | T2 | IS/OOS Sharpe ratio | < 2.0 |
 | T3 | GBM beats all six baselines net of costs | all six |
-| T4 | Deflated Sharpe Ratio (N ≤ 50 configs) | > 0 |
+| T4 | Deflated Sharpe Ratio (N ≤ 50 configs) | > 0.5 |
 | T5 | Diebold-Mariano p-value vs Ridge (one-sided) | < 0.10 |
 | T6 | OOS max drawdown | > −25% |
 
-The six baselines are: naive (always flat), buy-and-hold SPY, momentum (20-day
-sign), ARIMA(1,1,0), pooled Ridge regression (same features), random walk.
+The six baselines are: naive (always long +1), buy-and-hold SPY, momentum (21-day
+sign), ARIMA(1,0,0), pooled Ridge regression (same features), random walk.
 
 See `docs/concepts/evaluation-standards.md` for the full statistical rationale,
 failure protocol, and how thresholds evolve with universe expansion.
