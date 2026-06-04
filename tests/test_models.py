@@ -1,4 +1,4 @@
-"""Tests for src/quant/models/arima_baseline.py and buyandhold_baseline.py."""
+"""Tests for src/quant/models/arima_baseline.py, buyandhold_baseline.py, and gbm.py."""
 from __future__ import annotations
 
 import numpy as np
@@ -6,6 +6,7 @@ import pytest
 
 from quant.models.arima_baseline import ARIMABaseline
 from quant.models.buyandhold_baseline import BuyAndHoldBaseline
+from quant.models.gbm import GBMModel
 
 
 def _ar1_series(n: int = 100, phi: float = 0.5, seed: int = 0) -> np.ndarray:
@@ -116,3 +117,94 @@ class TestBuyAndHoldBaseline:
         model = BuyAndHoldBaseline()
         model.fit(np.zeros((5, 1)), np.zeros(5))
         assert model.predict(np.zeros((3, 1))).dtype == float
+
+
+def _make_xy(n: int = 50, n_features: int = 4, seed: int = 42):
+    rng = np.random.default_rng(seed)
+    X = rng.standard_normal((n, n_features))
+    y = rng.standard_normal(n)
+    return X, y
+
+
+class TestGBMModel:
+    """All tests use n_iter=2, n_splits=2 for speed — correctness only."""
+
+    def _fast_model(self, label_horizon: int = 1) -> GBMModel:
+        return GBMModel(label_horizon=label_horizon, n_iter=2, n_splits=2, random_state=0)
+
+    def test_fit_predict_shapes(self):
+        X, y = _make_xy(30)
+        model = self._fast_model()
+        model.fit(X, y)
+        preds = model.predict(X[:10])
+        assert preds.shape == (10,)
+
+    def test_predict_returns_floats(self):
+        X, y = _make_xy(30)
+        model = self._fast_model()
+        model.fit(X, y)
+        preds = model.predict(X[:5])
+        assert preds.dtype == float
+
+    def test_predict_continuous_not_discrete(self):
+        """predict() must return raw floats, not discretized {-1, 0, +1}."""
+        X, y = _make_xy(50)
+        model = self._fast_model()
+        model.fit(X, y)
+        preds = model.predict(X)
+        unique_vals = np.unique(np.round(preds, 6))
+        assert len(unique_vals) > 3, (
+            "predict() returned only discrete values — must return raw regression output"
+        )
+
+    def test_predict_before_fit_raises(self):
+        model = self._fast_model()
+        with pytest.raises(RuntimeError, match="fit\\(\\) must be called"):
+            model.predict(np.zeros((5, 4)))
+
+    def test_feature_importances_shape(self):
+        X, y = _make_xy(30, n_features=4)
+        model = self._fast_model()
+        model.fit(X, y)
+        fi = model.feature_importances_
+        assert fi.shape == (4,)
+
+    def test_feature_importances_before_fit_raises(self):
+        model = self._fast_model()
+        with pytest.raises(RuntimeError, match="fit\\(\\) must be called"):
+            _ = model.feature_importances_
+
+    def test_feature_importances_sum_to_one(self):
+        X, y = _make_xy(30, n_features=6)
+        model = self._fast_model()
+        model.fit(X, y)
+        assert pytest.approx(model.feature_importances_.sum(), abs=1e-5) == 1.0
+
+    def test_too_small_training_window_raises(self):
+        model = GBMModel(n_iter=2, n_splits=3, random_state=0)
+        X, y = _make_xy(n=5)
+        with pytest.raises(ValueError, match="Training window too small"):
+            model.fit(X, y)
+
+    def test_fit_returns_self(self):
+        X, y = _make_xy(30)
+        model = self._fast_model()
+        result = model.fit(X, y)
+        assert result is model
+
+    def test_reproducible_with_same_seed(self):
+        X, y = _make_xy(30)
+        m1 = GBMModel(n_iter=2, n_splits=2, random_state=7)
+        m2 = GBMModel(n_iter=2, n_splits=2, random_state=7)
+        m1.fit(X, y)
+        m2.fit(X, y)
+        np.testing.assert_array_equal(m1.predict(X[:10]), m2.predict(X[:10]))
+
+    def test_horizon_affects_weights_not_output_shape(self):
+        """label_horizon only affects sample weights; output shape is unchanged."""
+        X, y = _make_xy(30)
+        m1 = GBMModel(label_horizon=1, n_iter=2, n_splits=2, random_state=0)
+        m2 = GBMModel(label_horizon=5, n_iter=2, n_splits=2, random_state=0)
+        m1.fit(X, y)
+        m2.fit(X, y)
+        assert m1.predict(X[:5]).shape == m2.predict(X[:5]).shape

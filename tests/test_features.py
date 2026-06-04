@@ -1,10 +1,11 @@
-"""Tests for src/quant/features/labels.py and engineering.py."""
+"""Tests for src/quant/features/labels.py, engineering.py, and weights.py."""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from quant.features.weights import compute_sample_weights
 from quant.features.engineering import (
     _FRED_SERIES,
     _attach_fred_features,
@@ -229,3 +230,44 @@ class TestGenerateLabels:
         prices = pd.Series([100.0, 110.0, 120.0], index=dates)
         with pytest.raises(ValueError, match="sorted ascending"):
             generate_labels(prices, horizon=1)
+
+
+class TestComputeSampleWeights:
+    def test_returns_ndarray_correct_shape(self):
+        w = compute_sample_weights(10, horizon=5)
+        assert isinstance(w, np.ndarray)
+        assert w.shape == (10,)
+
+    def test_mean_is_one(self):
+        for n, h in [(10, 1), (20, 5), (100, 10), (5, 5)]:
+            w = compute_sample_weights(n, h)
+            assert pytest.approx(w.mean(), abs=1e-10) == 1.0
+
+    def test_all_positive(self):
+        w = compute_sample_weights(20, horizon=5)
+        assert (w > 0).all()
+
+    def test_horizon_one_uniform(self):
+        # No overlap when horizon=1: each label uses only one future bar.
+        w = compute_sample_weights(10, horizon=1)
+        assert np.allclose(w, 1.0)
+
+    def test_edge_samples_higher_weight(self):
+        # With overlap (horizon>1), first and last samples share fewer neighbours
+        # and should have above-average (>1.0) weights.
+        w = compute_sample_weights(20, horizon=5)
+        assert w[0] > 1.0, "first sample should be above mean"
+        assert w[-1] > 1.0, "last sample should be above mean"
+
+    def test_n_samples_one(self):
+        w = compute_sample_weights(1, horizon=5)
+        assert w.shape == (1,)
+        assert pytest.approx(w[0]) == 1.0
+
+    def test_invalid_n_samples_raises(self):
+        with pytest.raises(ValueError, match="n_samples must be >= 1"):
+            compute_sample_weights(0, horizon=1)
+
+    def test_invalid_horizon_raises(self):
+        with pytest.raises(ValueError, match="horizon must be >= 1"):
+            compute_sample_weights(10, horizon=0)

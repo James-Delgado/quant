@@ -22,6 +22,7 @@ dependencies = [
     "httpx>=0.27",           # HTTP client for any source without an SDK
     "loguru>=0.7",           # readable logging
     "scikit-learn>=1.4",     # ML models for signal generation and backtesting
+    "xgboost>=2.0",          # gradient boosted trees for GBM model
     "numpy>=1.26",           # numerical computing (pinned via pandas/sklearn anyway)
     "matplotlib>=3.8",       # plotting for research notebooks
 ]

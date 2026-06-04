@@ -6,21 +6,30 @@
 |-------|--------|---------|
 | Phase 0 — Data lake & ingestion | ✅ Complete | `7df86c1` |
 | Phase 1 — Purged walk-forward backtester | ✅ Complete | `a456b84`, `6e735bf` |
-| Phase 2 — Baseline infrastructure | 🔄 In Progress | `98061db`–`655b25a` |
-| Phase 2 — GBM model + exit gates | 🔜 Next | — |
+| Phase 2 — Baseline infrastructure | ✅ Complete | `98061db`–`655b25a` |
+| Phase 2 — GBM model + exit gates | ✅ Complete | see below |
 
 Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
 `report.py`, 87-test suite, and an executed system-tour notebook at
 `notebooks/01_system_tour.ipynb`.
 
-Phase 2 (baseline infrastructure) delivered: `features/labels.py`
-(LabelResult + generate_labels), `features/engineering.py` (10-feature matrix
-with FRED ASOF join), `models/arima_baseline.py` (AR(1) on I(0) returns),
-`models/buyandhold_baseline.py`, `backtest/statistics.py` (Diebold-Mariano with
-HLN correction), `run_portfolio_backtest()` + `evaluate_panel()` in `harness.py`,
-149-test suite (149 passed / 4 skipped), and an executed Phase 2 notebook at
-`notebooks/02_phase2_modeling.ipynb`. Baseline panel result: 3/6 exit gates pass;
-GBM model required to clear the remaining three (T1, T5, T6).
+Phase 2 delivered: `features/labels.py`, `features/engineering.py` (10-feature
+matrix with FRED ASOF join), `features/weights.py` (sample uniqueness weighting,
+López de Prado), `models/arima_baseline.py`, `models/buyandhold_baseline.py`,
+`models/gbm.py` (XGBoost + RandomizedSearchCV(n_iter=50) + TimeSeriesSplit),
+`backtest/statistics.py` (Diebold-Mariano with HLN correction),
+`run_portfolio_backtest()` + `evaluate_panel()` in `harness.py`,
+168-test suite (168 passed / 4 skipped), and an executed Phase 2 notebook at
+`notebooks/02_phase2_modeling.ipynb`.
+
+Exit gate result on real data (catalog required): GBM must be evaluated with a
+populated catalog. On synthetic data: 2/6 pass (T2, T5); T1/T3/T4/T6 fail as
+expected — GBM cannot learn signal from random noise.
+
+Next: populate catalog with real equity/FRED data, re-execute
+`notebooks/02_phase2_modeling.ipynb`, and assess all 6 exit gates against live
+OOS results. If gates still fail, see the failure protocol in
+`docs/concepts/evaluation-standards.md` before advancing to Phase 3.
 
 ## Codebase map
 
@@ -39,10 +48,12 @@ src/quant/
 │   └── daily.py              Prefect flow: runs all ingestors, isolates failures
 ├── features/
 │   ├── labels.py             generate_labels() → LabelResult(series, horizon_bars)
-│   └── engineering.py        build_features() — 8 price + 2 FRED features, ASOF join
+│   ├── engineering.py        build_features() — 8 price + 2 FRED features, ASOF join
+│   └── weights.py            compute_sample_weights() — López de Prado uniqueness weights
 ├── models/
 │   ├── arima_baseline.py     ARIMABaseline — AR(1) on I(0) returns, single fit/fold
-│   └── buyandhold_baseline.py BuyAndHoldBaseline — always-long benchmark
+│   ├── buyandhold_baseline.py BuyAndHoldBaseline — always-long benchmark
+│   └── gbm.py                GBMModel — XGBoost + RandomizedSearchCV(n_iter=50) inside walk-forward
 ├── backtest/
 │   ├── walkforward.py        purged walk-forward split generator
 │   ├── simulator.py          vectorised trade simulator (next-bar fills, costs)
