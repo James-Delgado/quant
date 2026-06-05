@@ -22,14 +22,23 @@ López de Prado), `models/arima_baseline.py`, `models/buyandhold_baseline.py`,
 168-test suite (168 passed / 4 skipped), and an executed Phase 2 notebook at
 `notebooks/02_phase2_modeling.ipynb`.
 
-Exit gate result on real data (catalog required): GBM must be evaluated with a
-populated catalog. On synthetic data: 2/6 pass (T2, T5); T1/T3/T4/T6 fail as
-expected — GBM cannot learn signal from random noise.
+Exit gate result on real data (1261 bars/symbol, AAPL/MSFT/SPY, 2021–2026):
+**1/6 gates pass (T2 only).** OOS Sharpe = −0.609; GBM beats 0/6 baselines.
+Both feature-based models (Ridge −0.378, GBM −0.609) are negative while
+always-long (Sharpe 0.807) and Momentum (0.435) are positive — the current
+feature set produces models that go against the trend on this bull-market universe.
+IS Sharpe is intentionally not tracked in `run_portfolio_backtest` (see
+`backtest/harness.py` line 309); IS = 0.000 is expected, not a bug.
+Data confirmed clean via `scripts/validate_catalog.py`; DGS10 has a 22% NaN
+rate (FRED coverage starts after equity bars) — noted, not a blocker.
 
-Next: populate catalog with real equity/FRED data, re-execute
-`notebooks/02_phase2_modeling.ipynb`, and assess all 6 exit gates against live
-OOS results. If gates still fail, see the failure protocol in
-`docs/concepts/evaluation-standards.md` before advancing to Phase 3.
+Decision: advancing to Phase 3 (LLM sentiment feature) per user direction,
+noting gate failure per `docs/concepts/evaluation-standards.md` failure protocol.
+Phase 3 will test via ablation whether sentiment improves GBM over Ridge baseline.
+
+| Phase | Status | Commits |
+|-------|--------|---------|
+| Phase 3 — LLM sentiment feature | 🔜 Next | — |
 
 ## Codebase map
 
