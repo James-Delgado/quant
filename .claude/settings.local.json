@@ -31,7 +31,8 @@
       "Bash(.venv/bin/pytest *)",
       "Bash(.venv/bin/ruff check *)",
       "Bash(.venv/bin/pip install *)",
-      "Bash(.venv/bin/jupyter nbconvert *)"
+      "Bash(.venv/bin/jupyter nbconvert *)",
+      "Bash(2>&1)"
     ]
   },
   "sandbox": {
