@@ -35,7 +35,11 @@ def _ohlcv(n: int = 30, seed: int = 0) -> pd.DataFrame:
 def _fred_wide(n: int = 10) -> pd.DataFrame:
     dates = pd.bdate_range("2023-01-02", periods=n, tz="UTC")
     return pd.DataFrame(
-        {"DGS10": np.linspace(3.5, 4.0, n), "DFF": np.linspace(5.0, 5.25, n)},
+        {
+            "DGS10": np.linspace(3.5, 4.0, n),
+            "DFF": np.linspace(5.0, 5.25, n),
+            "VIXCLS": np.linspace(20.0, 25.0, n),
+        },
         index=dates,
     )
 
@@ -54,9 +58,34 @@ class TestComputePriceFeatures:
 
     def test_expected_columns_present(self):
         feats = _compute_price_features(_ohlcv(30))
-        for col in ("ret_1d", "ret_5d", "ret_21d", "vol_21d", "vol_63d",
-                    "mom_21d", "rsi_14", "log_volume"):
+        expected = (
+            "ret_1d", "ret_5d", "ret_21d", "vol_21d", "vol_63d",
+            "mom_21d", "rsi_14", "log_volume",
+            "ret_252d", "ret_126d", "ma200_ratio", "ma50_ratio", "volume_ratio",
+        )
+        for col in expected:
             assert col in feats.columns, f"missing column: {col}"
+
+    def test_new_price_features_nan_during_warmup(self):
+        # 30 bars is insufficient for 50-, 63-, 126-, and 200-bar lookbacks.
+        feats = _compute_price_features(_ohlcv(30))
+        assert feats["ret_252d"].isna().all(), "ret_252d needs 252 bars — should be all NaN at n=30"
+        assert feats["ret_126d"].isna().all(), "ret_126d needs 126 bars — should be all NaN at n=30"
+        assert feats["ma200_ratio"].isna().all(), "ma200_ratio needs 200 bars — should be all NaN at n=30"
+
+    def test_new_price_features_valid_after_warmup(self):
+        feats = _compute_price_features(_ohlcv(260))
+        assert feats["ret_252d"].notna().sum() > 0, "ret_252d should have valid values after 252 bars"
+        assert feats["ret_126d"].notna().sum() > 0, "ret_126d should have valid values after 126 bars"
+        assert feats["ma200_ratio"].notna().sum() > 0, "ma200_ratio should have valid values after 200 bars"
+        assert feats["ma50_ratio"].notna().sum() > 0
+        assert feats["volume_ratio"].notna().sum() > 0
+
+    def test_ma_ratios_positive_when_valid(self):
+        feats = _compute_price_features(_ohlcv(260))
+        assert (feats["ma200_ratio"].dropna() > 0).all(), "price / MA must be positive"
+        assert (feats["ma50_ratio"].dropna() > 0).all()
+        assert (feats["volume_ratio"].dropna() > 0).all()
 
     def test_ret_1d_is_pct_change(self):
         prices = _ohlcv(10)
@@ -104,6 +133,25 @@ class TestAttachFredFeatures:
         for col in _FRED_SERIES:
             assert col in merged.columns
             assert merged[col].isna().all()
+        assert "yield_curve" in merged.columns
+        assert merged["yield_curve"].isna().all()
+
+    def test_yield_curve_column_present(self):
+        prices = _ohlcv(20)
+        fred = _fred_wide(10)
+        feats = _compute_price_features(prices)
+        merged = _attach_fred_features(feats, fred)
+        assert "yield_curve" in merged.columns
+
+    def test_yield_curve_equals_dgs10_minus_dff(self):
+        prices = _ohlcv(20)
+        fred = _fred_wide(10)
+        feats = _compute_price_features(prices)
+        merged = _attach_fred_features(feats, fred)
+        valid = merged["yield_curve"].dropna()
+        assert len(valid) > 0
+        expected = (merged["DGS10"] - merged["DFF"]).dropna()
+        pd.testing.assert_series_equal(valid, expected.loc[valid.index], check_names=False)
 
     def test_index_preserved_after_attach(self):
         prices = _ohlcv(20)
