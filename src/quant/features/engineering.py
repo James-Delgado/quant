@@ -8,8 +8,12 @@ the most recent FRED observation whose ingested_at <= bar_date for each bar.
 Opening O(T) DuckDB connections (one per bar) is explicitly avoided.
 
 FRED series used:
-  - DGS10  10-Year Treasury yield  (same-day publication, no revision lag)
-  - DFF    Fed Funds effective rate (same-day publication, no revision lag)
+  - DGS10  10-Year Treasury yield   (same-day publication, no revision lag)
+  - DFF    Fed Funds effective rate  (same-day publication, no revision lag)
+  - VIXCLS CBOE Volatility Index     (same-day publication, no revision lag)
+
+Derived macro features (computed post-merge, no additional ingestion):
+  - yield_curve = DGS10 − DFF  (term spread; negative = inverted curve)
 
 Excluded:
   - CPI, UNRATE — subject to large revisions released weeks after reference
@@ -29,7 +33,7 @@ logger = logging.getLogger(__name__)
 from quant.storage.catalog import processed_glob
 
 # FRED series that are safe to use — no revision lag.
-_FRED_SERIES: tuple[str, ...] = ("DGS10", "DFF")
+_FRED_SERIES: tuple[str, ...] = ("DGS10", "DFF", "VIXCLS")
 
 
 def _rsi(close: pd.Series, window: int) -> pd.Series:
@@ -57,6 +61,12 @@ def _compute_price_features(prices: pd.DataFrame) -> pd.DataFrame:
         "mom_21d": np.sign(ret.rolling(21).sum()),
         "rsi_14": _rsi(close, 14),
         "log_volume": np.log1p(prices["volume"]),
+        # Trend / momentum / regime features (Phase 2.5)
+        "ret_252d": close.pct_change(252),
+        "ret_126d": close.pct_change(126),
+        "ma200_ratio": close / close.rolling(200).mean(),
+        "ma50_ratio": close / close.rolling(50).mean(),
+        "volume_ratio": prices["volume"] / prices["volume"].rolling(63).mean(),
     }
     return pd.DataFrame(feats, index=prices.index)
 
@@ -80,6 +90,7 @@ def _attach_fred_features(
         out = bars.copy()
         for col in _FRED_SERIES:
             out[col] = np.nan
+        out["yield_curve"] = np.nan
         return out
 
     # Ensure we have a stable column name for the merge key regardless of
@@ -128,6 +139,12 @@ def _attach_fred_features(
                 stacklevel=3,
             )
 
+    # Derived term spread: negative = inverted yield curve.
+    if "DGS10" in merged.columns and "DFF" in merged.columns:
+        merged["yield_curve"] = merged["DGS10"] - merged["DFF"]
+    else:
+        merged["yield_curve"] = np.nan
+
     return merged
 
 
@@ -165,9 +182,10 @@ def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     wide = df.pivot_table(index="date", columns="series_id", values="value", aggfunc="last")
     wide.index = pd.to_datetime(wide.index, utc=True)
     wide.columns.name = None
-    # DFF publishes on every calendar day; DGS10 only publishes Mon–Thu.
-    # Forward-fill so Friday/weekend rows carry the last known DGS10 value,
-    # preventing the ASOF join from returning NaN for Friday market bars.
+    # DFF publishes every calendar day; DGS10 and VIXCLS only publish on
+    # market days (Mon–Thu, skipping holidays). Forward-fill so weekend and
+    # holiday rows carry the last known value, preventing the ASOF join from
+    # returning NaN for Friday market bars.
     wide = wide.sort_index().ffill()
     return wide
 

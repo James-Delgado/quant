@@ -8,6 +8,7 @@
 | Phase 1 — Purged walk-forward backtester | ✅ Complete | `a456b84`, `6e735bf` |
 | Phase 2 — Baseline infrastructure | ✅ Complete | `98061db`–`655b25a` |
 | Phase 2 — GBM model + exit gates | ✅ Complete | see below |
+| Phase 2.5 — Feature set improvement | ✅ Complete | see below |
 
 Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
 `report.py`, 87-test suite, and an executed system-tour notebook at
@@ -23,18 +24,31 @@ López de Prado), `models/arima_baseline.py`, `models/buyandhold_baseline.py`,
 `notebooks/02_phase2_modeling.ipynb`.
 
 Exit gate result on real data (1261 bars/symbol, AAPL/MSFT/SPY, 2021–2026):
-**1/6 gates pass (T2 only).** OOS Sharpe = −0.609; GBM beats 0/6 baselines.
-Both feature-based models (Ridge −0.378, GBM −0.609) are negative while
+**2/6 gates pass (T2, T5).** OOS Sharpe = −0.833; GBM beats 0/6 baselines.
+Both feature-based models (Ridge −0.227, GBM −0.833) are negative while
 always-long (Sharpe 0.807) and Momentum (0.435) are positive — the current
 feature set produces models that go against the trend on this bull-market universe.
 IS Sharpe is intentionally not tracked in `run_portfolio_backtest` (see
 `backtest/harness.py` line 309); IS = 0.000 is expected, not a bug.
-Data confirmed clean via `scripts/validate_catalog.py`; all feature NaN rates ≤ 5%
-(rolling warmup only — DGS10 coverage gap fixed, see `features/engineering.py`).
 
-Decision: advancing to Phase 3 (LLM sentiment feature) per user direction,
-noting gate failure per `docs/concepts/evaluation-standards.md` failure protocol.
-Phase 3 will test via ablation whether sentiment improves GBM over Ridge baseline.
+Phase 2.5 delivered: expanded `features/engineering.py` to **17 features** (added
+`ret_252d`, `ret_126d`, `ma200_ratio`, `ma50_ratio`, `volume_ratio`, `VIXCLS`,
+`yield_curve`); expanded universe to DJIA 30 + ETFs (33 symbols); expanded history
+to 20 years (2006–2026, ~5027 bars/symbol); 174-test suite (174 passed / 4 skipped);
+re-executed `notebooks/02_phase2_modeling.ipynb` with 6-symbol panel (AAPL, MSFT,
+JPM, JNJ, V, SPY); created `notebooks/03_model_interpretation.ipynb`.
+
+Exit gate result on real data (~4767 bars/symbol avg, 6-symbol panel, 2010–2026):
+**3/6 gates pass (T1, T2, T5).** OOS Sharpe = +0.487; GBM beats 2/6 baselines
+(Ridge −0.001, Momentum −0.246). Adding trend/regime/macro features lifted OOS
+Sharpe from −0.833 to +0.487 and T1 CI lower bound turned positive (0.025).
+Remaining failures: T3 (GBM still trails Naive/B&H/ARIMA in sustained bull market),
+T4 (DSR=0.364 — fat-tailed OOS returns push excess kurtosis to 24; unfavorable
+for DSR formula), T6 (max DD = −29.72%, just below the −25% threshold).
+
+Decision: advancing to Phase 3 (LLM sentiment feature) per failure protocol —
+T1 passes but T3 does not; document honestly and test sentiment as independent
+ablation per `docs/concepts/evaluation-standards.md`.
 
 | Phase | Status | Commits |
 |-------|--------|---------|
@@ -57,7 +71,7 @@ src/quant/
 │   └── daily.py              Prefect flow: runs all ingestors, isolates failures
 ├── features/
 │   ├── labels.py             generate_labels() → LabelResult(series, horizon_bars)
-│   ├── engineering.py        build_features() — 8 price + 2 FRED features, ASOF join
+│   ├── engineering.py        build_features() — 13 price + 3 FRED + yield_curve = 17 features
 │   └── weights.py            compute_sample_weights() — López de Prado uniqueness weights
 ├── models/
 │   ├── arima_baseline.py     ARIMABaseline — AR(1) on I(0) returns, single fit/fold
@@ -97,7 +111,7 @@ shell convenience for interactive prompts only.
 ## Running things
 
 ```bash
-# Full test suite (149 tests, ~43s, no network):
+# Full test suite (174 tests, ~46s, no network):
 .venv/bin/pytest tests/ -v
 
 # With coverage:
@@ -110,7 +124,10 @@ shell convenience for interactive prompts only.
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.timeout=300 notebooks/01_system_tour.ipynb
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
-    --ExecutePreprocessor.timeout=300 notebooks/02_phase2_modeling.ipynb
+    --ExecutePreprocessor.timeout=600 notebooks/02_phase2_modeling.ipynb
+# Interpretation notebook trains IS GBM on 28k rows — needs 600s timeout:
+.venv/bin/jupyter nbconvert --to notebook --execute --inplace \
+    --ExecutePreprocessor.timeout=600 notebooks/03_model_interpretation.ipynb
 
 # Lint / format:
 .venv/bin/ruff check src/ tests/
@@ -132,11 +149,13 @@ docs/
 ├── PHASE_0_INFRASTRUCTURE.md       canonical project overview and architecture
 ├── PHASE_1_BACKTESTER.md           backtester spec (purged walk-forward CV)
 ├── PHASE_2_MODELING.md             Phase 2 spec (baselines done; GBM next)
+├── PHASE_2.5_FEATURE_IMPROVEMENT.md Phase 2.5 spec (feature set improvement)
 ├── PHASE_3_SENTIMENT.md            Phase 3 spec (LLM sentiment feature)
 └── concepts/
     ├── purging-and-embargo.md      deep-dive on leakage controls and embargo sizing
     ├── cost-model.md               trade simulator cost assumptions and sources
     ├── metrics-glossary.md         definitions for all reported performance metrics
+    ├── feature-glossary.md         definitions and rationale for all 17 model features
     └── evaluation-standards.md     exit gate thresholds T1–T6 with statistical rationale
 ```
 
