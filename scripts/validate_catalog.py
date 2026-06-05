@@ -27,7 +27,7 @@ import quant.storage.catalog as catalog
 from quant.features.engineering import build_features
 from quant.features.labels import generate_labels
 
-PANEL_SYMS_DEFAULT = ["AAPL", "MSFT", "SPY"]
+PANEL_SYMS_DEFAULT = ["AAPL", "MSFT", "NKE", "SPY"]
 FRED_SERIES = ["DGS10", "DFF"]
 
 
