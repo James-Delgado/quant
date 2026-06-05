@@ -43,10 +43,16 @@ class Settings(BaseSettings):
     data_root: Path = PROJECT_ROOT / "data"
 
     # --- Universe definitions ---
-    # Keep this small to start; widen once the pipeline is proven.
+    # All 30 Dow Jones Industrial Average components (as of 2025) plus
+    # broad-market ETFs for regime context.
     equity_universe: list[str] = [
-        "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA",
-        "SPY", "QQQ", "IWM",  # broad-market ETFs as context
+        # DJIA 30
+        "AAPL", "AMGN", "AMZN", "AXP",  "BA",   "CAT",  "CRM",  "CSCO",
+        "CVX",  "DIS",  "GS",   "HD",   "HON",  "IBM",  "JNJ",  "JPM",
+        "KO",   "MCD",  "MMM",  "MRK",  "MSFT", "NKE",  "NVDA", "PG",
+        "SHW",  "TRV",  "UNH",  "V",    "VZ",   "WMT",
+        # Broad-market ETFs
+        "SPY", "QQQ", "IWM",
     ]
     # FRED macro series: 10y yield, fed funds, VIX, CPI, unemployment.
     fred_series: list[str] = ["DGS10", "DFF", "VIXCLS", "CPIAUCSL", "UNRATE"]
