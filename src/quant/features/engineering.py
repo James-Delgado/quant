@@ -165,6 +165,10 @@ def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     wide = df.pivot_table(index="date", columns="series_id", values="value", aggfunc="last")
     wide.index = pd.to_datetime(wide.index, utc=True)
     wide.columns.name = None
+    # DFF publishes on every calendar day; DGS10 only publishes Mon–Thu.
+    # Forward-fill so Friday/weekend rows carry the last known DGS10 value,
+    # preventing the ASOF join from returning NaN for Friday market bars.
+    wide = wide.sort_index().ffill()
     return wide
 
 
