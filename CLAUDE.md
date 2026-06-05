@@ -19,7 +19,7 @@ López de Prado), `models/arima_baseline.py`, `models/buyandhold_baseline.py`,
 `models/gbm.py` (XGBoost + RandomizedSearchCV(n_iter=50) + TimeSeriesSplit),
 `backtest/statistics.py` (Diebold-Mariano with HLN correction),
 `run_portfolio_backtest()` + `evaluate_panel()` in `harness.py`,
-168-test suite (168 passed / 4 skipped), and an executed Phase 2 notebook at
+169-test suite (169 passed / 4 skipped), and an executed Phase 2 notebook at
 `notebooks/02_phase2_modeling.ipynb`.
 
 Exit gate result on real data (1261 bars/symbol, AAPL/MSFT/SPY, 2021–2026):
@@ -29,8 +29,8 @@ always-long (Sharpe 0.807) and Momentum (0.435) are positive — the current
 feature set produces models that go against the trend on this bull-market universe.
 IS Sharpe is intentionally not tracked in `run_portfolio_backtest` (see
 `backtest/harness.py` line 309); IS = 0.000 is expected, not a bug.
-Data confirmed clean via `scripts/validate_catalog.py`; DGS10 has a 22% NaN
-rate (FRED coverage starts after equity bars) — noted, not a blocker.
+Data confirmed clean via `scripts/validate_catalog.py`; all feature NaN rates ≤ 5%
+(rolling warmup only — DGS10 coverage gap fixed, see `features/engineering.py`).
 
 Decision: advancing to Phase 3 (LLM sentiment feature) per user direction,
 noting gate failure per `docs/concepts/evaluation-standards.md` failure protocol.

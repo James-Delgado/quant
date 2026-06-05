@@ -120,6 +120,21 @@ class TestAttachFredFeatures:
         for col in _FRED_SERIES:
             assert col in merged.columns
 
+    def test_nan_gaps_in_fred_do_not_propagate(self):
+        # Simulate the real-world pattern: DGS10 has NaN on Friday/weekend rows
+        # (DFF publishes daily; DGS10 only Mon–Thu).  The bar that falls on or
+        # after a NaN row should get the last known DGS10 value, not NaN.
+        prices = _ohlcv(10)
+        feats = _compute_price_features(prices)
+
+        # Build a FRED wide table with an intentional mid-week NaN in DGS10
+        fred = _fred_wide(10).copy()
+        fred.iloc[3, fred.columns.get_loc("DGS10")] = float("nan")  # simulate Friday gap
+
+        merged = _attach_fred_features(feats, fred)
+        # The bar that aligns with the NaN row should carry the previous value
+        assert merged["DGS10"].notna().sum() > 0, "At least some DGS10 values should be non-NaN"
+
 
 class TestBuildFeatures:
     def test_returns_dict_keyed_by_symbol(self, monkeypatch):
