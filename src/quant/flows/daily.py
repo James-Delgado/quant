@@ -20,7 +20,9 @@ import sys
 from prefect import flow, get_run_logger
 
 from quant.ingest.alpaca_bars import ingest_alpaca_bars
+from quant.ingest.edgar import edgar_flow
 from quant.ingest.fred_macro import ingest_fred_macro
+from quant.ingest.rss import rss_flow
 from quant.ingest.tiingo_eod import ingest_tiingo_eod
 
 @flow(name="daily-ingest")
@@ -34,6 +36,8 @@ def daily_ingest(backfill: bool = False) -> dict[str, str]:
         "alpaca": ingest_alpaca_bars,
         "tiingo": ingest_tiingo_eod,
         "fred": ingest_fred_macro,
+        "edgar": edgar_flow,
+        "rss": rss_flow,
     }
     for name, ingestor in ingestors.items():
         try:

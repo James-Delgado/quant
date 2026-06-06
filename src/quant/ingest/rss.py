@@ -1,10 +1,9 @@
 """RSS feed ingestor for financial news.
 
-Follows the same 4-step pattern as alpaca_bars.py:
-    1. Determine date range
-    2. Fetch and parse RSS feeds via httpx
-    3. Land raw XML immutably in data/raw/
-    4. Clean → write to data/processed/text_documents/
+Steps:
+    1. Fetch and parse RSS feeds via httpx
+    2. Land raw XML immutably in data/raw/
+    3. Clean → write to data/processed/text_documents/
 
 RSS feed URLs are configured in settings.rss_feed_urls. Symbol attribution
 is derived from the feed URL (?s=SYMBOL parameter) or left as "macro" for
@@ -43,9 +42,20 @@ def _parse_pubdate(raw: str | None) -> pd.Timestamp | None:
     if not raw:
         return None
     try:
-        return pd.Timestamp(parsedate_to_datetime(raw), tz="UTC")
+        dt = parsedate_to_datetime(raw)
     except Exception:
         return None
+    try:
+        ts = pd.Timestamp(dt)
+        return ts.tz_convert("UTC") if ts.tzinfo is not None else ts.tz_localize("UTC")
+    except Exception:
+        return None
+
+
+def _tag(name: str, xml: str) -> str | None:
+    """Extract the first matching tag content from an XML snippet."""
+    m = re.search(rf"<{name}[^>]*>(.*?)</{name}>", xml, re.DOTALL)
+    return m.group(1).strip() if m else None
 
 
 @task(retries=3, retry_delay_seconds=30, log_prints=True)
@@ -56,6 +66,7 @@ def fetch_feeds(feed_urls: list[str]) -> pd.DataFrame:
     ingested_at = pd.Timestamp.now(tz="UTC")
 
     with httpx.Client(
+        # RSS feeds share outbound identity with EDGAR — set EDGAR_USER_AGENT in .env
         headers={"User-Agent": settings.edgar_user_agent or "quant-rss-ingestor/1.0"},
         timeout=20.0,
         follow_redirects=True,
@@ -74,20 +85,19 @@ def fetch_feeds(feed_urls: list[str]) -> pd.DataFrame:
             if not items:
                 continue
 
+            item_count = len(items)
+            dropped_pubdate = 0
             for item_xml in items:
-                def _tag(name: str) -> str | None:
-                    m = re.search(rf"<{name}[^>]*>(.*?)</{name}>", item_xml, re.DOTALL)
-                    return m.group(1).strip() if m else None
-
-                pub_raw = _tag("pubDate")
+                pub_raw = _tag("pubDate", item_xml)
                 published_at = _parse_pubdate(pub_raw)
                 if published_at is None:
                     # Drop — never substitute ingestion time for publication time.
+                    dropped_pubdate += 1
                     continue
 
-                title = _tag("title") or ""
-                description = _tag("description") or ""
-                link = _tag("link") or ""
+                title = _tag("title", item_xml) or ""
+                description = _tag("description", item_xml) or ""
+                link = _tag("link", item_xml) or ""
                 text = f"{title}. {description}".strip(". ")
 
                 doc_id = hashlib.sha1(
@@ -105,6 +115,17 @@ def fetch_feeds(feed_urls: list[str]) -> pd.DataFrame:
                     "accession_number": None,
                     "url": link,
                 })
+
+            if dropped_pubdate == item_count:
+                logger.warning(
+                    "Feed %s: all %d items dropped (unparseable pubDate) — possible format change",
+                    feed_url, item_count,
+                )
+            elif dropped_pubdate:
+                logger.warning(
+                    "Feed %s: dropped %d/%d items with unparseable pubDate",
+                    feed_url, dropped_pubdate, item_count,
+                )
 
     logger.info("Parsed %d RSS items from %d feeds", len(rows), len(feed_urls))
     return pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
@@ -140,13 +161,22 @@ def to_processed(df: pd.DataFrame) -> int:
         .reset_index(drop=True)
     )
 
+    # Optional RSS columns are typically all-None; pandera's str column rejects
+    # object dtype, so cast to the nullable pyarrow string type it expects.
+    for col in ("form_type", "accession_number"):
+        if col in df.columns:
+            df[col] = df[col].astype("string[pyarrow]")
+
     TEXT_DOCUMENT_SCHEMA.validate(df)
     lake.write_processed(df, dataset=DATASET)
     return len(df)
 
 
 @flow(name="rss-ingestor")
-def rss_flow(feed_urls: list[str] | None = None) -> int:
+def rss_flow(
+    feed_urls: list[str] | None = None,
+    backfill: bool = False,  # noqa: ARG001 — accepted for uniform call from daily_ingest; RSS feeds expose only current items, so backfill is a no-op here
+) -> int:
     """Fetch configured RSS feeds and write to text_documents/."""
     logger = get_run_logger()
     feed_urls = feed_urls or settings.rss_feed_urls

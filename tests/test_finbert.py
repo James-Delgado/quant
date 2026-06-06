@@ -125,6 +125,76 @@ class TestScoreDocuments:
         assert result["sentiment_negative"].between(0.0, 1.0).all()
 
 
+class TestRunScoring:
+    def _make_docs(self, ids: list[str] | None = None) -> pd.DataFrame:
+        ids = ids or ["doc_0", "doc_1", "doc_2"]
+        return pd.DataFrame({
+            "document_id": ids,
+            "symbol": "AAPL",
+            "published_at": pd.date_range("2023-01-02", periods=len(ids), tz="UTC"),
+            "text": [f"text for {i}" for i in ids],
+        })
+
+    def test_new_docs_written(self):
+        from quant.features.finbert import run_scoring
+        with (
+            patch("quant.features.finbert._get_pipeline", return_value=_mock_pipe()),
+            patch("quant.features.finbert.lake.read_processed", return_value=pd.DataFrame()),
+            patch("quant.features.finbert.lake.write_processed") as mock_write,
+        ):
+            n = run_scoring(docs_df=self._make_docs())
+        assert n == 3
+        assert len(mock_write.call_args[0][0]) == 3
+
+    def test_re_scoring_overwrites_not_duplicates(self):
+        """Calling run_scoring twice with the same docs produces no duplicate rows."""
+        from quant.features.finbert import run_scoring, score_documents
+        docs = self._make_docs()
+
+        with patch("quant.features.finbert._get_pipeline", return_value=_mock_pipe("positive", 0.8)):
+            first_scored = score_documents(docs)
+
+        with (
+            patch("quant.features.finbert._get_pipeline", return_value=_mock_pipe("negative", 0.9)),
+            patch("quant.features.finbert.lake.read_processed", return_value=first_scored),
+            patch("quant.features.finbert.lake.write_processed") as mock_write,
+        ):
+            run_scoring(docs_df=docs)
+
+        written = mock_write.call_args[0][0]
+        assert len(written) == 3
+        assert (written["sentiment_score"] < 0).all()
+
+    def test_already_scored_docs_skipped(self):
+        """run_scoring() without docs_df only scores documents not in sentiment_scored/."""
+        from quant.features.finbert import run_scoring
+        all_docs = self._make_docs(["doc_0", "doc_1", "doc_2"])
+        existing_scored = pd.DataFrame({
+            "document_id": ["doc_0", "doc_1"],
+            "symbol": "AAPL",
+            "published_at": pd.date_range("2023-01-02", periods=2, tz="UTC"),
+            "scored_at": [pd.Timestamp.now(tz="UTC")] * 2,
+            "model_name": "ProsusAI/finbert",
+            "model_version": "1.0.0",
+            "sentiment_positive": [0.7, 0.3],
+            "sentiment_negative": [0.1, 0.6],
+            "sentiment_neutral": [0.2, 0.1],
+            "sentiment_score": [0.6, -0.3],
+        })
+
+        def fake_read(dataset):
+            return all_docs if dataset == "text_documents" else existing_scored
+
+        with (
+            patch("quant.features.finbert._get_pipeline", return_value=_mock_pipe()),
+            patch("quant.features.finbert.lake.read_processed", side_effect=fake_read),
+            patch("quant.features.finbert.lake.write_processed"),
+        ):
+            n = run_scoring()
+
+        assert n == 1  # only doc_2 was newly scored
+
+
 class TestGetPipeline:
     def test_missing_transformers_raises_importerror(self):
         import builtins

@@ -4,9 +4,9 @@ Documents are scored upstream by FinBERT (features/finbert.py), producing
 a sentiment_scored/ dataset. This module aggregates those scores into
 per-symbol, per-day features consumed by build_features().
 
-Key invariant: validate_point_in_time() is called unconditionally inside
-aggregate_sentiment() — it cannot be bypassed by the caller. Any document
-with published_at >= bar_date raises ValueError immediately.
+Key invariant: validate_point_in_time() is called for every non-empty
+document window inside aggregate_sentiment() — look-ahead cannot slip
+through for any bar with coverage.
 
 Missing value policy (per Phase 3 eng review D5):
 - Days with no documents: sentiment_score=0.0, doc_count=0, has_coverage=False

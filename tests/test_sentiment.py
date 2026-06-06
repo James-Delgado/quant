@@ -114,6 +114,17 @@ class TestAggregateSentiment:
         assert result.iloc[0]["doc_count"] == 1
         assert result.iloc[0]["sentiment_score"] == -1.0
 
+    def test_lookback_boundary_doc_included(self):
+        """Doc published exactly on bar_date - lookback_days is included (>= cutoff)."""
+        bar_date = pd.Timestamp("2023-03-10", tz="UTC")
+        bars = pd.DatetimeIndex([bar_date])
+        lookback = 7
+        pub_date = bar_date - pd.Timedelta(days=lookback)
+        scored = _scored_df("AAPL", [pub_date.strftime("%Y-%m-%d")], [0.5])
+        result = aggregate_sentiment("AAPL", bars, scored, lookback_days=lookback)
+        assert result.iloc[0]["doc_count"] == 1
+        assert abs(result.iloc[0]["sentiment_score"] - 0.5) < 1e-9
+
     def test_output_indexed_by_bar_dates(self):
         bars = _bar_dates(7)
         scored = _scored_df("AAPL", ["2023-01-02"], [0.5])
