@@ -13,6 +13,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 _REQUIRED_KEYS = ("alpaca_api_key", "alpaca_secret_key", "tiingo_api_key", "fred_api_key")
+# edgar_user_agent is validated lazily in ingest/edgar.py — not required until
+# Phase 3 ingestion runs, so it doesn't break existing environments.
 
 
 class Settings(BaseSettings):
@@ -28,6 +30,19 @@ class Settings(BaseSettings):
     alpaca_secret_key: str = ""
     tiingo_api_key: str = ""
     fred_api_key: str = ""
+
+    # --- Phase 3: text ingestion + sentiment ---
+    # SEC EDGAR requires a User-Agent header containing your email address.
+    # See: https://www.sec.gov/os/accessing-edgar-data
+    edgar_user_agent: str = ""
+    # RSS feed URLs to poll for financial news. Symbol-specific feeds
+    # (e.g. Yahoo Finance ?s=AAPL) are listed by the ingestor at runtime.
+    rss_feed_urls: list[str] = [
+        "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US",
+    ]
+    # FinBERT inference device: "auto" | "mps" | "cuda" | "cpu"
+    # "auto" selects mps > cuda > cpu at runtime.
+    finbert_device: str = "auto"
 
     @model_validator(mode="after")
     def _require_credentials(self) -> "Settings":

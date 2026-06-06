@@ -30,6 +30,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+from quant.features.sentiment import aggregate_sentiment
 from quant.storage.catalog import processed_glob
 
 # FRED series that are safe to use — no revision lag.
@@ -193,6 +194,8 @@ def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 def build_features(
     symbols: list[str],
     prices_by_symbol: dict[str, pd.DataFrame],
+    sentiment_df: pd.DataFrame | None = None,
+    sentiment_lookback_days: int = 30,
 ) -> dict[str, pd.DataFrame]:
     """Build a point-in-time correct feature matrix for each symbol.
 
@@ -201,8 +204,15 @@ def build_features(
 
     Parameters
     ----------
-    symbols:           Tickers to build features for.
-    prices_by_symbol:  {symbol: OHLCV DataFrame} — same keys as symbols.
+    symbols:                 Tickers to build features for.
+    prices_by_symbol:        {symbol: OHLCV DataFrame} — same keys as symbols.
+    sentiment_df:            Optional DataFrame from sentiment_scored/ dataset
+                             (columns: symbol, published_at, sentiment_score).
+                             When provided, adds sentiment_score, doc_count,
+                             and has_coverage columns to every feature matrix.
+                             Existing callers passing None get the original
+                             17-column output unchanged.
+    sentiment_lookback_days: Rolling window for sentiment aggregation (days).
 
     Returns
     -------
@@ -225,9 +235,17 @@ def build_features(
     result: dict[str, pd.DataFrame] = {}
     for sym in symbols:
         price_feats = _compute_price_features(prices_by_symbol[sym])
-        result[sym] = (
+        feat = (
             _attach_fred_features(price_feats, fred_wide)
             if not fred_wide.empty
             else price_feats
         )
+
+        if sentiment_df is not None and not sentiment_df.empty:
+            sent = aggregate_sentiment(
+                sym, feat.index, sentiment_df, lookback_days=sentiment_lookback_days
+            )
+            feat = feat.join(sent[["sentiment_score", "doc_count", "has_coverage"]])
+
+        result[sym] = feat
     return result
