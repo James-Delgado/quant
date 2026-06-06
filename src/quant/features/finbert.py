@@ -11,8 +11,8 @@ Design decisions (per Phase 3 eng review):
   settings.finbert_device).
 - Model loaded once at module level — not reloaded per symbol or per call.
   Call score_documents() for batch inference; do not call per-document.
-- Re-scoring is idempotent: existing document_ids are overwritten, not
-  duplicated, when score_documents() is called again.
+- run_scoring() is idempotent: it merges with existing scored data and
+  deduplicates by document_id, keeping the latest scored_at.
 
 To pre-cache the model before going offline:
     python -m quant.features.finbert --download
