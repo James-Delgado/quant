@@ -52,7 +52,7 @@ ablation per `docs/concepts/evaluation-standards.md`.
 
 | Phase | Status | Commits |
 |-------|--------|---------|
-| Phase 3 — LLM sentiment feature | 🔜 Next | — |
+| Phase 3 — LLM sentiment feature | 🔄 In Progress | `phase-3-sentiment` |
 
 ## Codebase map
 
@@ -63,16 +63,20 @@ src/quant/
 │   ├── lake.py               write_raw / write_processed / read_processed
 │   └── catalog.py            query(sql) / table(dataset) — DuckDB over Parquet
 ├── ingest/
-│   ├── schemas.py            pandera schemas for all three sources
+│   ├── schemas.py            pandera schemas — OHLCV, FRED, TEXT_DOCUMENT, SENTIMENT_SCORED
 │   ├── alpaca_bars.py        Alpaca daily OHLCV ingestor
 │   ├── tiingo_eod.py         Tiingo adjusted EOD ingestor
-│   └── fred_macro.py         FRED macro series ingestor
+│   ├── fred_macro.py         FRED macro series ingestor
+│   ├── edgar.py              SEC EDGAR 8-K/10-K/10-Q ingestor → text_documents/ (Phase 3)
+│   └── rss.py                RSS feed ingestor → text_documents/ (Phase 3)
 ├── flows/
 │   └── daily.py              Prefect flow: runs all ingestors, isolates failures
 ├── features/
 │   ├── labels.py             generate_labels() → LabelResult(series, horizon_bars)
-│   ├── engineering.py        build_features() — 13 price + 3 FRED + yield_curve = 17 features
-│   └── weights.py            compute_sample_weights() — López de Prado uniqueness weights
+│   ├── engineering.py        build_features() — 17 features + optional sentiment_df (19 cols)
+│   ├── weights.py            compute_sample_weights() — López de Prado uniqueness weights
+│   ├── finbert.py            FinBERT scorer — score_documents() → sentiment_scored/ (Phase 3)
+│   └── sentiment.py          aggregate_sentiment() + validate_point_in_time() (Phase 3)
 ├── models/
 │   ├── arima_baseline.py     ARIMABaseline — AR(1) on I(0) returns, single fit/fold
 │   ├── buyandhold_baseline.py BuyAndHoldBaseline — always-long benchmark
@@ -111,7 +115,7 @@ shell convenience for interactive prompts only.
 ## Running things
 
 ```bash
-# Full test suite (174 tests, ~46s, no network):
+# Full test suite (202 tests, ~53s, no network):
 .venv/bin/pytest tests/ -v
 
 # With coverage:
@@ -128,6 +132,9 @@ shell convenience for interactive prompts only.
 # Interpretation notebook trains IS GBM on 28k rows — needs 600s timeout:
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.timeout=600 notebooks/03_model_interpretation.ipynb
+# Phase 3 ablation (two full GBM runs + gate eval) — needs 600s timeout:
+.venv/bin/jupyter nbconvert --to notebook --execute --inplace \
+    --ExecutePreprocessor.timeout=600 notebooks/04_phase3_sentiment.ipynb
 
 # Lint / format:
 .venv/bin/ruff check src/ tests/

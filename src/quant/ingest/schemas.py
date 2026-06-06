@@ -73,3 +73,44 @@ FRED_MACRO_SCHEMA = DataFrameSchema(
     coerce=False,
     strict=False,
 )
+
+# ---------------------------------------------------------------------------
+# text_documents  (parsed text from EDGAR filings and RSS feeds)
+# ---------------------------------------------------------------------------
+TEXT_DOCUMENT_SCHEMA = DataFrameSchema(
+    {
+        "document_id": Column(str, nullable=False),
+        "source": Column(str, nullable=False),       # "edgar" | "rss_*"
+        "symbol": Column(str, nullable=False),
+        "published_at": Column("datetime64[us, UTC]", nullable=False),
+        "ingested_at": Column("datetime64[us, UTC]", nullable=False),
+        "text": Column(str, nullable=False),
+        # Optional metadata — present in EDGAR, may be absent in RSS
+        "form_type": Column(str, nullable=True, required=False),
+        "accession_number": Column(str, nullable=True, required=False),
+        "url": Column(str, nullable=True, required=False),
+    },
+    coerce=False,
+    strict=False,
+)
+
+# ---------------------------------------------------------------------------
+# sentiment_scored  (FinBERT inference output per document)
+# ---------------------------------------------------------------------------
+SENTIMENT_SCORED_SCHEMA = DataFrameSchema(
+    {
+        "document_id": Column(str, nullable=False),
+        "symbol": Column(str, nullable=False),
+        "published_at": Column("datetime64[us, UTC]", nullable=False),
+        "scored_at": Column("datetime64[us, UTC]", nullable=False),
+        "model_name": Column(str, nullable=False),
+        "model_version": Column(str, nullable=False),
+        "sentiment_positive": Column(float, pa.Check.between(0.0, 1.0), nullable=False),
+        "sentiment_negative": Column(float, pa.Check.between(0.0, 1.0), nullable=False),
+        "sentiment_neutral": Column(float, pa.Check.between(0.0, 1.0), nullable=False),
+        # Net score: positive − negative, range [−1, 1]
+        "sentiment_score": Column(float, pa.Check.between(-1.0, 1.0), nullable=False),
+    },
+    coerce=False,
+    strict=False,
+)
