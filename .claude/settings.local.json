@@ -32,7 +32,19 @@
       "Bash(.venv/bin/ruff check *)",
       "Bash(.venv/bin/pip install *)",
       "Bash(.venv/bin/jupyter nbconvert *)",
-      "Bash(2>&1)"
+      "Bash(2>&1)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-review-log {\"skill\":\"plan-eng-review\",\"timestamp\":\"2026-06-05T13:34:00Z\",\"status\":\"clean\",\"unresolved\":0,\"critical_gaps\":1,\"issues_found\":6,\"mode\":\"FULL_REVIEW\",\"commit\":\"6f6a485\"} *)",
+      "Bash(sed -n '95,130p' src/quant/ingest/alpaca_bars.py)",
+      "Bash(sed -n '87,95p' src/quant/ingest/tiingo_eod.py)",
+      "Bash(sed -n '68,95p' src/quant/ingest/fred_macro.py)",
+      "Bash(sed -n '160,180p' src/quant/ingest/edgar.py)",
+      "Bash(sed -n '160,170p' src/quant/ingest/rss.py)",
+      "Bash(.venv/bin/pip show *)",
+      "Bash(kill 8647 8645)",
+      "Bash(ps *)",
+      "Bash(xargs -I {} ps -p {} -o pid,etime,time,%cpu,%mem,command)",
+      "Bash(mkdir -p /Users/jamesdelgado/Projects/AgentHarness/docs)",
+      "Read(//Users/jamesdelgado/Projects/**)"
     ]
   },
   "sandbox": {
