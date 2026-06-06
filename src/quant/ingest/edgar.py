@@ -144,10 +144,18 @@ def to_processed(df: pd.DataFrame) -> int:
 @flow(name="edgar-ingestor")
 def edgar_flow(
     symbols: list[str] | None = None,
-    lookback_days: int = 90,
+    backfill: bool = False,
     form_types: list[FilingType] | None = None,
 ) -> int:
-    """Fetch EDGAR filings for the equity universe and write to the lake."""
+    """Fetch EDGAR filings and write to text_documents/.
+
+    Incremental by default: starts from the latest published_at already in the
+    lake so each daily run only fetches new filings.
+
+    On first run (no existing data) or when backfill=True, pulls
+    settings.backfill_years of history — the same setting used by the price and
+    macro ingestors, keeping all data ranges in sync.
+    """
     logger = get_run_logger()
     if not settings.edgar_user_agent:
         raise ValueError(
@@ -156,9 +164,28 @@ def edgar_flow(
         )
     symbols = symbols or settings.equity_universe
     end = datetime.now(tz=timezone.utc)
-    start = end - timedelta(days=lookback_days)
-    logger.info("EDGAR ingest: %d symbols, %s to %s", len(symbols), start.date(), end.date())
 
+    existing = lake.read_processed(DATASET)
+    last: datetime | None = None
+    if not existing.empty and "published_at" in existing.columns:
+        latest = pd.to_datetime(existing["published_at"]).max()
+        if pd.notna(latest):
+            last = latest.to_pydatetime()
+
+    if backfill or last is None:
+        start = end - timedelta(days=365 * settings.backfill_years)
+        logger.info("Backfill run from %s (%d years)", start.date(), settings.backfill_years)
+    else:
+        # 7-day overlap: EDGAR sometimes back-dates amended filing dates, so a
+        # small overlap prevents gaps without re-fetching years of history.
+        start = last - timedelta(days=7)
+        logger.info("Incremental run from %s (7-day overlap)", start.date())
+
+    if start >= end:
+        logger.info("Already up to date — nothing to fetch.")
+        return 0
+
+    logger.info("EDGAR ingest: %d symbols, %s to %s", len(symbols), start.date(), end.date())
     df = fetch_filings(symbols, start, end, form_types)
     if df.empty:
         logger.info("No filings found — nothing to land")
