@@ -9,6 +9,7 @@
 | Phase 2 — Baseline infrastructure | ✅ Complete | `98061db`–`655b25a` |
 | Phase 2 — GBM model + exit gates | ✅ Complete | see below |
 | Phase 2.5 — Feature set improvement | ✅ Complete | see below |
+| Phase 3 — LLM sentiment feature | ✅ Complete | `phase-3-sentiment` branch |
 
 Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
 `report.py`, 87-test suite, and an executed system-tour notebook at
@@ -29,7 +30,8 @@ Both feature-based models (Ridge −0.227, GBM −0.833) are negative while
 always-long (Sharpe 0.807) and Momentum (0.435) are positive — the current
 feature set produces models that go against the trend on this bull-market universe.
 IS Sharpe is intentionally not tracked in `run_portfolio_backtest` (see
-`backtest/harness.py` line 309); IS = 0.000 is expected, not a bug.
+the comment block above `oos_returns_parts` assembly in `backtest/harness.py`);
+IS = 0.000 is expected, not a bug.
 
 Phase 2.5 delivered: expanded `features/engineering.py` to **17 features** (added
 `ret_252d`, `ret_126d`, `ma200_ratio`, `ma50_ratio`, `volume_ratio`, `VIXCLS`,
@@ -50,9 +52,29 @@ Decision: advancing to Phase 3 (LLM sentiment feature) per failure protocol —
 T1 passes but T3 does not; document honestly and test sentiment as independent
 ablation per `docs/concepts/evaluation-standards.md`.
 
-| Phase | Status | Commits |
-|-------|--------|---------|
-| Phase 3 — LLM sentiment feature | 🔄 In Progress | `phase-3-sentiment` |
+Phase 3 delivered: `ingest/edgar.py` (SEC submissions API + 8-K/10-K/10-Q ingestor),
+`features/finbert.py` (ProsusAI/finbert scorer with 512-token truncation, MPS support),
+`features/sentiment.py` (lookback aggregation + `validate_point_in_time()` guard,
+14,251 documents scored), extended `build_features()` to accept `sentiment_df` and
+produce a 20-column matrix (17 base + sentiment_score + doc_count + has_coverage),
+plus a **union-of-indices refactor of `run_portfolio_backtest()`** (see
+`docs/REFACTOR_PORTFOLIO_UNION_INDEX.md`) so each symbol contributes whatever
+history it has instead of being truncated to the panel intersection. 267-test
+suite (263 passed / 4 skipped), and an executed Phase 3 notebook at
+`notebooks/04_phase3_sentiment.ipynb`.
+
+Exit gate result on real data (33-symbol Dow 30 + ETF panel, 116 folds,
+**OOS 2003-04-03 → 2026-04-21** — pre-refactor was 2010-onward only):
+**2/6 gates pass (T2, T5).** OOS Sharpe = −0.216 (control) → +0.024
+(+ sentiment), Max DD = −567% (simulator artifact — no margin-call modeling)
+→ −48.74%. The +0.240 Sharpe delta is the project's largest single-feature
+lift, but neither arm clears T1/T3/T4/T6 on a 23-year OOS span that now
+includes 2008-09. The dominant driver of the difference is the 2008 crisis:
+SEC 8-K filing rate spikes during the crisis, FinBERT scores them strongly
+negative, and the sentiment feature pushed enough late-2008 predictions
+toward `sign(pred)=0` (flat) for the harness to avoid the catastrophic
+short-stack loss the no-sentiment GBM took. See Section 9 of
+`notebooks/04_phase3_sentiment.ipynb` for the full hypothesis.
 
 ## Codebase map
 
@@ -115,7 +137,7 @@ shell convenience for interactive prompts only.
 ## Running things
 
 ```bash
-# Full test suite (202 tests, ~53s, no network):
+# Full test suite (267 tests, ~52s, no network):
 .venv/bin/pytest tests/ -v
 
 # With coverage:
@@ -132,9 +154,10 @@ shell convenience for interactive prompts only.
 # Interpretation notebook trains IS GBM on 28k rows — needs 600s timeout:
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.timeout=600 notebooks/03_model_interpretation.ipynb
-# Phase 3 ablation (two full GBM runs + gate eval) — needs 600s timeout:
+# Phase 3 ablation (two full GBM runs + gate eval, 33-symbol union panel,
+# ~116 folds × ~150 XGB fits/fold) — needs 3600s timeout (was 600s pre-refactor):
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
-    --ExecutePreprocessor.timeout=600 notebooks/04_phase3_sentiment.ipynb
+    --ExecutePreprocessor.timeout=3600 notebooks/04_phase3_sentiment.ipynb
 
 # Lint / format:
 .venv/bin/ruff check src/ tests/
@@ -158,6 +181,7 @@ docs/
 ├── PHASE_2_MODELING.md             Phase 2 spec (baselines done; GBM next)
 ├── PHASE_2.5_FEATURE_IMPROVEMENT.md Phase 2.5 spec (feature set improvement)
 ├── PHASE_3_SENTIMENT.md            Phase 3 spec (LLM sentiment feature)
+├── REFACTOR_PORTFOLIO_UNION_INDEX.md  union-of-indices refactor of run_portfolio_backtest
 └── concepts/
     ├── purging-and-embargo.md      deep-dive on leakage controls and embargo sizing
     ├── cost-model.md               trade simulator cost assumptions and sources

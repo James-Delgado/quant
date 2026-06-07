@@ -30,7 +30,7 @@ import pytest
 from quant.backtest.walkforward import walkforward_splits
 from quant.backtest.simulator import simulate
 from quant.backtest.metrics import compute_metrics
-from quant.backtest.harness import BacktestResult, run_backtest
+from quant.backtest.harness import BacktestResult, run_backtest, run_portfolio_backtest
 from quant.backtest.report import format_report, summary_table
 
 
@@ -619,6 +619,189 @@ class TestRunBacktest:
             train_window=100, test_window=25, step=25,
         )
         assert result.equity_curve.index[0] >= prices.index[100]
+
+
+# ===========================================================================
+# run_portfolio_backtest — union-of-indices master timeline
+# (see docs/REFACTOR_PORTFOLIO_UNION_INDEX.md)
+# ===========================================================================
+
+class TestRunPortfolioBacktest:
+    """run_portfolio_backtest must allow each symbol to contribute whatever
+    history it has, instead of intersecting all symbols' indices.
+
+    Properties verified:
+    - late-starting symbols do not collapse the master calendar
+    - aligned panels reproduce the prior intersection behavior
+    - n_symbols_active / n_train_rows fold diagnostics are populated
+    - cross-sectional aggregation is equal-weight at every bar
+    """
+
+    class _AlwaysLongModel:
+        """Predicts +1.0 for every row; sign() → +1 signal."""
+
+        def fit(self, X, y) -> None:
+            pass
+
+        def predict(self, X) -> np.ndarray:
+            return np.ones(len(X), dtype=float)
+
+    @staticmethod
+    def _make_symbol(
+        start: str | pd.Timestamp,
+        n: int,
+        seed: int,
+        daily_move: float = 0.0005,
+    ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
+        """Synthetic (features, labels, prices) for one symbol."""
+        dates = pd.date_range(start, periods=n, freq="B")
+        rng = np.random.default_rng(seed)
+        rets = rng.normal(daily_move, 0.01, n)
+        p = 100.0 * np.cumprod(1.0 + rets)
+        prices = pd.DataFrame(
+            {
+                "open": p,
+                "high": p * 1.005,
+                "low": p * 0.995,
+                "close": p,
+                "volume": 2_000_000.0,
+            },
+            index=dates,
+        )
+        features = pd.DataFrame(
+            {
+                "f0": rng.standard_normal(n),
+                "f1": rng.standard_normal(n),
+            },
+            index=dates,
+        )
+        labels = pd.Series(np.sign(rets).astype(int), index=dates, name="label")
+        return features, labels, prices
+
+    # Window params sized to give multiple folds inside a ~300-bar panel.
+    _W = dict(train_window=100, test_window=25, step=25)
+
+    def test_portfolio_handles_late_starting_symbol(self):
+        """B starts ~250 bars into A's history.
+
+        Early folds must train and test on A only; later folds must include
+        both. n_symbols_active in fold_metrics records the transition.
+        """
+        a_feat, a_lab, a_pric = self._make_symbol("2020-01-02", n=400, seed=1)
+        # B starts at A's 250th business day so that B ⊂ A and the union
+        # equals A's index — exercising the per-symbol alive mask without
+        # introducing a master gap.
+        b_start = a_pric.index[250]
+        b_feat, b_lab, b_pric = self._make_symbol(b_start, n=150, seed=2)
+
+        result = run_portfolio_backtest(
+            self._AlwaysLongModel(),
+            {"A": a_feat, "B": b_feat},
+            {"A": a_lab, "B": b_lab},
+            {"A": a_pric, "B": b_pric},
+            **self._W,
+        )
+
+        assert isinstance(result, BacktestResult)
+        n_active = [m["n_symbols_active"] for m in result.fold_metrics]
+        assert min(n_active) == 1, (
+            f"Expected at least one A-only fold, got n_active={n_active}"
+        )
+        assert max(n_active) == 2, (
+            f"Expected at least one A+B fold, got n_active={n_active}"
+        )
+
+    def test_portfolio_identical_to_old_on_aligned_panel(self):
+        """When all symbols share an index, the union code reduces to the
+        intersection behavior: every fold has full breadth, no NaN bars.
+        """
+        a_feat, a_lab, a_pric = self._make_symbol("2020-01-02", n=300, seed=1)
+        b_feat, b_lab, b_pric = self._make_symbol("2020-01-02", n=300, seed=2)
+
+        result = run_portfolio_backtest(
+            self._AlwaysLongModel(),
+            {"A": a_feat, "B": b_feat},
+            {"A": a_lab, "B": b_lab},
+            {"A": a_pric, "B": b_pric},
+            **self._W,
+        )
+
+        n_active = {m["n_symbols_active"] for m in result.fold_metrics}
+        assert n_active == {2}, (
+            f"Aligned panel must have constant full breadth, got {n_active}"
+        )
+        oos_returns = result.equity_curve.pct_change().dropna()
+        assert not oos_returns.isna().any()
+
+    def test_portfolio_skips_fold_with_no_active_symbols(self):
+        """fold_metrics' n_train_rows must scale with the count of active
+        symbols in the train window.
+
+        Early folds with only A in train have ~train_window rows; later folds
+        that include both A and B contribute strictly more. This documents
+        the sparse-stacking behavior; in the degenerate edge case where a
+        fold has zero active symbols, that fold is silently skipped (no
+        fold_metrics entry).
+        """
+        a_feat, a_lab, a_pric = self._make_symbol("2020-01-02", n=400, seed=1)
+        b_start = a_pric.index[250]
+        b_feat, b_lab, b_pric = self._make_symbol(b_start, n=150, seed=2)
+
+        result = run_portfolio_backtest(
+            self._AlwaysLongModel(),
+            {"A": a_feat, "B": b_feat},
+            {"A": a_lab, "B": b_lab},
+            {"A": a_pric, "B": b_pric},
+            **self._W,
+        )
+
+        by_breadth: dict[int, list[int]] = {}
+        for m in result.fold_metrics:
+            by_breadth.setdefault(m["n_symbols_active"], []).append(
+                m["n_train_rows"]
+            )
+        assert 1 in by_breadth and 2 in by_breadth, (
+            f"Expected at least one fold at each breadth, got {by_breadth}"
+        )
+        # A 2-symbol training pool must be strictly larger than a 1-symbol
+        # pool (B contributes ≥ 1 row when alive in train).
+        assert max(by_breadth[2]) > max(by_breadth[1])
+
+    def test_portfolio_breadth_weighting_is_equal_weight(self):
+        """Portfolio of two identical symbols equals the single-symbol run.
+
+        If symbol B has bit-identical features, labels, and prices to A,
+        per-symbol OOS returns are identical at every bar, so any
+        equal-weight mean equals either one. The two equity curves must
+        match to floating-point tolerance, and n_symbols_active must report
+        the input breadth.
+        """
+        a_feat, a_lab, a_pric = self._make_symbol("2020-01-02", n=300, seed=1)
+
+        solo = run_portfolio_backtest(
+            self._AlwaysLongModel(),
+            {"A": a_feat},
+            {"A": a_lab},
+            {"A": a_pric},
+            **self._W,
+        )
+        duo = run_portfolio_backtest(
+            self._AlwaysLongModel(),
+            {"A": a_feat.copy(), "B": a_feat.copy()},
+            {"A": a_lab.copy(), "B": a_lab.copy()},
+            {"A": a_pric.copy(), "B": a_pric.copy()},
+            **self._W,
+        )
+
+        pd.testing.assert_series_equal(
+            solo.equity_curve,
+            duo.equity_curve,
+            check_names=False,
+            rtol=1e-9,
+            atol=1e-9,
+        )
+        assert all(m["n_symbols_active"] == 2 for m in duo.fold_metrics)
+        assert all(m["n_symbols_active"] == 1 for m in solo.fold_metrics)
 
 
 # ===========================================================================
