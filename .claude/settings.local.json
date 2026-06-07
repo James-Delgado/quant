@@ -44,7 +44,8 @@
       "Bash(ps *)",
       "Bash(xargs -I {} ps -p {} -o pid,etime,time,%cpu,%mem,command)",
       "Bash(mkdir -p /Users/jamesdelgado/Projects/AgentHarness/docs)",
-      "Read(//Users/jamesdelgado/Projects/**)"
+      "Read(//Users/jamesdelgado/Projects/**)",
+      "Bash(grep -nA2 \"## 9\\\\|Section 9\\\\|Decision\\\\|conclusion\\\\|## Conclusion\")"
     ]
   },
   "sandbox": {
