@@ -198,9 +198,15 @@ def run_portfolio_backtest(
     """Run a purged walk-forward backtest across multiple symbols.
 
     The model is fit once per fold on pooled cross-sectional training data
-    (all symbols stacked vertically). Signals are derived per-symbol via
+    (all alive symbols stacked vertically). Signals are derived per-symbol via
     sign(forecast). P&L is aggregated by averaging per-bar returns across
     symbols (equal-weight portfolio).
+
+    Each symbol contributes whatever history it has; the master timeline is
+    the union of all symbols' feature indices, so a symbol with a late start
+    no longer truncates the panel to a shared intersection. Symbols absent
+    from a given fold are silently excluded from that fold's train pool and
+    OOS panel. See docs/REFACTOR_PORTFOLIO_UNION_INDEX.md.
 
     Parameters
     ----------
@@ -211,6 +217,7 @@ def run_portfolio_backtest(
     labels_by_symbol:    {symbol: label Series (forward return)} same keys.
     prices_by_symbol:    {symbol: OHLCV DataFrame} same keys.
     train_window/test_window/step/label_horizon/embargo: same as run_backtest.
+                         Purge/embargo apply on the master calendar.
     **sim_kwargs:        Forwarded to simulate() (commission, slippage, etc.).
     """
     symbols = list(features_by_symbol.keys())
@@ -221,21 +228,32 @@ def run_portfolio_backtest(
             "features_by_symbol, labels_by_symbol, and prices_by_symbol must have identical keys"
         )
 
-    # Common date index across all symbols (intersection)
-    common_idx = features_by_symbol[symbols[0]].index
+    # Master timeline: union of all symbols' feature indices.
+    master_idx = features_by_symbol[symbols[0]].index
     for sym in symbols[1:]:
-        common_idx = common_idx.intersection(features_by_symbol[sym].index)
-    if len(common_idx) == 0:
-        raise ValueError("No common dates across symbols after index intersection")
-    common_idx = common_idx.sort_values()
+        master_idx = master_idx.union(features_by_symbol[sym].index)
+    master_idx = master_idx.sort_values().unique()
+    if len(master_idx) == 0:
+        raise ValueError("No bars across any symbol")
 
-    feat = {s: features_by_symbol[s].loc[common_idx] for s in symbols}
-    labs = {s: labels_by_symbol[s].loc[common_idx] for s in symbols}
-    pric = {s: prices_by_symbol[s].loc[common_idx] for s in symbols}
+    # Defensive: per-symbol indices must be a subset of master_idx by
+    # construction (master is the union). Catches DataFrame-mutation bugs.
+    for sym in symbols:
+        if not features_by_symbol[sym].index.isin(master_idx).all():
+            raise ValueError(
+                f"features_by_symbol[{sym!r}].index has bars outside master_idx — "
+                "feature/label/price indexes drifted apart"
+            )
+
+    # Boolean alive mask per symbol: True at master-bar positions where the
+    # symbol has a feature row. O(1) lookup per (symbol, fold) downstream.
+    alive: dict[str, np.ndarray] = {
+        s: master_idx.isin(features_by_symbol[s].index) for s in symbols
+    }
 
     splits = list(
         walkforward_splits(
-            len(common_idx),
+            len(master_idx),
             train_window=train_window,
             test_window=test_window,
             step=step,
@@ -271,39 +289,76 @@ def run_portfolio_backtest(
         if len(train_pos) == 0:
             continue
 
-        # Pool all symbols' training data vertically for a single model fit
-        X_train = np.vstack([feat[s].iloc[train_pos].to_numpy() for s in symbols])
-        y_train = np.concatenate([labs[s].iloc[train_pos].to_numpy() for s in symbols])
+        # Sparse-stacked training pool: each symbol contributes the rows it
+        # has in train_pos. Symbols absent from this fold are dropped from
+        # the fit (their alive mask is all False on these positions).
+        X_train_parts: list[np.ndarray] = []
+        y_train_parts: list[np.ndarray] = []
+        for sym in symbols:
+            train_mask = alive[sym][train_pos]
+            if not train_mask.any():
+                continue
+            sym_train_idx = master_idx[train_pos][train_mask]
+            X_train_parts.append(
+                features_by_symbol[sym].loc[sym_train_idx].to_numpy()
+            )
+            y_train_parts.append(
+                labels_by_symbol[sym].loc[sym_train_idx].to_numpy()
+            )
+
+        if not X_train_parts:
+            # No symbol has any data in this fold; defensive — unreachable
+            # under normal input since every master_idx bar is held by ≥1 symbol.
+            continue
+
+        X_train = np.vstack(X_train_parts)
+        y_train = np.concatenate(y_train_parts)
         model.fit(X_train, y_train)  # type: ignore[attr-defined]
 
-        test_idx = common_idx[test_pos]
+        # Per-symbol prediction over the symbol's own subset of test_pos.
+        test_master_idx = master_idx[test_pos]
         fold_sym_oos_returns: list[pd.Series] = []
 
         for sym in symbols:
+            test_mask = alive[sym][test_pos]
+            if not test_mask.any():
+                continue
+            sym_test_idx = test_master_idx[test_mask]
+
+            X_test_sym = features_by_symbol[sym].loc[sym_test_idx].to_numpy()
             raw_pred = np.asarray(
-                model.predict(feat[sym].iloc[test_pos].to_numpy()),  # type: ignore[attr-defined]
+                model.predict(X_test_sym),  # type: ignore[attr-defined]
                 dtype=float,
             )
-            signals = pd.Series(np.sign(raw_pred).astype(int), index=test_idx)
-            eq, tlog = simulate(pric[sym].loc[test_idx], signals, **sim_kwargs)  # type: ignore[arg-type]
+            signals = pd.Series(np.sign(raw_pred).astype(int), index=sym_test_idx)
+            sym_prices = prices_by_symbol[sym].loc[sym_test_idx]
+            eq, tlog = simulate(sym_prices, signals, **sim_kwargs)  # type: ignore[arg-type]
             fold_sym_oos_returns.append(eq.pct_change().dropna())
             if not tlog.empty:
                 oos_trade_parts.append(tlog)
 
-        # Guard: all per-symbol return series must be index-aligned after dropna
-        if len(fold_sym_oos_returns) > 1:
-            ref_idx = fold_sym_oos_returns[0].index
-            for ret_s in fold_sym_oos_returns[1:]:
-                if not ret_s.index.equals(ref_idx):
-                    raise RuntimeError(
-                        "Per-symbol OOS return series have misaligned indices — "
-                        "portfolio average would silently produce NaN"
-                    )
+        if not fold_sym_oos_returns:
+            continue  # no active symbols this fold
 
-        # Equal-weight: average per-bar returns across symbols (skipna=False so
-        # any index gap becomes a visible NaN rather than a silent zero-weight mean)
-        fold_ret = pd.concat(fold_sym_oos_returns, axis=1).mean(axis=1, skipna=False)
-        fold_metrics.append(compute_metrics(fold_ret))
+        # Sparse cross-section: each column carries its own subset index.
+        # axis=1 outer-aligns; skipna=True averages over symbols active at
+        # each bar. The fold-level alignment guard from the intersection
+        # path is intentionally dropped — sparse indices are expected here.
+        fold_ret = pd.concat(fold_sym_oos_returns, axis=1).mean(axis=1, skipna=True)
+
+        # Invariant: a bar with ≥1 active symbol must yield a finite mean;
+        # an all-NaN fold means a symbol reported alive but simulate()
+        # produced no usable returns — a real bug, not silent recovery.
+        if fold_ret.isna().all():
+            raise RuntimeError(
+                "All per-symbol OOS returns NaN this fold — alive mask "
+                "claims data but simulate() produced no usable returns"
+            )
+
+        fold_m = compute_metrics(fold_ret)
+        fold_m["n_symbols_active"] = float(len(fold_sym_oos_returns))
+        fold_m["n_train_rows"] = float(len(y_train))
+        fold_metrics.append(fold_m)
         oos_returns_parts.append(fold_ret)
 
     # IS metrics are not reported for the portfolio path: re-predicting on
@@ -311,6 +366,12 @@ def run_portfolio_backtest(
     # same bar contributes to adjacent folds' IS series) and understates the
     # true IS/OOS overfit gap. Use run_backtest() per-symbol if IS diagnostics
     # are needed for a single name.
+
+    if not oos_returns_parts:
+        raise RuntimeError(
+            "No symbol contributed to any fold — the panel has no test-window "
+            "coverage in the requested walk-forward configuration"
+        )
 
     oos_returns = pd.concat(oos_returns_parts) if oos_returns_parts else pd.Series(dtype=float)
     # Build equity curve from the concatenated return series so equity_curve and
