@@ -289,3 +289,41 @@ reflect in-sample fit. Do not use them to make OOS performance claims.
 Phase 3 adds an LLM-derived **sentiment feature** and tests via ablation
 whether it measurably improves GBM over Ridge. Phase 2.5 provides the corrected
 feature baseline against which the sentiment signal is ablated.
+
+---
+
+## Addendum — fair-comparison rerun on the Phase 3 universe (2026-06-07)
+
+After Phase 3 expanded the panel (`PANEL_SYMS = settings.equity_universe`, 33
+symbols) and adopted the union-of-indices `run_portfolio_backtest()`
+(`docs/REFACTOR_PORTFOLIO_UNION_INDEX.md`), `02_phase2_modeling.ipynb` and
+`03_model_interpretation.ipynb` were re-executed on the same data the
+sentiment ablation uses. OOS span is now **2003-04-03 → 2026-04-21 across 116
+walk-forward folds**.
+
+**GBM (no sentiment) — head-to-head vs. baselines:**
+
+| Model              | OOS Sharpe | Max DD       | Notes                          |
+|--------------------|-----------:|-------------:|--------------------------------|
+| Naive (always +1)  | **+0.704** | −42.60%      | unconditional long             |
+| BuyAndHold         | **+0.704** | −42.60%      | identical to Naive             |
+| ARIMA(1,0,0)       |     +0.434 | −39.98%      | mostly long in practice        |
+| RandomWalk         |     +0.376 | −39.98%      | mostly long in practice        |
+| **GBM (no sentiment)** | **−0.216** | **−567.66%** | margin-call simulator artifact |
+| Ridge              |     −0.329 | −81.82%      | feature-based, mean-reverting  |
+| Momentum           |     −0.339 | −67.04%      | trend-follower on `mom_21d`    |
+
+GBM-without-sentiment beats only Ridge and Momentum; it loses to every
+unconditional baseline. Gates: **2/6 pass (T2, T5)**; T1/T3/T4/T6 fail.
+
+**Implication for Phase 2.5.** The earlier +0.487 Sharpe / 3 of 6 gates that
+this spec helped produce was real on the 6-symbol post-2010 panel, but it did
+not survive expansion to 25 years across 33 names. The 17-feature set's
+directional bias (visible in `03_model_interpretation.ipynb` — macro features
+DFF / yield_curve / DGS10 / VIXCLS now dominate SHAP, IS hit rate 65%) is
+unfavorable on this broader universe.
+
+**Comparison with Phase 3.** GBM + sentiment recovers to Sharpe +0.024 / MaxDD
+−48.74% — better than the no-sentiment control, but still below the
+unconditional baselines. See `docs/PHASE_3_SENTIMENT.md` addendum for the
+ablation reading.

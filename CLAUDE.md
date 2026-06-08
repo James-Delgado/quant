@@ -52,6 +52,23 @@ Decision: advancing to Phase 3 (LLM sentiment feature) per failure protocol —
 T1 passes but T3 does not; document honestly and test sentiment as independent
 ablation per `docs/concepts/evaluation-standards.md`.
 
+**Phase 2.5 re-run on Phase 3 universe (2026-06-07).** `02_phase2_modeling.ipynb`
+and `03_model_interpretation.ipynb` were re-executed with `PANEL_SYMS =
+settings.equity_universe` (full Dow 30 + SPY/QQQ/IWM, 33 symbols) and the
+union-of-indices harness so the GBM-vs-baseline comparison runs on the same data
+as `04_phase3_sentiment.ipynb`. On the aligned panel — **OOS 2003-04-03 →
+2026-04-21, 116 folds** — GBM OOS Sharpe = **−0.216**, Max DD = **−567.66%**
+(margin-call simulator artifact, same as nb04 control), **2/6 gates pass (T2,
+T5)**. GBM beats only 2/6 baselines (Ridge −0.329, Momentum −0.339); always-long
+(+0.704), ARIMA(1,0,0) (+0.434), and RandomWalk (+0.376) outperform. nb02 GBM now
+matches the nb04 "no-sentiment" arm bit-for-bit, so the +0.240 Sharpe and ~500 pp
+drawdown lift in nb04 is attributable purely to the sentiment column. The earlier
++0.487 Sharpe result reflected the 6-symbol post-2010 sample; expanding to
+25 years (including 2008) reveals the model's mean-reversion bias is not paid
+for on the broader universe. nb03 IS diagnostics on the wider panel show macro
+features (DFF, yield_curve, DGS10, VIXCLS) now dominating SHAP rankings and IS
+hit rate at 65.2%.
+
 Phase 3 delivered: `ingest/edgar.py` (SEC submissions API + 8-K/10-K/10-Q ingestor),
 `features/finbert.py` (ProsusAI/finbert scorer with 512-token truncation, MPS support),
 `features/sentiment.py` (lookback aggregation + `validate_point_in_time()` guard,
@@ -149,11 +166,14 @@ shell convenience for interactive prompts only.
 # Execute notebooks in place:
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.timeout=300 notebooks/01_system_tour.ipynb
+# nb02 runs 6 baselines + one full GBM (n_iter=50) + DM walk-forward across
+# the 33-symbol union panel × 116 folds — needs 3600s timeout:
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
-    --ExecutePreprocessor.timeout=600 notebooks/02_phase2_modeling.ipynb
-# Interpretation notebook trains IS GBM on 28k rows — needs 600s timeout:
+    --ExecutePreprocessor.timeout=3600 notebooks/02_phase2_modeling.ipynb
+# Interpretation notebook trains IS GBM on ~196k rows (33 symbols × ~5000 bars)
+# with n_iter=50, n_splits=3 — needs 5400s timeout:
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
-    --ExecutePreprocessor.timeout=600 notebooks/03_model_interpretation.ipynb
+    --ExecutePreprocessor.timeout=5400 notebooks/03_model_interpretation.ipynb
 # Phase 3 ablation (two full GBM runs + gate eval, 33-symbol union panel,
 # ~116 folds × ~150 XGB fits/fold) — needs 3600s timeout (was 600s pre-refactor):
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
