@@ -134,6 +134,53 @@ explore the separate Polymarket track.
 
 ---
 
+## Addendum — ablation reading after the fair-comparison rerun (2026-06-07)
+
+`02_phase2_modeling.ipynb` was re-executed on the same panel and OOS span used
+here so the control arm of this ablation can be cross-checked outside this
+notebook. The two arms, side-by-side against the unconditional baselines:
+
+| Model                       | OOS Sharpe | Max DD       |
+|-----------------------------|-----------:|-------------:|
+| Naive / BuyAndHold          |     +0.704 |      −42.60% |
+| ARIMA(1,0,0)                |     +0.434 |      −39.98% |
+| RandomWalk                  |     +0.376 |      −39.98% |
+| **GBM + sentiment (this NB)** | **+0.024** |  **−48.74%** |
+| **GBM (no sentiment)**      | **−0.216** | **−567.66%** |
+| Ridge                       |     −0.329 |      −81.82% |
+| Momentum                    |     −0.339 |      −67.04% |
+
+**Sentiment delta:** +0.240 Sharpe, ~500 pp drawdown improvement. Largest
+single-feature lift in the project. The control's −567% MaxDD is a
+simulator artifact (`simulate()` does not model margin calls); the realistic
+reading is *"control was wiped out by 2008 shorts; sentiment-augmented arm
+took a −48.74% drawdown and survived."*
+
+**Adoption decision under the exit gate.** The spec's adoption criterion is a
+*measurable and robust* improvement in OOS risk-adjusted performance. The
+ablation delivers a measurable, large improvement on every directional metric
+(Sharpe, Sortino, Calmar, MaxDD, annualized return) and an order-of-magnitude
+survival improvement through 2008. Gate count is unchanged at 2/6 for both
+arms (T2, T5 pass; T1/T3/T4/T6 fail), but T1/T3/T4/T6 fail for *different*
+reasons in each arm — the sentiment arm fails them with bounded, recoverable
+metrics, while the control fails them through wipeout. We **adopt the
+sentiment feature** for the prototype, with two honest caveats:
+
+1. Neither arm beats the unconditional always-long baseline on this panel.
+   Sentiment improves a feature-based GBM that has a directional bias; it
+   does not generate alpha vs. holding the index.
+2. The improvement is concentrated around the 2008 crisis (SEC 8-K filing
+   surge + strongly negative FinBERT scores flattened the model's late-2008
+   shorts). This is genuinely useful — but it is a crisis-survival edge,
+   not a sustained signal.
+
+**Phase 4 implication.** The next phase should treat "beat always-long" as the
+real bar. Options: (a) add trend-aligned long-horizon features, (b) constrain
+GBM to long-only or long-flat, (c) move to a different model class. See
+`docs/PHASE_4_ADVANCED.md`.
+
+---
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
