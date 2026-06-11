@@ -10,6 +10,7 @@
 | Phase 2 — GBM model + exit gates | ✅ Complete | see below |
 | Phase 2.5 — Feature set improvement | ✅ Complete | see below |
 | Phase 3 — LLM sentiment feature | ✅ Complete | `phase-3-sentiment` branch |
+| Phase 4A — Feature/label redesign + regime-conditional eval | 🟡 In progress | Milestone 1 (regime harness) landed locally; see PRD + plan |
 
 Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
 `report.py`, 87-test suite, and an executed system-tour notebook at
@@ -92,6 +93,29 @@ negative, and the sentiment feature pushed enough late-2008 predictions
 toward `sign(pred)=0` (flat) for the harness to avoid the catastrophic
 short-stack loss the no-sentiment GBM took. See Section 9 of
 `notebooks/04_phase3_sentiment.ipynb` for the full hypothesis.
+
+**Phase 4A — in progress.** The Phase 3 GBM does not beat ARIMA OOS, so the
+Phase 4 entry gate (*"prototype shows a real, honest, cost-net edge"*) is
+not met and Track A (transformers/foundation models) is deferred. Phase 4A
+is a focused diagnostic subproject — feature/label redesign + regime-
+conditional evaluation — that earns the right to Phase 4. PRD and plan:
+
+- PRD: `.claude/prds/phase-4a-feature-and-label-redesign.prd.md`
+- Milestone 1 plan: `.claude/plans/phase-4a-milestone-1-regime-harness.plan.md`
+- Concept reference: `docs/concepts/regime-evaluation.md`
+
+Milestone 1 (rolling-window + regime-conditional evaluation harness)
+delivered: extended `BacktestResult` with `oos_returns` and
+`oos_forecast_errors` series; new `backtest/regimes.py` with
+`RegimeDetector` Protocol + `VIXThresholdDetector` (volatility axis) +
+`DateRangeDetector` (macro-era axis, defaults `qe_bull` / `covid` /
+`rate_cycle`); new `backtest/regime_metrics.py` with
+`compute_regime_metrics`, `regime_dm_test`, and `phase4a_gate_report`
+(matching the PRD success metric exactly); per-regime reporting via
+`format_regime_report` and `regime_summary_table` in `backtest/report.py`.
+310-test suite (310 passed / 4 skipped) — 47 new tests vs. the Phase 3
+baseline. Milestones 2–6 still pending; gate not yet evaluated on real
+data.
 
 ## Codebase map
 

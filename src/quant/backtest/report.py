@@ -7,6 +7,7 @@ import math
 import pandas as pd
 
 from quant.backtest.harness import BacktestResult
+from quant.backtest.regime_metrics import compute_regime_metrics
 
 
 def _fmt(val: float | None, spec: str) -> str:
@@ -73,3 +74,62 @@ def _write_report(result: BacktestResult, buf: io.StringIO) -> None:
         start = result.equity_curve.index[0].date()
         end = result.equity_curve.index[-1].date()
         buf.write(f"Period: {start} → {end}\n")
+
+
+# ─── Regime-conditional reporting (Phase 4A Milestone 1) ─────────────────────
+
+
+_REGIME_TABLE_COLUMNS = ("sharpe", "sortino", "max_drawdown", "n_bars")
+
+
+def regime_summary_table(
+    result: BacktestResult,
+    regime_labels: pd.Series,
+) -> pd.DataFrame:
+    """One row per regime, columns ``sharpe``, ``sortino``, ``max_drawdown``, ``n_bars``.
+
+    The result must have ``oos_returns`` populated (default since Phase 4A).
+    Regimes with zero observations on the OOS index are omitted.
+    """
+    per_regime = compute_regime_metrics(result.oos_returns, regime_labels)
+    rows = {
+        regime: {
+            "sharpe": metrics["sharpe"],
+            "sortino": metrics["sortino"],
+            "max_drawdown": metrics["max_drawdown"],
+            "n_bars": int((regime_labels == regime).sum()),
+        }
+        for regime, metrics in per_regime.items()
+    }
+    return pd.DataFrame.from_dict(rows, orient="index", columns=list(_REGIME_TABLE_COLUMNS))
+
+
+def format_regime_report(
+    result: BacktestResult,
+    regime_labels: pd.Series,
+) -> str:
+    """Per-regime summary in the same 52-column layout as ``format_report``."""
+    tbl = regime_summary_table(result, regime_labels)
+    buf = io.StringIO()
+    buf.write("=" * 52 + "\n")
+    buf.write(
+        f"{'Regime':<14} {'Sharpe':>10} {'Sortino':>10} "
+        f"{'MaxDD':>8} {'Bars':>6}\n"
+    )
+    buf.write("-" * 52 + "\n")
+    for regime in tbl.index:
+        sharpe = _fmt(tbl.loc[regime, "sharpe"], ".3f")
+        sortino = _fmt(tbl.loc[regime, "sortino"], ".3f")
+        max_dd = _fmt(tbl.loc[regime, "max_drawdown"], ".2%")
+        n_bars = int(tbl.loc[regime, "n_bars"])
+        buf.write(f"{str(regime):<14} {sharpe:>10} {sortino:>10} {max_dd:>8} {n_bars:>6}\n")
+    buf.write("=" * 52 + "\n")
+    return buf.getvalue()
+
+
+def print_regime_report(
+    result: BacktestResult,
+    regime_labels: pd.Series,
+) -> None:
+    """Print ``format_regime_report`` to stdout."""
+    print(format_regime_report(result, regime_labels))

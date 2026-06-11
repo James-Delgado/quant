@@ -26,13 +26,30 @@ from quant.backtest.walkforward import walkforward_splits
 
 @dataclass(frozen=True)
 class BacktestResult:
-    """Container for a completed backtest run."""
+    """Container for a completed backtest run.
+
+    Per-bar series (`oos_returns`, `oos_forecast_errors`) are retained for
+    downstream regime-conditional metrics and Diebold-Mariano tests; aggregate
+    metrics alone cannot be sliced by regime after the fact.
+
+    `oos_forecast_errors` is populated only for paths where the model produces
+    continuous return forecasts (currently `run_portfolio_backtest`). The
+    single-symbol `run_backtest` path expects models that already emit
+    {-1, 0, +1} signals, so forecast errors are not well-defined there and
+    the field is left as an empty Series.
+    """
 
     oos_metrics: dict[str, float]
     is_metrics: dict[str, float]
     equity_curve: pd.Series
     trade_log: pd.DataFrame
     fold_metrics: list[dict[str, float]] = field(default_factory=list)
+    oos_returns: pd.Series = field(
+        default_factory=lambda: pd.Series(dtype=float)
+    )
+    oos_forecast_errors: pd.Series = field(
+        default_factory=lambda: pd.Series(dtype=float)
+    )
 
 
 def run_backtest(
@@ -180,6 +197,10 @@ def run_backtest(
         equity_curve=equity_curve,
         trade_log=trade_log,
         fold_metrics=fold_metrics,
+        oos_returns=oos_returns,
+        # Single-symbol path: predict() returns signals, not continuous
+        # forecasts, so per-bar forecast errors are not well-defined here.
+        # Left as the empty default Series.
     )
 
 
@@ -279,10 +300,14 @@ def run_portfolio_backtest(
             trade_log=_empty_log,
         )
 
+    # Per-fold accumulators. equity_curve and IS returns are intentionally
+    # NOT tracked in the portfolio path: equity_curve is reconstructed from
+    # the concatenated oos_returns at the end (so equity and returns align
+    # bar-for-bar), and IS metrics are skipped because re-predicting on
+    # overlapping rolling training windows inflates IS Sharpe nonlinearly.
     oos_returns_parts: list[pd.Series] = []
-    oos_equity_parts: list[pd.Series] = []
     oos_trade_parts: list[pd.DataFrame] = []
-    is_returns_parts: list[pd.Series] = []
+    oos_error_parts: list[pd.Series] = []
     fold_metrics: list[dict[str, float]] = []
 
     for train_pos, test_pos in splits:
@@ -318,6 +343,7 @@ def run_portfolio_backtest(
         # Per-symbol prediction over the symbol's own subset of test_pos.
         test_master_idx = master_idx[test_pos]
         fold_sym_oos_returns: list[pd.Series] = []
+        fold_sym_errors: list[pd.Series] = []
 
         for sym in symbols:
             test_mask = alive[sym][test_pos]
@@ -334,6 +360,14 @@ def run_portfolio_backtest(
             sym_prices = prices_by_symbol[sym].loc[sym_test_idx]
             eq, tlog = simulate(sym_prices, signals, **sim_kwargs)  # type: ignore[arg-type]
             fold_sym_oos_returns.append(eq.pct_change().dropna())
+
+            # Forecast error per bar: realised forward return minus the model's
+            # continuous prediction. NaN where the label is undefined at the
+            # end of the symbol's history; dropped in the cross-sectional mean.
+            sym_labels = labels_by_symbol[sym].loc[sym_test_idx].to_numpy(dtype=float)
+            sym_errors = pd.Series(sym_labels - raw_pred, index=sym_test_idx)
+            fold_sym_errors.append(sym_errors)
+
             if not tlog.empty:
                 oos_trade_parts.append(tlog)
 
@@ -345,6 +379,11 @@ def run_portfolio_backtest(
         # each bar. The fold-level alignment guard from the intersection
         # path is intentionally dropped — sparse indices are expected here.
         fold_ret = pd.concat(fold_sym_oos_returns, axis=1).mean(axis=1, skipna=True)
+
+        # Per-bar forecast error is the cross-sectional mean of per-symbol
+        # errors at that bar — same aggregation rule as fold_ret so the two
+        # series share the same index and DM-test inputs are well-defined.
+        fold_err = pd.concat(fold_sym_errors, axis=1).mean(axis=1, skipna=True)
 
         # Invariant: a bar with ≥1 active symbol must yield a finite mean;
         # an all-NaN fold means a symbol reported alive but simulate()
@@ -360,6 +399,11 @@ def run_portfolio_backtest(
         fold_m["n_train_rows"] = float(len(y_train))
         fold_metrics.append(fold_m)
         oos_returns_parts.append(fold_ret)
+
+        # Align forecast errors with returns so the two series share an index.
+        # eq.pct_change().dropna() removes the first bar per fold, so the same
+        # bar must be removed from the error series.
+        oos_error_parts.append(fold_err.loc[fold_ret.index])
 
     # IS metrics are not reported for the portfolio path: re-predicting on
     # overlapping rolling training windows inflates IS Sharpe nonlinearly (the
@@ -386,12 +430,18 @@ def run_portfolio_backtest(
         trade_log=trade_log if len(trade_log) > 0 else None,
     )
 
+    oos_forecast_errors = (
+        pd.concat(oos_error_parts) if oos_error_parts else pd.Series(dtype=float)
+    )
+
     return BacktestResult(
         oos_metrics=oos_metrics,
         is_metrics=_empty_metrics,
         equity_curve=equity_curve,
         trade_log=trade_log,
         fold_metrics=fold_metrics,
+        oos_returns=oos_returns,
+        oos_forecast_errors=oos_forecast_errors,
     )
 
 

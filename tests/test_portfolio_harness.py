@@ -249,3 +249,102 @@ class TestPortfolioHarnessSelfTests:
             "Expected some training positions to violate the HORIZON constraint "
             "when purge/embargo=0 — adjust test parameters"
         )
+
+
+# ─── BacktestResult per-bar series (Phase 4A Milestone 1, Task 1) ────────────
+
+class TestBacktestResultSeries:
+    """The harness must retain per-bar OOS returns and per-bar OOS forecast
+    errors on `BacktestResult` so downstream regime-conditional metrics and
+    Diebold-Mariano tests can operate on continuous series. Aggregate metrics
+    alone are insufficient — they cannot be sliced by regime after the fact.
+    """
+
+    def test_oos_returns_populated(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+    ) -> None:
+        result = run_portfolio_backtest(
+            model=RandomModel(seed=11),
+            features_by_symbol=features_by_sym,
+            labels_by_symbol=labels_by_sym,
+            prices_by_symbol=prices_by_sym,
+            train_window=TRAIN_W,
+            test_window=TEST_W,
+            step=STEP,
+            label_horizon=HORIZON,
+            embargo=EMBARGO,
+        )
+        assert isinstance(result.oos_returns, pd.Series)
+        assert len(result.oos_returns) > 0
+        assert result.oos_returns.notna().any()
+
+    def test_oos_returns_index_monotonic(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+    ) -> None:
+        """OOS returns are concatenated across folds; the resulting index must
+        be monotonically increasing (no overlap, no reordering). Required for
+        regime tagging to align bar-for-bar."""
+        result = run_portfolio_backtest(
+            model=RandomModel(seed=12),
+            features_by_symbol=features_by_sym,
+            labels_by_symbol=labels_by_sym,
+            prices_by_symbol=prices_by_sym,
+            train_window=TRAIN_W,
+            test_window=TEST_W,
+            step=STEP,
+            label_horizon=HORIZON,
+            embargo=EMBARGO,
+        )
+        assert result.oos_returns.index.is_monotonic_increasing
+
+    def test_oos_forecast_errors_populated_for_continuous_model(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+    ) -> None:
+        """run_portfolio_backtest accepts continuous forecasts (np.sign applied
+        internally for the signal), so forecast errors are well-defined.
+        """
+        result = run_portfolio_backtest(
+            model=RandomModel(seed=13),
+            features_by_symbol=features_by_sym,
+            labels_by_symbol=labels_by_sym,
+            prices_by_symbol=prices_by_sym,
+            train_window=TRAIN_W,
+            test_window=TEST_W,
+            step=STEP,
+            label_horizon=HORIZON,
+            embargo=EMBARGO,
+        )
+        assert isinstance(result.oos_forecast_errors, pd.Series)
+        assert len(result.oos_forecast_errors) > 0
+        # Errors are not identically zero for a random model.
+        assert result.oos_forecast_errors.abs().sum() > 0.0
+
+    def test_oos_returns_and_forecast_errors_aligned(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+    ) -> None:
+        """Both series must share the same DatetimeIndex so they can be sliced
+        together by a regime mask without re-alignment."""
+        result = run_portfolio_backtest(
+            model=RandomModel(seed=14),
+            features_by_symbol=features_by_sym,
+            labels_by_symbol=labels_by_sym,
+            prices_by_symbol=prices_by_sym,
+            train_window=TRAIN_W,
+            test_window=TEST_W,
+            step=STEP,
+            label_horizon=HORIZON,
+            embargo=EMBARGO,
+        )
+        assert result.oos_returns.index.equals(result.oos_forecast_errors.index)
