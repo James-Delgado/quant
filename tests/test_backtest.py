@@ -993,3 +993,64 @@ class TestReport:
         tbl = summary_table(flat_result)
         for key in ("sharpe", "sortino", "max_drawdown", "total_return", "annualized_return"):
             assert not math.isnan(tbl.loc[key, "OOS"])
+
+
+class TestRegimeReport:
+    """format_regime_report and regime_summary_table — Phase 4A Milestone 1."""
+
+    @pytest.fixture()
+    def result_with_returns(self):
+        """BacktestResult with a populated oos_returns series spanning two regimes."""
+        from quant.backtest.harness import BacktestResult
+
+        n = 100
+        idx = pd.bdate_range("2010-01-04", periods=n)
+        rng = np.random.default_rng(42)
+        returns = pd.Series(rng.normal(0.001, 0.01, n), index=idx)
+        return BacktestResult(
+            oos_metrics=compute_metrics(returns),
+            is_metrics={"sharpe": 0.0},
+            equity_curve=(1 + returns).cumprod() * 100_000.0,
+            trade_log=pd.DataFrame(),
+            oos_returns=returns,
+        )
+
+    @pytest.fixture()
+    def regime_labels(self, result_with_returns):
+        labels = pd.Series("qe_bull", index=result_with_returns.oos_returns.index, dtype=object)
+        labels.iloc[50:] = "covid"
+        return labels
+
+    def test_regime_summary_table_one_row_per_regime(self, result_with_returns, regime_labels):
+        from quant.backtest.report import regime_summary_table
+
+        tbl = regime_summary_table(result_with_returns, regime_labels)
+        assert isinstance(tbl, pd.DataFrame)
+        assert set(tbl.index) == {"qe_bull", "covid"}
+
+    def test_regime_summary_table_columns(self, result_with_returns, regime_labels):
+        from quant.backtest.report import regime_summary_table
+
+        tbl = regime_summary_table(result_with_returns, regime_labels)
+        for col in ("sharpe", "sortino", "max_drawdown", "n_bars"):
+            assert col in tbl.columns
+
+    def test_format_regime_report_returns_string(self, result_with_returns, regime_labels):
+        from quant.backtest.report import format_regime_report
+
+        out = format_regime_report(result_with_returns, regime_labels)
+        assert isinstance(out, str)
+        assert len(out) > 0
+
+    def test_format_regime_report_contains_regime_names(self, result_with_returns, regime_labels):
+        from quant.backtest.report import format_regime_report
+
+        out = format_regime_report(result_with_returns, regime_labels)
+        assert "qe_bull" in out
+        assert "covid" in out
+
+    def test_format_regime_report_no_nan_percent(self, result_with_returns, regime_labels):
+        from quant.backtest.report import format_regime_report
+
+        out = format_regime_report(result_with_returns, regime_labels)
+        assert "nan%" not in out

@@ -1,0 +1,227 @@
+"""Per-regime aggregation of backtest metrics, DM tests, and gate reports.
+
+The existing harness aggregates OOS metrics across the full evaluation
+period uniformly. For Phase 4A we need to slice those metrics by regime
+(VIX-volatility axis, macro-era axis, or any other axis supplied via the
+``regime_labels`` Series) so the researcher can tell whether the model has
+edge *in some regime* even when the full-period Sharpe is uninformative.
+
+This module is consumed by notebooks and the Phase 4A exit-gate report;
+it has no side effects and never touches splits or purge/embargo logic.
+
+Public API
+----------
+* ``compute_regime_metrics(returns, regime_labels)`` — per-regime metric dicts
+* ``regime_dm_test(errors_a, errors_b, regime_labels)`` — per-regime DM tests
+* ``phase4a_gate_report(gbm, arima, regime_labels, ...)`` — the Phase 4A
+  success-gate verdict matching the PRD's metric exactly:
+  "GBM beats ARIMA Sharpe in ≥ 2 of 3 recent regimes, with DM p < 0.05 in
+  ≥ 1 of those regimes."
+
+DM-test semantics
+-----------------
+A regime with fewer than ``MIN_DM_OBS`` (= 4) observations cannot be
+DM-tested and is returned as ``None``. The gate report counts those regimes
+as "insufficient evidence" rather than "fail" — see ``phase4a_gate_report``
+for the exact rule.
+"""
+from __future__ import annotations
+
+import warnings
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from quant.backtest.harness import BacktestResult
+from quant.backtest.metrics import compute_metrics
+from quant.backtest.statistics import DMResult, diebold_mariano
+
+MIN_DM_OBS = 4
+
+# Default regime set referenced by the Phase 4A PRD success metric.
+DEFAULT_REGIMES_REQUIRED: tuple[str, ...] = ("qe_bull", "covid", "rate_cycle")
+
+
+# ─── compute_regime_metrics ──────────────────────────────────────────────────
+
+
+def compute_regime_metrics(
+    returns: pd.Series,
+    regime_labels: pd.Series,
+) -> dict[str, dict[str, float]]:
+    """Group ``returns`` by ``regime_labels`` and compute the full metric set per regime.
+
+    Both arguments must share an identical index — there is no implicit
+    re-alignment. Mismatched indices raise ``ValueError``.
+
+    Returns a mapping ``{regime_label: metric_dict}`` where each
+    ``metric_dict`` has the same keys as ``compute_metrics`` (sharpe,
+    sortino, calmar, max_drawdown, total_return, annualized_return, hit_rate,
+    profit_factor). Regimes with zero observations are omitted.
+    """
+    if not returns.index.equals(regime_labels.index):
+        raise ValueError(
+            "returns and regime_labels must share an identical index — "
+            "align them before calling compute_regime_metrics"
+        )
+
+    return {
+        regime: compute_metrics(returns.loc[regime_labels == regime])
+        for regime in regime_labels.unique()
+        if (regime_labels == regime).any()
+    }
+
+
+# ─── regime_dm_test ──────────────────────────────────────────────────────────
+
+
+def regime_dm_test(
+    errors_a: pd.Series,
+    errors_b: pd.Series,
+    regime_labels: pd.Series,
+    *,
+    alternative: str = "less",
+) -> dict[str, DMResult | None]:
+    """Run a Diebold-Mariano test per regime, comparing two error series.
+
+    For each regime in ``regime_labels``, slice both error series down to
+    that regime's bars and run ``diebold_mariano(errors_a, errors_b)``.
+    Regimes with fewer than ``MIN_DM_OBS`` observations return ``None``
+    — the DM test is undefined at thin samples and crashing the whole
+    report on a 3-bar regime is the wrong response.
+
+    Returns a mapping ``{regime_label: DMResult | None}``.
+    """
+    if not (
+        errors_a.index.equals(errors_b.index)
+        and errors_a.index.equals(regime_labels.index)
+    ):
+        raise ValueError(
+            "errors_a, errors_b, and regime_labels must share an identical index"
+        )
+
+    results: dict[str, DMResult | None] = {}
+    for regime in regime_labels.unique():
+        mask = (regime_labels == regime).to_numpy()
+        n_obs = int(mask.sum())
+        if n_obs < MIN_DM_OBS:
+            warnings.warn(
+                f"regime {regime!r} has only {n_obs} observations — "
+                f"skipping DM test (need at least {MIN_DM_OBS})",
+                stacklevel=2,
+            )
+            results[regime] = None
+            continue
+        try:
+            results[regime] = diebold_mariano(
+                errors_a.to_numpy()[mask],
+                errors_b.to_numpy()[mask],
+                alternative=alternative,
+            )
+        except ValueError as exc:
+            # Identical error series in a regime → zero variance → DM undefined.
+            warnings.warn(
+                f"regime {regime!r} DM test failed: {exc}",
+                stacklevel=2,
+            )
+            results[regime] = None
+    return results
+
+
+# ─── phase4a_gate_report ─────────────────────────────────────────────────────
+
+
+def phase4a_gate_report(
+    gbm_result: BacktestResult,
+    arima_result: BacktestResult,
+    regime_labels: pd.Series,
+    *,
+    regimes_required: tuple[str, ...] = DEFAULT_REGIMES_REQUIRED,
+    min_pass: int = 2,
+    dm_alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Evaluate the Phase 4A success gate for a GBM vs ARIMA comparison.
+
+    The gate (from the Phase 4A PRD success metric) requires:
+
+    * GBM Sharpe > ARIMA Sharpe in at least ``min_pass`` of the regimes in
+      ``regimes_required`` (default 2 of 3).
+    * Diebold-Mariano p-value < ``dm_alpha`` in at least one of those regimes
+      (default p < 0.05 in ≥ 1).
+
+    Parameters
+    ----------
+    gbm_result, arima_result:
+        ``BacktestResult`` objects from ``run_portfolio_backtest`` containing
+        ``oos_returns`` and ``oos_forecast_errors`` series.
+    regime_labels:
+        Per-bar regime labels aligned with ``gbm_result.oos_returns.index``.
+        Typically produced by ``tag_regimes(result.oos_returns.index, detector)``.
+    regimes_required:
+        The regimes the gate evaluates. Regimes outside this tuple are still
+        reported in ``per_regime`` but do not count toward ``pass_count``.
+    min_pass:
+        Minimum count of Sharpe wins required to pass.
+    dm_alpha:
+        Maximum DM p-value to count as statistically significant.
+
+    Returns
+    -------
+    dict with keys:
+
+    * ``per_regime``     — ``{regime: {gbm_sharpe, arima_sharpe, dm_p_value, ...}}``
+    * ``gate_passed``    — bool — overall gate verdict
+    * ``pass_count``     — int  — number of ``regimes_required`` where GBM > ARIMA
+    * ``dm_p_values``    — ``{regime: float | None}`` — DM p-values for the
+                           required regimes only
+    * ``regimes_required`` — echo of input, included so downstream consumers
+                             don't need to re-thread the argument.
+    """
+    gbm_per_regime = compute_regime_metrics(gbm_result.oos_returns, regime_labels)
+    arima_per_regime = compute_regime_metrics(arima_result.oos_returns, regime_labels)
+
+    dm = regime_dm_test(
+        gbm_result.oos_forecast_errors,
+        arima_result.oos_forecast_errors,
+        regime_labels,
+        alternative="less",  # H1: GBM errors smaller than ARIMA errors
+    )
+
+    per_regime: dict[str, dict[str, Any]] = {}
+    for regime in regime_labels.unique():
+        gbm_sharpe = gbm_per_regime.get(regime, {}).get("sharpe", np.nan)
+        arima_sharpe = arima_per_regime.get(regime, {}).get("sharpe", np.nan)
+        dm_res = dm.get(regime)
+        per_regime[regime] = {
+            "gbm_sharpe": float(gbm_sharpe),
+            "arima_sharpe": float(arima_sharpe),
+            "gbm_beats_arima": bool(gbm_sharpe > arima_sharpe),
+            "dm_p_value": (dm_res.p_value if dm_res is not None else None),
+            "n_bars": int((regime_labels == regime).sum()),
+        }
+
+    pass_count = sum(
+        1
+        for r in regimes_required
+        if per_regime.get(r, {}).get("gbm_beats_arima", False)
+    )
+    dm_p_values = {
+        r: per_regime.get(r, {}).get("dm_p_value")
+        for r in regimes_required
+    }
+    significant_dm_count = sum(
+        1
+        for p in dm_p_values.values()
+        if p is not None and p < dm_alpha
+    )
+
+    gate_passed = pass_count >= min_pass and significant_dm_count >= 1
+
+    return {
+        "per_regime": per_regime,
+        "gate_passed": gate_passed,
+        "pass_count": pass_count,
+        "dm_p_values": dm_p_values,
+        "regimes_required": regimes_required,
+    }

@@ -184,6 +184,13 @@ They should be revisited when the universe changes.
 
 ---
 
+## See also
+
+- [regime-evaluation.md](regime-evaluation.md) — Phase 4A regime-conditional
+  evaluation. Adds a regime axis (era and volatility) to per-model OOS
+  reporting and defines the Phase 4A success-metric gate
+  (GBM > ARIMA in ≥ 2 of 3 recent regimes, DM p < 0.05 in ≥ 1).
+
 ## References
 
 - López de Prado, M. (2018). *Advances in Financial Machine Learning.* Wiley.
