@@ -10,7 +10,7 @@
 | Phase 2 — GBM model + exit gates | ✅ Complete | see below |
 | Phase 2.5 — Feature set improvement | ✅ Complete | see below |
 | Phase 3 — LLM sentiment feature | ✅ Complete | `phase-3-sentiment` branch |
-| Phase 4A — Feature/label redesign + regime-conditional eval | 🟡 In progress | Milestone 1 (regime harness) landed locally; see PRD + plan |
+| Phase 4A — Feature/label redesign + regime-conditional eval | 🟡 In progress | Milestones 1 (regime harness) + 2 (label ablation) landed locally; see PRD + plans |
 
 Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
 `report.py`, 87-test suite, and an executed system-tour notebook at
@@ -102,7 +102,9 @@ conditional evaluation — that earns the right to Phase 4. PRD and plan:
 
 - PRD: `.claude/prds/phase-4a-feature-and-label-redesign.prd.md`
 - Milestone 1 plan: `.claude/plans/phase-4a-milestone-1-regime-harness.plan.md`
-- Concept reference: `docs/concepts/regime-evaluation.md`
+- Milestone 2 plan: `.claude/plans/phase-4a-milestone-2-label-ablation.plan.md`
+- Concept references: `docs/concepts/regime-evaluation.md`,
+  `docs/concepts/label-schemes.md`
 
 Milestone 1 (rolling-window + regime-conditional evaluation harness)
 delivered: extended `BacktestResult` with `oos_returns` and
@@ -114,8 +116,27 @@ delivered: extended `BacktestResult` with `oos_returns` and
 (matching the PRD success metric exactly); per-regime reporting via
 `format_regime_report` and `regime_summary_table` in `backtest/report.py`.
 310-test suite (310 passed / 4 skipped) — 47 new tests vs. the Phase 3
-baseline. Milestones 2–6 still pending; gate not yet evaluated on real
-data.
+baseline.
+
+Milestone 2 (label-scheme ablation matrix) delivered: new
+`features/label_schemes.py` with `vol_scaled_returns(prices, horizon,
+vol_window)` and `triple_barrier_labels(prices, config)` (López de Prado
+AFML §3.5) plus a frozen `TripleBarrierConfig` dataclass and
+pre-committed `LDP_DEFAULT` (pt_sigma=2.0, sl_sigma=1.0, vol_window=21,
+max_horizon=5); new `backtest/ablation.py` with `run_label_ablation`
+mirroring `evaluate_panel`'s kwargs-discipline + per-scheme model
+deepcopy; new ablation reporter (`ablation_summary_table`,
+`ablation_composite_ranking` via balanced multi-regime Borda count,
+`ablation_dm_matrix`, `format_ablation_report`) in `backtest/report.py`.
+361-test suite (361 passed / 4 skipped) — 51 new tests vs. Milestone 1
+(37 label_schemes + 14 ablation/reporter). nb06 ARIMA control on a
+5-symbol × 8-year slice: composite Borda winner `vol_scaled` (mean rank
+1.333), `rate_cycle` winner `signed_returns` (control), `triple_barrier`
+last (Sharpe −0.479) — verdict on this slice is *"no scheme alone fixes
+the `rate_cycle` failure regime"*; Milestone 3 (regime-aware features)
+carries the work forward. Milestones 3–6 + conditional 2.5 (meta-labeling
+on M2 winner if one had emerged across all regimes) still pending; gate
+not yet evaluated on real data.
 
 ## Codebase map
 
@@ -136,6 +157,7 @@ src/quant/
 │   └── daily.py              Prefect flow: runs all ingestors, isolates failures
 ├── features/
 │   ├── labels.py             generate_labels() → LabelResult(series, horizon_bars)
+│   ├── label_schemes.py      vol_scaled_returns() + triple_barrier_labels() + LDP_DEFAULT (Phase 4A M2)
 │   ├── engineering.py        build_features() — 17 features + optional sentiment_df (19 cols)
 │   ├── weights.py            compute_sample_weights() — López de Prado uniqueness weights
 │   ├── finbert.py            FinBERT scorer — score_documents() → sentiment_scored/ (Phase 3)
@@ -149,8 +171,11 @@ src/quant/
 │   ├── simulator.py          vectorised trade simulator (next-bar fills, costs)
 │   ├── metrics.py            Sharpe / Sortino / Calmar / drawdown / hit-rate
 │   ├── harness.py            run_backtest() / run_portfolio_backtest() / evaluate_panel()
+│   ├── ablation.py           run_label_ablation() — Milestone 2 ablation orchestrator
+│   ├── regimes.py            RegimeDetector + VIXThresholdDetector + DateRangeDetector (M1)
+│   ├── regime_metrics.py     compute_regime_metrics() + regime_dm_test() + phase4a_gate_report() (M1)
 │   ├── statistics.py         diebold_mariano() — DM test with HLN small-sample correction
-│   ├── report.py             format_report() / summary_table() / print_report()
+│   ├── report.py             format_report() / summary_table() / regime + ablation reporters
 │   └── CLAUDE.md             agent instructions for the backtest package
 └── utils/calendar.py         trading-day calendar (gap detection)
 ```
@@ -178,7 +203,7 @@ shell convenience for interactive prompts only.
 ## Running things
 
 ```bash
-# Full test suite (267 tests, ~52s, no network):
+# Full test suite (361 tests, ~58s, no network):
 .venv/bin/pytest tests/ -v
 
 # With coverage:
@@ -202,6 +227,12 @@ shell convenience for interactive prompts only.
 # ~116 folds × ~150 XGB fits/fold) — needs 3600s timeout (was 600s pre-refactor):
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.timeout=3600 notebooks/04_phase3_sentiment.ipynb
+# nb05 (Phase 4A M1 regime harness walk-through) and nb06 (Phase 4A M2 label
+# ablation matrix) use ARIMA control on a 5-symbol × 8-year slice — fast:
+.venv/bin/jupyter nbconvert --to notebook --execute --inplace \
+    --ExecutePreprocessor.timeout=900 notebooks/05_phase4a_regime_harness.ipynb
+.venv/bin/jupyter nbconvert --to notebook --execute --inplace \
+    --ExecutePreprocessor.timeout=900 notebooks/06_phase4a_label_ablation.ipynb
 
 # Lint / format:
 .venv/bin/ruff check src/ tests/

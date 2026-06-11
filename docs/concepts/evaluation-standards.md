@@ -190,6 +190,10 @@ They should be revisited when the universe changes.
   evaluation. Adds a regime axis (era and volatility) to per-model OOS
   reporting and defines the Phase 4A success-metric gate
   (GBM > ARIMA in ≥ 2 of 3 recent regimes, DM p < 0.05 in ≥ 1).
+- [label-schemes.md](label-schemes.md) — Phase 4A Milestone 2 label-scheme
+  ablation. Defines the three label schemes (signed return, vol-scaled
+  return, triple-barrier) and the pre-committed `LDP_DEFAULT` parameters
+  used by the ablation harness.
 
 ## References
 

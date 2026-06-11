@@ -66,7 +66,8 @@ We believe that **redesigning labels, adding cross-sectional + regime-aware feat
 | # | Milestone | Outcome | Status | Plan |
 |---|---|---|---|---|
 | 1 | Rolling-window + regime-conditional evaluation harness | Researcher can run any model through regime-tagged evaluation; per-regime Sharpe, DM p-value, and gate outcomes are first-class outputs of the harness | in-progress | [phase-4a-milestone-1-regime-harness.plan.md](../plans/phase-4a-milestone-1-regime-harness.plan.md) |
-| 2 | Label-scheme ablation matrix | Researcher knows which label scheme best resolves trend-fighting bias; signed-return is either confirmed or replaced as the default | pending | — |
+| 2 | Label-scheme ablation matrix | Researcher knows which label scheme best resolves trend-fighting bias; signed-return is either confirmed or replaced as the default | in-progress | [phase-4a-milestone-2-label-ablation.plan.md](../plans/phase-4a-milestone-2-label-ablation.plan.md) |
+| 2.5 | Meta-labeling on the M2 winner *(conditional sub-milestone)* | If M2 surfaces a winning primary label scheme, a meta-model (López de Prado AFML §3.6) learns which of the primary's directional calls to act on. Final position = `sign(primary_pred) × meta_label`. Skipped if M2 produces no winner — meta-labeling cannot rescue a primary with no edge. | conditional — pending M2 outcome | — |
 | 3 | Cross-sectional + regime-aware feature set + per-feature ablation | Researcher knows which new features add per-regime edge and which are noise; SHAP and OOS performance agree on dominant features | pending | — |
 | 4 | Feature catalog (YAML/JSON registry) | Every feature in `features/engineering.py` is registered with metadata; future continuous-agent pair has a machine-readable contract to work against | pending | — |
 | 5 | FRED ASOF-join leakage investigation | Researcher knows whether macro feature dominance is real predictive signal or look-ahead artifact; Phase 2.5 baseline either confirmed or invalidated | pending | — |
@@ -96,6 +97,15 @@ We believe that **redesigning labels, adding cross-sectional + regime-aware feat
 - This PRD is deliberately *sequential* (not parallelized into two subprojects per the user's original question). Running feature work and architecture work simultaneously would confound the diagnostic question Phase 4A is asking. Track A becomes its own PRD only if and when Phase 4A's exit gate clears.
 - This PRD is deliberately *not* the continuous-agent harness (Phase 5). The artifacts it produces (feature catalog, ablation harness, regime-tagged evaluation outputs) are designed to be agent-consumable, but the agents themselves are out of scope.
 - The PRD's exit gate is calibrated against ARIMA(1,0,0), not against buy-and-hold. Beating buy-and-hold on a structurally bull universe over 23 years is a separate (and likely harder) problem than producing a model with edge over the simplest predictive baseline. The Phase 4 spec itself anchors on ARIMA.
+
+### Milestone 2.5 trigger criteria
+
+Milestone 2.5 (meta-labeling) is a *conditional* sub-milestone that runs only if Milestone 2 produces a primary label scheme worth refining. Concretely:
+
+- **Trigger M2.5** if the M2 balanced multi-regime composite ranking identifies a winning primary label scheme that lifts at least one regime's Sharpe above the corresponding ARIMA baseline. Meta-labeling then filters that primary's directional calls to raise the per-trade quality, targeting either (a) reducing the false-positive rate in losing regimes, or (b) sharpening conviction in regimes where the primary already wins.
+- **Skip M2.5** if no M2 scheme produces a regime where the primary beats ARIMA. Meta-labeling on a primary with no edge cannot create edge — it can only filter trades, which raises Sharpe but reduces sample size proportionally. The right next move in that case is Milestone 3 (regime-aware features), not more stacking.
+- **Scope when triggered**: a two-stage harness wrapper (or new harness path) that fits a primary model M1 under purge/embargo, then trains a binary meta-model M2 on (M1's OOS predictions + features), then evaluates the combined `sign(M1) × M2_output` signal through the existing per-regime evaluation. Reference: López de Prado, *Advances in Financial Machine Learning*, §3.6.
+- **Compute budget**: meta-labeling roughly doubles the per-fold fit time (two models per fold). For full-panel evaluation this becomes a ~200-GPU-hour ask, so M2.5 follows the same "preview slice first, then full-panel for Milestone 6" discipline as M2.
 
 ---
 *Status: DRAFT — requirements only. Implementation planning pending via /plan.*
