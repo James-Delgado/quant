@@ -192,5 +192,8 @@ stable. They were chosen before any Phase 4A model was run. To change them:
 
 ---
 
-*Sister document: [evaluation-standards.md](evaluation-standards.md) —
-the aggregate-gate (T1–T6) thresholds from Phases 2 and 3.*
+*Sister documents:
+[evaluation-standards.md](evaluation-standards.md) — the aggregate-gate
+(T1–T6) thresholds from Phases 2 and 3.
+[label-schemes.md](label-schemes.md) — Phase 4A Milestone 2 label-scheme
+ablation; per-regime ranking uses the regimes defined here.*
