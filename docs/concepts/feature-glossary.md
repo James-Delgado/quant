@@ -97,11 +97,20 @@ and increases the probability that price moves are sustained.
 ## FRED macro features (`_attach_fred_features`)
 
 Joined via backward ASOF merge: each bar receives the most recent FRED
-observation whose date ≤ bar date. Weekend and holiday gaps are forward-filled.
-No revision lag for any of these three series.
+observation whose **publication-lag-shifted** date ≤ bar date. Weekend and
+holiday gaps are forward-filled. Since Phase 4A Milestone 5, observation
+dates are shifted forward by each series' pinned publication lag
+(`FRED_PUBLICATION_LAGS`, business days) before the merge — see
+[fred-publication-lag.md](fred-publication-lag.md) for the evidence,
+decision-time convention, and update protocol. Pass
+`fred_publication_lags=None` to `build_features()` for the legacy unlagged
+join (Phase 2.5/3 historical results).
 
 ### DFF
 Federal Funds Effective Rate (%), daily. Source: FRED `DFF`.
+
+Publication lag: **1 business day** (NY Fed releases EFFR the next business
+day ~9am ET — see [fred-publication-lag.md](fred-publication-lag.md)).
 
 The overnight interbank lending rate, set by Fed policy. The dominant driver of
 equity discount rates. Rising DFF compresses valuations; falling DFF expands
@@ -110,12 +119,19 @@ them.
 ### DGS10
 10-Year Treasury Constant Maturity Rate (%), daily. Source: FRED `DGS10`.
 
+Publication lag: **1 business day** (H.15 release; FRED vintage lands the
+next morning — see [fred-publication-lag.md](fred-publication-lag.md)).
+
 Benchmark long-term risk-free rate. Rising yields raise the hurdle for equity
 returns and discount future cash flows at a higher rate. Published Mon–Thu;
 Friday gaps are forward-filled.
 
 ### VIXCLS *(Phase 2.5)*
 CBOE Volatility Index, daily. Source: FRED `VIXCLS`.
+
+Publication lag: **1 business day** by decision-time convention (Cboe
+disseminates the close ~4:15pm ET, after the 4:00pm signal close — see
+[fred-publication-lag.md](fred-publication-lag.md)).
 
 The market's 30-day implied volatility for the S&P 500, derived from options
 prices. High VIX signals fear and has historically preceded positive realized
@@ -128,6 +144,10 @@ volatility (`vol_21d`, `vol_63d`).
 
 ### yield_curve *(Phase 2.5)*
 `DGS10 − DFF` — the term spread.
+
+Publication lag: inherited — computed *after* the asof merge from the
+already-shifted DGS10 and DFF columns, so it is point-in-time correct by
+construction ([fred-publication-lag.md](fred-publication-lag.md)).
 
 The single most-cited macro leading indicator: every US recession since 1970
 has been preceded by an inverted yield curve (yield_curve < 0). A compressed or

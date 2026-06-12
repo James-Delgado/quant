@@ -1,7 +1,6 @@
 """Unit tests for the Alpaca ingestor — all SDK calls mocked."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -9,7 +8,7 @@ import pytest
 
 from conftest import make_alpaca_raw
 from quant.ingest.alpaca_bars import ingest_alpaca_bars, to_processed
-from quant.storage import catalog, lake
+from quant.storage import lake
 
 
 def test_to_processed_adds_required_columns(lake_root):
@@ -50,7 +49,9 @@ def test_to_processed_keeps_latest_ingested_at_on_re_ingest(lake_root):
     to_processed(raw)
     first_ingested = lake.read_processed("equity_bars_daily")["ingested_at"].iloc[0]
 
-    import time; time.sleep(0.05)
+    import time
+
+    time.sleep(0.05)
     to_processed(raw)  # same data, later timestamp
     second_ingested = lake.read_processed("equity_bars_daily")["ingested_at"].iloc[0]
 

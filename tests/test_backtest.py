@@ -941,7 +941,6 @@ class TestReport:
     def flat_result(self):
         """BacktestResult from an all-flat strategy (no trades, no drawdown)."""
         n = 50
-        dates = pd.date_range("2024-01-02", periods=n, freq="B")
         prices = _make_prices(n)
         signals = pd.Series(0, index=prices.index)
         eq, tlog = simulate(

@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
 from conftest import make_tiingo_raw
-from quant.ingest.tiingo_eod import fetch_eod, ingest_tiingo_eod, to_processed
+from quant.ingest.tiingo_eod import fetch_eod, to_processed
 from quant.storage import lake
 
 
