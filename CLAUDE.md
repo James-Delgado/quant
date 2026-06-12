@@ -11,6 +11,7 @@
 | Phase 2.5 — Feature set improvement | ✅ Complete | see below |
 | Phase 3 — LLM sentiment feature | ✅ Complete | `phase-3-sentiment` branch |
 | Phase 4A — Feature/label redesign + regime-conditional eval | 🟡 In progress | Milestones 1 (regime harness) + 2 (label ablation) landed locally; see PRD + plans |
+| Phase 5 — Autonomous research agents | 📋 Vision spec drafted | `docs/PHASE_5_AGENTS.md`; begins after Phase 4A's exit-gate report (either verdict) |
 
 Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
 `report.py`, 87-test suite, and an executed system-tour notebook at
@@ -256,6 +257,8 @@ docs/
 ├── PHASE_2_MODELING.md             Phase 2 spec (baselines done; GBM next)
 ├── PHASE_2.5_FEATURE_IMPROVEMENT.md Phase 2.5 spec (feature set improvement)
 ├── PHASE_3_SENTIMENT.md            Phase 3 spec (LLM sentiment feature)
+├── PHASE_4_ADVANCED.md             Phase 4 spec (Tracks A/B/C — advanced models, execution, event markets)
+├── PHASE_5_AGENTS.md               Phase 5 vision spec (autonomous research-agent fleet)
 ├── REFACTOR_PORTFOLIO_UNION_INDEX.md  union-of-indices refactor of run_portfolio_backtest
 └── concepts/
     ├── purging-and-embargo.md      deep-dive on leakage controls and embargo sizing
