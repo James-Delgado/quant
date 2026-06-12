@@ -4,7 +4,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
 from quant.ingest.rss import _parse_pubdate, _parse_symbol, _tag, fetch_feeds, to_processed
 

@@ -1,20 +1,19 @@
 """Unit tests for the daily orchestration flow."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 
 from quant.flows.daily import daily_ingest
 
 
 def test_daily_ingest_returns_status_map():
     with (
-        patch("quant.flows.daily.ingest_alpaca_bars") as mock_alpaca,
-        patch("quant.flows.daily.ingest_tiingo_eod") as mock_tiingo,
-        patch("quant.flows.daily.ingest_fred_macro") as mock_fred,
-        patch("quant.flows.daily.edgar_flow") as mock_edgar,
-        patch("quant.flows.daily.rss_flow") as mock_rss,
+        patch("quant.flows.daily.ingest_alpaca_bars"),
+        patch("quant.flows.daily.ingest_tiingo_eod"),
+        patch("quant.flows.daily.ingest_fred_macro"),
+        patch("quant.flows.daily.edgar_flow"),
+        patch("quant.flows.daily.rss_flow"),
     ):
         status = daily_ingest()
 

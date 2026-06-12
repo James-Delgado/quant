@@ -10,7 +10,7 @@
 | Phase 2 — GBM model + exit gates | ✅ Complete | see below |
 | Phase 2.5 — Feature set improvement | ✅ Complete | see below |
 | Phase 3 — LLM sentiment feature | ✅ Complete | `phase-3-sentiment` branch |
-| Phase 4A — Feature/label redesign + regime-conditional eval | 🟡 In progress | Milestones 1 (regime harness) + 2 (label ablation) landed locally; see PRD + plans |
+| Phase 4A — Feature/label redesign + regime-conditional eval | 🟡 In progress | Milestones 1 (regime harness), 2 (label ablation) + 5 (FRED leakage — **leak confirmed + material**) landed locally; see PRD + plans |
 | Phase 5 — Autonomous research agents | 📋 Vision spec drafted | `docs/PHASE_5_AGENTS.md`; begins after Phase 4A's exit-gate report (either verdict) |
 
 Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
@@ -54,6 +54,11 @@ Decision: advancing to Phase 3 (LLM sentiment feature) per failure protocol —
 T1 passes but T3 does not; document honestly and test sentiment as independent
 ablation per `docs/concepts/evaluation-standards.md`.
 
+> **M5 re-statement note (2026-06-12):** all Phase 2.5 numbers reflect
+> unlagged FRED joins — a confirmed material look-ahead (see Milestone 5
+> below). Corrected full-panel numbers land in M6; do not re-run nb02 before
+> then.
+
 **Phase 2.5 re-run on Phase 3 universe (2026-06-07).** `02_phase2_modeling.ipynb`
 and `03_model_interpretation.ipynb` were re-executed with `PANEL_SYMS =
 settings.equity_universe` (full Dow 30 + SPY/QQQ/IWM, 33 symbols) and the
@@ -95,6 +100,11 @@ toward `sign(pred)=0` (flat) for the harness to avoid the catastrophic
 short-stack loss the no-sentiment GBM took. See Section 9 of
 `notebooks/04_phase3_sentiment.ipynb` for the full hypothesis.
 
+> **M5 re-statement note (2026-06-12):** all Phase 3 numbers reflect
+> unlagged FRED joins — a confirmed material look-ahead (see Milestone 5
+> below). Corrected full-panel numbers land in M6; do not re-run nb04 before
+> then.
+
 **Phase 4A — in progress.** The Phase 3 GBM does not beat ARIMA OOS, so the
 Phase 4 entry gate (*"prototype shows a real, honest, cost-net edge"*) is
 not met and Track A (transformers/foundation models) is deferred. Phase 4A
@@ -104,8 +114,9 @@ conditional evaluation — that earns the right to Phase 4. PRD and plan:
 - PRD: `.claude/prds/phase-4a-feature-and-label-redesign.prd.md`
 - Milestone 1 plan: `.claude/plans/phase-4a-milestone-1-regime-harness.plan.md`
 - Milestone 2 plan: `.claude/plans/phase-4a-milestone-2-label-ablation.plan.md`
+- Milestone 5 plan: `.claude/plans/phase-4a-milestone-5-fred-leakage.plan.md`
 - Concept references: `docs/concepts/regime-evaluation.md`,
-  `docs/concepts/label-schemes.md`
+  `docs/concepts/label-schemes.md`, `docs/concepts/fred-publication-lag.md`
 
 Milestone 1 (rolling-window + regime-conditional evaluation harness)
 delivered: extended `BacktestResult` with `oos_returns` and
@@ -135,9 +146,33 @@ deepcopy; new ablation reporter (`ablation_summary_table`,
 1.333), `rate_cycle` winner `signed_returns` (control), `triple_barrier`
 last (Sharpe −0.479) — verdict on this slice is *"no scheme alone fixes
 the `rate_cycle` failure regime"*; Milestone 3 (regime-aware features)
-carries the work forward. Milestones 3–6 + conditional 2.5 (meta-labeling
-on M2 winner if one had emerged across all regimes) still pending; gate
-not yet evaluated on real data.
+carries the work forward. Milestones 3, 4, and 6 + conditional 2.5
+(meta-labeling on M2 winner if one had emerged across all regimes) still
+pending; gate not yet evaluated on real data.
+
+Milestone 5 (FRED publication-lag leakage investigation — re-sequenced
+ahead of M3, executed 2026-06-12) delivered: pinned
+`FRED_PUBLICATION_LAGS = {"DGS10": 1, "DFF": 1, "VIXCLS": 1}` in
+`features/engineering.py` and made the publication-lag-shifted ASOF join
+the `build_features` default (`fred_publication_lags=None` reproduces the
+legacy unlagged join bit-for-bit); fixed a session-timezone CAST artifact
+in `_load_fred_wide`; new concept doc
+`docs/concepts/fred-publication-lag.md` (ALFRED-verified lag evidence,
+decision-time convention, update protocol); 376-test suite (376 passed /
+4 skipped) — 15 new tests vs. Milestone 2. nb07 A/B on the 5-symbol ×
+8-year slice (GBM preview, n_iter=10, identical rows/seeds across arms):
+**verdict LEAK CONFIRMED + MATERIAL** — sign-flip fraction 23.3% of OOS
+bars (pinned threshold 5%) and |ΔSharpe| 0.27 aggregate / 0.25 covid /
+0.38 rate_cycle (threshold 0.1) all trip. All pre-fix numbers (Phase
+2.5/3, nb02–nb06) are unreliable at the ±0.1 Sharpe granularity; M6's
+full-panel runs use the corrected join and supersede them. Important
+negative finding: the leak does **not** explain nb03's IS macro dominance
+— macro-only IS hit-rate *improves* under the lag (56.7% → 59.4%), the
+arms are statistically indistinguishable (DM p = 0.72), and SHAP top-5
+rankings are stable (4/5 overlap, Spearman ρ = +0.93). The deltas read as
+GBM model variance on day-shifted inputs, not lost predictive
+information; the IS-dominant/OOS-absent puzzle re-attributes to feature
+instability or label misspecification and hands to M3.
 
 ## Codebase map
 
@@ -159,7 +194,7 @@ src/quant/
 ├── features/
 │   ├── labels.py             generate_labels() → LabelResult(series, horizon_bars)
 │   ├── label_schemes.py      vol_scaled_returns() + triple_barrier_labels() + LDP_DEFAULT (Phase 4A M2)
-│   ├── engineering.py        build_features() — 17 features + optional sentiment_df (19 cols)
+│   ├── engineering.py        build_features() — 17 features + optional sentiment_df (19 cols); lagged FRED join (FRED_PUBLICATION_LAGS, M5)
 │   ├── weights.py            compute_sample_weights() — López de Prado uniqueness weights
 │   ├── finbert.py            FinBERT scorer — score_documents() → sentiment_scored/ (Phase 3)
 │   └── sentiment.py          aggregate_sentiment() + validate_point_in_time() (Phase 3)
@@ -204,7 +239,7 @@ shell convenience for interactive prompts only.
 ## Running things
 
 ```bash
-# Full test suite (361 tests, ~58s, no network):
+# Full test suite (376 tests, ~58s, no network):
 .venv/bin/pytest tests/ -v
 
 # With coverage:
@@ -234,6 +269,10 @@ shell convenience for interactive prompts only.
     --ExecutePreprocessor.timeout=900 notebooks/05_phase4a_regime_harness.ipynb
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.timeout=900 notebooks/06_phase4a_label_ablation.ipynb
+# nb07 (Phase 4A M5 FRED leakage A/B) runs four GBM preview backtests
+# (n_iter=10) + two IS SHAP fits on the 5-symbol slice — needs 1800s timeout:
+.venv/bin/jupyter nbconvert --to notebook --execute --inplace \
+    --ExecutePreprocessor.timeout=1800 notebooks/07_phase4a_fred_leakage.ipynb
 
 # Lint / format:
 .venv/bin/ruff check src/ tests/

@@ -8,9 +8,9 @@ import pytest
 from quant.features.weights import compute_sample_weights
 from quant.features.engineering import (
     _FRED_SERIES,
+    FRED_PUBLICATION_LAGS,
     _attach_fred_features,
     _compute_price_features,
-    _rsi,
     build_features,
 )
 from quant.features.labels import LabelResult, generate_labels
@@ -47,6 +47,52 @@ def _fred_wide(n: int = 10) -> pd.DataFrame:
 def _prices(values: list[float]) -> pd.Series:
     dates = pd.date_range("2024-01-02", periods=len(values), freq="B")
     return pd.Series(values, index=dates, name="close", dtype=float)
+
+
+# Date-coded FRED fixtures: each value encodes its observation date as days
+# since _CODE_BASE (plus a per-series offset of 1000/2000), so tests can
+# recover exactly which observation a bar received from the merged value.
+_CODE_BASE = pd.Timestamp("2022-12-01")
+_SERIES_OFFSETS = {"DGS10": 0.0, "DFF": 1000.0, "VIXCLS": 2000.0}
+
+
+def _encode_dates(dates: pd.DatetimeIndex) -> np.ndarray:
+    naive = dates.tz_convert(None) if dates.tz is not None else dates
+    return (naive.normalize() - _CODE_BASE).days.to_numpy(dtype=float)
+
+
+def _decode_obs_date(value: float) -> pd.Timestamp:
+    return _CODE_BASE + pd.Timedelta(days=int(value) % 1000)
+
+
+def _fred_date_coded(start: str = "2022-12-26", periods: int = 15) -> pd.DataFrame:
+    """Business-day FRED wide frame with date-encoded values."""
+    dates = pd.bdate_range(start, periods=periods, tz="UTC")
+    code = _encode_dates(dates)
+    return pd.DataFrame(
+        {series: code + offset for series, offset in _SERIES_OFFSETS.items()},
+        index=dates,
+    )
+
+
+def _fred_daily_coded(start: str = "2022-12-26", periods: int = 19) -> pd.DataFrame:
+    """Calendar-day FRED wide frame mimicking _load_fred_wide output.
+
+    DFF carries genuine date-coded values every calendar day (it publishes
+    on weekends); DGS10 and VIXCLS publish business days only, so their
+    weekend rows are forward-filled smears of Friday's value — exactly the
+    shape _load_fred_wide produces after its pivot + ffill.
+    """
+    dates = pd.date_range(start, periods=periods, freq="D", tz="UTC")
+    code = _encode_dates(dates)
+    is_bday = dates.dayofweek < 5
+    cols = {}
+    for series, offset in _SERIES_OFFSETS.items():
+        values = pd.Series(code + offset, index=dates)
+        if series != "DFF":
+            values[~is_bday] = np.nan
+        cols[series] = values
+    return pd.DataFrame(cols, index=dates).ffill()
 
 
 class TestComputePriceFeatures:
@@ -182,6 +228,206 @@ class TestAttachFredFeatures:
         merged = _attach_fred_features(feats, fred)
         # The bar that aligns with the NaN row should carry the previous value
         assert merged["DGS10"].notna().sum() > 0, "At least some DGS10 values should be non-NaN"
+
+
+class TestFredPublicationLags:
+    # Calendar anchors (2023): Jan 6 = Friday, Jan 9 = Monday, Jan 10 = Tuesday.
+    FRI = pd.Timestamp("2023-01-06", tz="UTC")
+    MON = pd.Timestamp("2023-01-09", tz="UTC")
+    TUE = pd.Timestamp("2023-01-10", tz="UTC")
+
+    def test_pinned_lags_constant(self):
+        assert FRED_PUBLICATION_LAGS == {"DGS10": 1, "DFF": 1, "VIXCLS": 1}
+
+    def test_lag1_tuesday_bar_receives_monday_obs(self):
+        feats = _compute_price_features(_ohlcv(10))
+        fred = _fred_date_coded()
+
+        merged = _attach_fred_features(feats, fred, publication_lags=FRED_PUBLICATION_LAGS)
+
+        for series in _FRED_SERIES:
+            obs = _decode_obs_date(merged.loc[self.TUE, series])
+            assert obs == self.MON.tz_convert(None), (
+                f"{series}: Tuesday bar must receive Monday's observation under lag=1, got {obs}"
+            )
+
+    def test_none_tuesday_bar_receives_same_day_obs(self):
+        feats = _compute_price_features(_ohlcv(10))
+        fred = _fred_date_coded()
+
+        merged = _attach_fred_features(feats, fred, publication_lags=None)
+
+        for series in _FRED_SERIES:
+            obs = _decode_obs_date(merged.loc[self.TUE, series])
+            assert obs == self.TUE.tz_convert(None), (
+                f"{series}: legacy join must give Tuesday the same-day observation, got {obs}"
+            )
+
+    def test_lag1_monday_bar_receives_friday_obs_no_weekend_smear(self):
+        # Daily frame: DFF has genuine Sat/Sun observations, DGS10/VIXCLS
+        # weekend rows are ffilled Friday smears. Under lag=1 the Monday bar
+        # must see at most Friday's observation for every series — the
+        # weekend rows must neither leak (DFF) nor smear unshifted values
+        # back over the shift (DGS10/VIXCLS).
+        feats = _compute_price_features(_ohlcv(10))
+        fred = _fred_daily_coded()
+
+        merged = _attach_fred_features(feats, fred, publication_lags=FRED_PUBLICATION_LAGS)
+
+        for series in _FRED_SERIES:
+            obs = _decode_obs_date(merged.loc[self.MON, series])
+            assert obs == self.FRI.tz_convert(None), (
+                f"{series}: Monday bar must receive Friday's observation under lag=1, got {obs}"
+            )
+
+    def test_invariant_received_obs_at_most_bar_minus_lag_bdays(self):
+        feats = _compute_price_features(_ohlcv(10))
+        fred = _fred_daily_coded()
+        lag = 1
+
+        merged = _attach_fred_features(
+            feats, fred, publication_lags={s: lag for s in _FRED_SERIES}
+        )
+
+        for bar in merged.index:
+            cutoff = (bar.tz_convert(None) - pd.offsets.BDay(lag)).normalize()
+            for series in _FRED_SERIES:
+                value = merged.loc[bar, series]
+                if np.isnan(value):
+                    continue
+                obs = _decode_obs_date(value)
+                assert obs <= cutoff, (
+                    f"{series} at bar {bar.date()}: received obs {obs.date()} "
+                    f"> cutoff {cutoff.date()} (t − {lag} business days)"
+                )
+
+    def test_none_reproduces_legacy_join_bit_for_bit(self):
+        feats = _compute_price_features(_ohlcv(20))
+        fred = _fred_wide(10)
+
+        merged = _attach_fred_features(feats, fred, publication_lags=None)
+
+        # Independent reference for the legacy backward-asof semantics:
+        # reindex FRED onto the union of dates, ffill, evaluate at bar dates.
+        union = fred.index.union(feats.index)
+        expected = fred.reindex(union).ffill().loc[feats.index]
+        for series in _FRED_SERIES:
+            pd.testing.assert_series_equal(
+                merged[series], expected[series], check_names=False, check_freq=False
+            )
+
+    def test_per_series_lags_shift_independently(self):
+        feats = _compute_price_features(_ohlcv(10))
+        fred = _fred_date_coded()
+
+        merged = _attach_fred_features(
+            feats, fred, publication_lags={"DGS10": 2, "DFF": 1}
+        )
+
+        assert _decode_obs_date(merged.loc[self.TUE, "DGS10"]) == self.FRI.tz_convert(None)
+        assert _decode_obs_date(merged.loc[self.TUE, "DFF"]) == self.MON.tz_convert(None)
+        # VIXCLS absent from the mapping → unshifted (legacy same-day join).
+        assert _decode_obs_date(merged.loc[self.TUE, "VIXCLS"]) == self.TUE.tz_convert(None)
+
+    def test_yield_curve_computed_from_shifted_series(self):
+        feats = _compute_price_features(_ohlcv(10))
+        fred = _fred_date_coded()
+
+        merged = _attach_fred_features(
+            feats, fred, publication_lags={"DGS10": 2, "DFF": 1}
+        )
+
+        expected = merged["DGS10"] - merged["DFF"]
+        pd.testing.assert_series_equal(merged["yield_curve"], expected, check_names=False)
+
+    def test_negative_lag_raises(self):
+        feats = _compute_price_features(_ohlcv(10))
+        fred = _fred_date_coded()
+        with pytest.raises(ValueError, match="must be >= 0"):
+            _attach_fred_features(feats, fred, publication_lags={"DGS10": -1})
+
+    def test_empty_fred_with_lags_fills_nan(self):
+        feats = _compute_price_features(_ohlcv(10))
+        merged = _attach_fred_features(feats, pd.DataFrame(), publication_lags=FRED_PUBLICATION_LAGS)
+        for col in _FRED_SERIES:
+            assert merged[col].isna().all()
+        assert merged["yield_curve"].isna().all()
+
+    def test_build_features_default_applies_pinned_lags(self, monkeypatch):
+        monkeypatch.setattr(
+            "quant.features.engineering._load_fred_wide",
+            lambda con: _fred_date_coded(),
+        )
+        result = build_features(["AAPL"], {"AAPL": _ohlcv(10)})
+
+        obs = _decode_obs_date(result["AAPL"].loc[self.TUE, "DGS10"])
+        assert obs == self.MON.tz_convert(None), (
+            "build_features default must apply the pinned publication lags"
+        )
+
+    def test_build_features_none_gives_legacy_output(self, monkeypatch):
+        monkeypatch.setattr(
+            "quant.features.engineering._load_fred_wide",
+            lambda con: _fred_date_coded(),
+        )
+        result = build_features(
+            ["AAPL"], {"AAPL": _ohlcv(10)}, fred_publication_lags=None
+        )
+
+        obs = _decode_obs_date(result["AAPL"].loc[self.TUE, "DGS10"])
+        assert obs == self.TUE.tz_convert(None), (
+            "fred_publication_lags=None must reproduce the legacy unlagged join"
+        )
+
+
+class TestLoadFredWide:
+    """Regression: observation-date extraction must be timezone-independent.
+
+    FRED observation dates are stored as UTC-midnight TIMESTAMPTZ values
+    (ingest/fred_macro.py). The loader previously extracted the date with a
+    SQL ``CAST(timestamp AS DATE)``, which DuckDB evaluates in the *session*
+    timezone — on any US-timezone machine that rotated every observation
+    date back one calendar day, handing bar t the t+1 observation under the
+    unlagged join (discovered in nb07 §2). The date must come out identical
+    regardless of session timezone.
+    """
+
+    def _write_fred(self, dates: pd.DatetimeIndex) -> None:
+        from quant.storage import lake
+
+        df = pd.DataFrame(
+            {
+                "timestamp": dates,
+                "series_id": "DGS10",
+                "value": np.arange(len(dates), dtype=float),
+                "ingested_at": pd.Timestamp.now(tz="UTC"),
+            }
+        )
+        lake.write_processed(df, dataset="macro_fred", partition_cols=None)
+
+    @pytest.mark.parametrize(
+        "session_tz", ["UTC", "America/New_York", "Asia/Tokyo"]
+    )
+    def test_observation_dates_survive_session_timezone(self, lake_root, session_tz):
+        import duckdb
+
+        from quant.features.engineering import _load_fred_wide
+
+        obs_dates = pd.bdate_range("2023-01-02", periods=5, tz="UTC")
+        self._write_fred(obs_dates)
+
+        con = duckdb.connect()
+        try:
+            con.execute(f"SET TimeZone = '{session_tz}'")
+            wide = _load_fred_wide(con)
+        finally:
+            con.close()
+
+        assert list(wide.index) == list(obs_dates), (
+            f"observation dates rotated under session timezone {session_tz}"
+        )
+        # Value k encodes obs date k — the join key must not have rotated.
+        assert wide["DGS10"].tolist() == [float(k) for k in range(5)]
 
 
 class TestBuildFeatures:

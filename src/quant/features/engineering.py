@@ -2,39 +2,60 @@
 
 All features are timestamped to when they were knowable — no lookahead.
 
-FRED macro data is joined via a DuckDB ASOF JOIN rather than per-bar
-catalog.query() calls. ASOF JOIN runs in a single SQL query and attaches
-the most recent FRED observation whose ingested_at <= bar_date for each bar.
-Opening O(T) DuckDB connections (one per bar) is explicitly avoided.
+FRED macro data is joined with a backward ASOF merge on **observation
+date**: each bar receives the most recent FRED observation whose
+(publication-lag-shifted) observation date <= bar date. The lake stores
+observation dates, not publication dates, and DFF/DGS10 are published the
+*next* business day — so by default each series' observation dates are
+shifted forward by its pinned publication lag (`FRED_PUBLICATION_LAGS`,
+business days) before the merge, ensuring the model only sees values that
+were publicly knowable at the close of the bar. Evidence, the decision-time
+convention, and the update protocol live in
+docs/concepts/fred-publication-lag.md. Passing `fred_publication_lags=None`
+to build_features() reproduces the legacy unlagged join (Phase 2.5/3
+results predate the lag fix).
+
+The wide FRED frame is loaded with a single DuckDB query and merged in
+pandas — O(T) per-bar catalog.query() calls are explicitly avoided.
 
 FRED series used:
-  - DGS10  10-Year Treasury yield   (same-day publication, no revision lag)
-  - DFF    Fed Funds effective rate  (same-day publication, no revision lag)
-  - VIXCLS CBOE Volatility Index     (same-day publication, no revision lag)
+  - DGS10  10-Year Treasury yield   (H.15 release; FRED vintage next business day → lag 1)
+  - DFF    Fed Funds effective rate (NY Fed EFFR, next business day ~9am ET → lag 1)
+  - VIXCLS CBOE Volatility Index    (Cboe close ~4:15pm ET, after the 4:00pm
+                                     signal close → lag 1 by decision-time convention)
 
-Derived macro features (computed post-merge, no additional ingestion):
+Derived macro features (computed post-merge from the shifted series):
   - yield_curve = DGS10 − DFF  (term spread; negative = inverted curve)
 
 Excluded:
   - CPI, UNRATE — subject to large revisions released weeks after reference
-    period; using real-time vintage requires a separate vintage data source.
+    period; the lake keeps latest vintage only (see ingest/fred_macro.py),
+    so using them would require a separate real-time vintage data source.
 """
 from __future__ import annotations
 
 import logging
 import warnings
+from collections.abc import Mapping
 
 import duckdb
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
-
 from quant.features.sentiment import aggregate_sentiment
 from quant.storage.catalog import processed_glob
 
-# FRED series that are safe to use — no revision lag.
+logger = logging.getLogger(__name__)
+
+# FRED series that are safe to use — negligible revision risk under the
+# lake's latest-vintage-only storage (see docs/concepts/fred-publication-lag.md).
 _FRED_SERIES: tuple[str, ...] = ("DGS10", "DFF", "VIXCLS")
+
+# Pinned publication lags in business days — verified against ALFRED vintage
+# metadata on 2026-06-12 (VIXCLS pinned by decision-time convention, not
+# ALFRED). Pre-committed on correctness grounds; do NOT retune to make a
+# model pass. Rationale: docs/concepts/fred-publication-lag.md.
+FRED_PUBLICATION_LAGS: dict[str, int] = {"DGS10": 1, "DFF": 1, "VIXCLS": 1}
 
 
 def _rsi(close: pd.Series, window: int) -> pd.Series:
@@ -72,20 +93,77 @@ def _compute_price_features(prices: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(feats, index=prices.index)
 
 
+def _shift_bdays(index: pd.DatetimeIndex, lag: int) -> pd.DatetimeIndex:
+    """Shift observation dates forward by `lag` business days.
+
+    Weekend observation dates (DFF publishes every calendar day) first roll
+    forward to the next business day, then count `lag` from there — a Sunday
+    observation with lag=1 becomes available Tuesday, matching the NY Fed's
+    actual EFFR release schedule for weekend rates.
+    """
+    naive = index.tz_convert(None) if index.tz is not None else index
+    shifted = np.busday_offset(naive.values.astype("datetime64[D]"), lag, roll="forward")
+    # busday_offset returns datetime64[D]; restore the source resolution so
+    # the merge keys keep a single unit.
+    out = pd.DatetimeIndex(shifted.astype(naive.values.dtype))
+    return out.tz_localize(index.tz) if index.tz is not None else out
+
+
+def _apply_publication_lags(
+    fred_df: pd.DataFrame,
+    publication_lags: Mapping[str, int],
+) -> pd.DataFrame:
+    """Re-index each FRED series to its publication-lag-shifted dates.
+
+    The input frame may already be forward-filled (`_load_fred_wide` ffills
+    weekend/holiday gaps). Shifting the ffilled values is safe: an ffilled
+    entry duplicates an *older* observation, so shifting it can never move
+    information earlier in time. When several observation dates collide on
+    one availability date (e.g., Fri/Sat/Sun all becoming available Monday
+    or Tuesday), the latest observation wins (`keep="last"` on the sorted
+    series). The combined frame is re-ffilled so series with different lags
+    stay dense for the row-wise asof merge.
+    """
+    negative = {k: v for k, v in publication_lags.items() if v < 0}
+    if negative:
+        raise ValueError(f"publication lags must be >= 0 (got {negative})")
+    shifted: dict[str, pd.Series] = {}
+    for col in fred_df.columns:
+        s = fred_df[col].dropna()
+        lag = publication_lags.get(col, 0)
+        if lag > 0 and not s.empty:
+            s = pd.Series(s.to_numpy(), index=_shift_bdays(s.index, lag), name=col)
+            s = s[~s.index.duplicated(keep="last")]
+        shifted[col] = s
+    return pd.DataFrame(shifted).sort_index().ffill()
+
+
 def _attach_fred_features(
     bars: pd.DataFrame,
     fred_df: pd.DataFrame,
+    publication_lags: Mapping[str, int] | None = None,
 ) -> pd.DataFrame:
     """Attach FRED macro features to bar data using a pandas ASOF merge.
 
     For each bar date, attaches the most recent FRED observation whose
-    date <= bar date — identical semantics to a DuckDB ASOF JOIN.
+    (shifted) observation date <= bar date — identical semantics to a
+    DuckDB ASOF JOIN.
+
+    When `publication_lags` is provided, each series' observation dates are
+    shifted forward by its lag (business days) *before* the merge, so bar t
+    only sees observations dated <= t − lag business days. The shift is
+    applied per series via `_apply_publication_lags` — see its docstring for
+    why composing the shift with the upstream weekend ffill is leak-safe.
+    With `publication_lags=None` the legacy unlagged join is reproduced
+    bit-for-bit.
 
     Parameters
     ----------
-    bars:     Bar-level DataFrame with DatetimeIndex.
-    fred_df:  FRED data in wide format: one column per series_id,
-              DatetimeIndex sorted ascending.
+    bars:             Bar-level DataFrame with DatetimeIndex.
+    fred_df:          FRED data in wide format: one column per series_id,
+                      DatetimeIndex sorted ascending.
+    publication_lags: Optional {series_id: lag in business days}. Series
+                      missing from the mapping are left unshifted.
     """
     if fred_df.empty:
         out = bars.copy()
@@ -93,6 +171,9 @@ def _attach_fred_features(
             out[col] = np.nan
         out["yield_curve"] = np.nan
         return out
+
+    if publication_lags:
+        fred_df = _apply_publication_lags(fred_df, publication_lags)
 
     # Ensure we have a stable column name for the merge key regardless of
     # whether the caller's index is named.
@@ -154,6 +235,15 @@ def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
     A single SQL query per connection — not one per bar.
     Returns empty DataFrame if the lake has no FRED data yet.
+
+    Observation dates are stored as UTC-midnight TIMESTAMPTZ values (see
+    ingest/fred_macro.py), so the observation date is extracted in pandas
+    with an explicit UTC conversion. The previous implementation used a SQL
+    ``CAST(timestamp AS DATE)``, which DuckDB evaluates in the *session*
+    timezone (system-local by default): on any US-timezone machine that
+    shifted every observation date back one calendar day, silently handing
+    bar t the t+1 observation under the unlagged join. Discovered and
+    measured in nb07 §2; see docs/concepts/fred-publication-lag.md.
     """
     glob = processed_glob("macro_fred")
     # Use positional parameters for the series filter rather than f-string
@@ -162,12 +252,12 @@ def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     placeholders = ", ".join("?" * len(_FRED_SERIES))
     sql = f"""
         SELECT
-            CAST(timestamp AS DATE) AS date,
+            timestamp,
             series_id,
             value
         FROM read_parquet('{glob}', hive_partitioning = true)
         WHERE series_id IN ({placeholders})
-        ORDER BY series_id, date
+        ORDER BY series_id, timestamp
     """
     try:
         df = con.execute(sql, list(_FRED_SERIES)).df()
@@ -180,6 +270,9 @@ def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
 
+    # Timezone-independent date extraction: convert to UTC, then truncate to
+    # midnight. Never CAST to DATE in SQL — that uses the session timezone.
+    df["date"] = pd.to_datetime(df["timestamp"], utc=True).dt.normalize()
     wide = df.pivot_table(index="date", columns="series_id", values="value", aggfunc="last")
     wide.index = pd.to_datetime(wide.index, utc=True)
     wide.columns.name = None
@@ -196,6 +289,7 @@ def build_features(
     prices_by_symbol: dict[str, pd.DataFrame],
     sentiment_df: pd.DataFrame | None = None,
     sentiment_lookback_days: int = 30,
+    fred_publication_lags: Mapping[str, int] | None = FRED_PUBLICATION_LAGS,
 ) -> dict[str, pd.DataFrame]:
     """Build a point-in-time correct feature matrix for each symbol.
 
@@ -213,6 +307,11 @@ def build_features(
                              Existing callers passing None get the original
                              17-column output unchanged.
     sentiment_lookback_days: Rolling window for sentiment aggregation (days).
+    fred_publication_lags:   {series_id: lag in business days} applied to FRED
+                             observation dates before the asof merge. Defaults
+                             to the pinned FRED_PUBLICATION_LAGS. Pass None to
+                             reproduce the legacy unlagged join (A/B control
+                             arm; matches Phase 2.5/3 historical results).
 
     Returns
     -------
@@ -236,7 +335,7 @@ def build_features(
     for sym in symbols:
         price_feats = _compute_price_features(prices_by_symbol[sym])
         feat = (
-            _attach_fred_features(price_feats, fred_wide)
+            _attach_fred_features(price_feats, fred_wide, fred_publication_lags)
             if not fred_wide.empty
             else price_feats
         )

@@ -1,7 +1,7 @@
 """Unit tests for the FRED ingestor — all SDK calls mocked."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -25,7 +25,9 @@ def test_to_processed_deduplicates_keeping_latest_ingested(lake_root):
     first_pull = make_fred_raw(3)
     to_processed(first_pull)
 
-    import time; time.sleep(0.05)
+    import time
+
+    time.sleep(0.05)
     revised = first_pull.copy()
     revised["value"] = revised["value"] + 999  # revised values
     to_processed(revised)
@@ -70,7 +72,7 @@ def test_to_processed_validates_schema(lake_root):
 @patch("quant.ingest.fred_macro.Fred", autospec=True)
 def test_ingest_fred_macro_revision_overlap(mock_fred_cls, lake_root):
     """Incremental run must use a 45-day overlap window."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import timedelta
     from quant.storage import catalog
 
     # Seed via to_processed so the lake has a valid ingested_at column and
