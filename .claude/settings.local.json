@@ -45,7 +45,14 @@
       "Bash(xargs -I {} ps -p {} -o pid,etime,time,%cpu,%mem,command)",
       "Bash(mkdir -p /Users/jamesdelgado/Projects/AgentHarness/docs)",
       "Read(//Users/jamesdelgado/Projects/**)",
-      "Bash(grep -nA2 \"## 9\\\\|Section 9\\\\|Decision\\\\|conclusion\\\\|## Conclusion\")"
+      "Bash(grep -nA2 \"## 9\\\\|Section 9\\\\|Decision\\\\|conclusion\\\\|## Conclusion\")",
+      "Read(//tmp/**)",
+      "Bash(grep -v \"\\\\.log$\")",
+      "Read(//Users/jamesdelgado/.gstack/**)",
+      "Read(//Users/jamesdelgado/.claude/**)",
+      "Bash(pkill -f \"grep -ho\")",
+      "Bash(grep -lc -F \"arxiv\" *.jsonl)",
+      "Bash(grep -li -F \"continuously looking for alpha\" *.jsonl)"
     ]
   },
   "sandbox": {
