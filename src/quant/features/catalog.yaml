@@ -1,0 +1,392 @@
+# Feature catalog (Phase 4A Milestone 4).
+#
+# One entry per column produced by build_features() (default + sentiment)
+# and add_cross_sectional_features(). The maximal column set is 27:
+#   13 price + 3 macro + 1 macro_derived + 4 regime + 3 cross_sectional + 3 sentiment.
+#
+# Drift contract: tests/test_catalog.py asserts
+#   set(load_catalog().keys()) == set(produced_columns)
+# in both directions. Adding a column without registering it, or retiring
+# one without removing the YAML entry, fails CI by naming the offender.
+#
+# Mutable fields: `ablation_status` and `regime_notes` (records what the
+# milestone learned). Every other field describes the feature definition
+# and changes only when the feature itself changes.
+#
+# Conventions:
+#   - `lookback_bars`: warmup bars before the first valid value (0 if none)
+#   - `publication_lag_days`: business days between observation and bar-time
+#     availability. Set by Milestone 5 (FRED_PUBLICATION_LAGS). 0 elsewhere.
+#   - `glossary_ref`: anchor inside docs/concepts/feature-glossary.md —
+#     the drift test enforces that every anchor exists.
+
+features:
+  # -------------------------------------------------------------------
+  # Price features (Phase 2 + 2.5)  — _compute_price_features
+  # -------------------------------------------------------------------
+  - name: ret_1d
+    family: price
+    source: alpaca_ohlcv
+    formula: "close.pct_change(1)"
+    lookback_bars: 1
+    publication_lag_days: 0
+    point_in_time_rule: "uses only closes <= t"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#ret_1d"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: ret_5d
+    family: price
+    source: alpaca_ohlcv
+    formula: "close.pct_change(5)"
+    lookback_bars: 5
+    publication_lag_days: 0
+    point_in_time_rule: "uses only closes <= t"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#ret_5d"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: ret_21d
+    family: price
+    source: alpaca_ohlcv
+    formula: "close.pct_change(21)"
+    lookback_bars: 21
+    publication_lag_days: 0
+    point_in_time_rule: "uses only closes <= t"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#ret_21d"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: vol_21d
+    family: price
+    source: alpaca_ohlcv
+    formula: "ret.rolling(21).std()"
+    lookback_bars: 21
+    publication_lag_days: 0
+    point_in_time_rule: "rolling stdev of returns over the trailing 21 bars"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#vol_21d"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: vol_63d
+    family: price
+    source: alpaca_ohlcv
+    formula: "ret.rolling(63).std()"
+    lookback_bars: 63
+    publication_lag_days: 0
+    point_in_time_rule: "rolling stdev of returns over the trailing 63 bars"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#vol_63d"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: mom_21d
+    family: price
+    source: alpaca_ohlcv
+    formula: "sign(ret.rolling(21).sum())"
+    lookback_bars: 21
+    publication_lag_days: 0
+    point_in_time_rule: "uses only returns <= t; MomentumBaseline reads this at column index 5"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#mom_21d"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: rsi_14
+    family: price
+    source: alpaca_ohlcv
+    formula: "100 - 100 / (1 + avg_gain_14 / avg_loss_14)"
+    lookback_bars: 14
+    publication_lag_days: 0
+    point_in_time_rule: "uses only closes <= t"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#rsi_14"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: log_volume
+    family: volume
+    source: alpaca_ohlcv
+    formula: "log1p(volume)"
+    lookback_bars: 0
+    publication_lag_days: 0
+    point_in_time_rule: "uses only the bar-t volume"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#log_volume"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: ret_252d
+    family: price
+    source: alpaca_ohlcv
+    formula: "close.pct_change(252)"
+    lookback_bars: 252
+    publication_lag_days: 0
+    point_in_time_rule: "uses only closes <= t"
+    added_phase: "2.5"
+    glossary_ref: "docs/concepts/feature-glossary.md#ret_252d"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: ret_126d
+    family: price
+    source: alpaca_ohlcv
+    formula: "close.pct_change(126)"
+    lookback_bars: 126
+    publication_lag_days: 0
+    point_in_time_rule: "uses only closes <= t"
+    added_phase: "2.5"
+    glossary_ref: "docs/concepts/feature-glossary.md#ret_126d"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: ma200_ratio
+    family: price
+    source: alpaca_ohlcv
+    formula: "close / close.rolling(200).mean()"
+    lookback_bars: 200
+    publication_lag_days: 0
+    point_in_time_rule: "uses only closes <= t"
+    added_phase: "2.5"
+    glossary_ref: "docs/concepts/feature-glossary.md#ma200_ratio"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: ma50_ratio
+    family: price
+    source: alpaca_ohlcv
+    formula: "close / close.rolling(50).mean()"
+    lookback_bars: 50
+    publication_lag_days: 0
+    point_in_time_rule: "uses only closes <= t"
+    added_phase: "2.5"
+    glossary_ref: "docs/concepts/feature-glossary.md#ma50_ratio"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: volume_ratio
+    family: price
+    source: alpaca_ohlcv
+    formula: "volume / volume.rolling(63).mean()"
+    lookback_bars: 63
+    publication_lag_days: 0
+    point_in_time_rule: "uses only volumes <= t"
+    added_phase: "2.5"
+    glossary_ref: "docs/concepts/feature-glossary.md#volume_ratio"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  # -------------------------------------------------------------------
+  # FRED macro features (Phase 2 + 2.5)  — _attach_fred_features
+  # Publication lag pinned by Milestone 5 (FRED_PUBLICATION_LAGS).
+  # -------------------------------------------------------------------
+  - name: DGS10
+    family: macro
+    source: fred
+    formula: "FRED DGS10 series (10-Year Treasury Constant Maturity Rate)"
+    lookback_bars: 0
+    publication_lag_days: 1
+    point_in_time_rule: "observation date shifted +1 business day before asof join"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#DGS10"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: DFF
+    family: macro
+    source: fred
+    formula: "FRED DFF series (Federal Funds Effective Rate)"
+    lookback_bars: 0
+    publication_lag_days: 1
+    point_in_time_rule: "observation date shifted +1 business day before asof join"
+    added_phase: "2"
+    glossary_ref: "docs/concepts/feature-glossary.md#DFF"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: VIXCLS
+    family: macro
+    source: fred
+    formula: "FRED VIXCLS series (CBOE Volatility Index close)"
+    lookback_bars: 0
+    publication_lag_days: 1
+    point_in_time_rule: "observation date shifted +1 business day before asof join"
+    added_phase: "2.5"
+    glossary_ref: "docs/concepts/feature-glossary.md#VIXCLS"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: yield_curve
+    family: macro_derived
+    source: derived
+    formula: "DGS10 - DFF"
+    lookback_bars: 0
+    publication_lag_days: 1
+    point_in_time_rule: "computed post-merge from already-lag-shifted DGS10/DFF; inherits their lag"
+    added_phase: "2.5"
+    glossary_ref: "docs/concepts/feature-glossary.md#yield_curve"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: ["DGS10", "DFF"]
+
+  # -------------------------------------------------------------------
+  # Regime-indicator features (Phase 4A Milestone 3)  — _add_regime_features
+  # M3 verdict: nb08 slice (5 symbols × 8 years, signed_returns labels)
+  # PRD gate FAILED 2/3 — survivors trend_regime, xs_rank_vol_21d.
+  # -------------------------------------------------------------------
+  - name: vix_regime
+    family: regime
+    source: derived
+    formula: "0 if VIXCLS <= low; 2 if VIXCLS >= high; 1 otherwise (thresholds from VIXThresholdDetector)"
+    lookback_bars: 0
+    publication_lag_days: 1
+    point_in_time_rule: "deterministic transform of VIXCLS at bar t; inherits VIXCLS lag"
+    added_phase: "4A"
+    glossary_ref: "docs/concepts/feature-glossary.md#vix_regime"
+    ablation_status: tested_no_edge
+    regime_notes: "M3 slice (nb08): best-regime lift +0.213 in rate_cycle; not qualifying under noise guard"
+    depends_on: ["VIXCLS"]
+
+  - name: curve_inverted
+    family: regime
+    source: derived
+    formula: "(yield_curve < 0).astype(float)"
+    lookback_bars: 0
+    publication_lag_days: 1
+    point_in_time_rule: "deterministic transform of yield_curve at bar t; inherits yield_curve lag"
+    added_phase: "4A"
+    glossary_ref: "docs/concepts/feature-glossary.md#curve_inverted"
+    ablation_status: tested_no_edge
+    regime_notes: "M3 slice (nb08): best-regime lift +0.133 in rate_cycle; not qualifying under noise guard"
+    depends_on: ["yield_curve"]
+
+  - name: vol_regime_ratio
+    family: regime
+    source: derived
+    formula: "vol_21d / vol_63d (0-denominator -> NaN)"
+    lookback_bars: 63
+    publication_lag_days: 0
+    point_in_time_rule: "deterministic transform of vol_21d/vol_63d at bar t"
+    added_phase: "4A"
+    glossary_ref: "docs/concepts/feature-glossary.md#vol_regime_ratio"
+    ablation_status: tested_no_edge
+    regime_notes: "M3 slice (nb08): best-regime lift +0.082 in rate_cycle; not qualifying under noise guard"
+    depends_on: ["vol_21d", "vol_63d"]
+
+  - name: trend_regime
+    family: regime
+    source: derived
+    formula: "(ma200_ratio > 1).astype(float)"
+    lookback_bars: 200
+    publication_lag_days: 0
+    point_in_time_rule: "deterministic transform of ma200_ratio at bar t"
+    added_phase: "4A"
+    glossary_ref: "docs/concepts/feature-glossary.md#trend_regime"
+    ablation_status: tested_edge
+    regime_notes: "M3 slice (nb08): survived gate via rate_cycle (lift +0.168, sign-consistent across regimes)"
+    depends_on: ["ma200_ratio"]
+
+  # -------------------------------------------------------------------
+  # Cross-sectional rank features (Phase 4A Milestone 3)
+  #   — add_cross_sectional_features
+  # -------------------------------------------------------------------
+  - name: xs_rank_ret_21d
+    family: cross_sectional
+    source: derived
+    formula: "rank(ret_21d, axis=symbols, pct=True)"
+    lookback_bars: 21
+    publication_lag_days: 0
+    point_in_time_rule: "same-date rank across universe symbols with data at t"
+    added_phase: "4A"
+    glossary_ref: "docs/concepts/feature-glossary.md#xs_rank_ret_21d"
+    ablation_status: tested_no_edge
+    regime_notes: "M3 slice (nb08): best-regime lift +0.134 in rate_cycle; not qualifying under noise guard"
+    depends_on: ["ret_21d"]
+
+  - name: xs_rank_ret_252d
+    family: cross_sectional
+    source: derived
+    formula: "rank(ret_252d, axis=symbols, pct=True)"
+    lookback_bars: 252
+    publication_lag_days: 0
+    point_in_time_rule: "same-date rank across universe symbols with data at t"
+    added_phase: "4A"
+    glossary_ref: "docs/concepts/feature-glossary.md#xs_rank_ret_252d"
+    ablation_status: tested_no_edge
+    regime_notes: "M3 slice (nb08): best-regime lift +0.281 in rate_cycle; not qualifying under noise guard"
+    depends_on: ["ret_252d"]
+
+  - name: xs_rank_vol_21d
+    family: cross_sectional
+    source: derived
+    formula: "rank(vol_21d, axis=symbols, pct=True)"
+    lookback_bars: 21
+    publication_lag_days: 0
+    point_in_time_rule: "same-date rank across universe symbols with data at t"
+    added_phase: "4A"
+    glossary_ref: "docs/concepts/feature-glossary.md#xs_rank_vol_21d"
+    ablation_status: tested_edge
+    regime_notes: "M3 slice (nb08): survived gate via covid (lift +0.636, CI90 [-0.01, 1.25])"
+    depends_on: ["vol_21d"]
+
+  # -------------------------------------------------------------------
+  # Sentiment features (Phase 3)  — aggregate_sentiment via build_features
+  # -------------------------------------------------------------------
+  - name: sentiment_score
+    family: sentiment
+    source: edgar_finbert
+    formula: "mean(FinBERT score over docs published in (t - lookback, t])"
+    lookback_bars: 30
+    publication_lag_days: 0
+    point_in_time_rule: "aggregates only documents whose published_at < bar t (strict, via aggregate_sentiment)"
+    added_phase: "3"
+    glossary_ref: "docs/concepts/feature-glossary.md#sentiment_score"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: doc_count
+    family: sentiment
+    source: edgar_finbert
+    formula: "count(docs in (t - lookback, t])"
+    lookback_bars: 30
+    publication_lag_days: 0
+    point_in_time_rule: "aggregates only documents whose published_at < bar t"
+    added_phase: "3"
+    glossary_ref: "docs/concepts/feature-glossary.md#doc_count"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: []
+
+  - name: has_coverage
+    family: sentiment
+    source: edgar_finbert
+    formula: "(doc_count > 0).astype(float)"
+    lookback_bars: 30
+    publication_lag_days: 0
+    point_in_time_rule: "derived from doc_count at bar t"
+    added_phase: "3"
+    glossary_ref: "docs/concepts/feature-glossary.md#has_coverage"
+    ablation_status: untested
+    regime_notes: null
+    depends_on: ["doc_count"]

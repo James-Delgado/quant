@@ -2,9 +2,19 @@
 
 > Succinct reference for all features produced by
 > `src/quant/features/engineering.py:build_features()` (17 base + 4 regime
-> indicators) and `src/quant/features/cross_sectional.py:
-> add_cross_sectional_features()` (3 cross-sectional ranks).
-> All features are point-in-time correct — no lookahead.
+> indicators + 3 sentiment when `sentiment_df` is passed) and
+> `src/quant/features/cross_sectional.py:add_cross_sectional_features()`
+> (3 cross-sectional ranks). All features are point-in-time correct — no
+> lookahead.
+>
+> **Catalog ↔ glossary division of labor.**
+> `src/quant/features/catalog.yaml` (Phase 4A M4) is the *machine-readable
+> index*: one row per column, with family/source/lookback/lag/ablation
+> metadata. This file is the *prose rationale*: what each feature means and
+> why we expect it to carry signal. The drift-enforcement test in
+> `tests/test_catalog.py` checks every catalog entry's `glossary_ref`
+> resolves to a `### <name>` heading below, so prose and registry can't
+> silently diverge.
 
 ---
 
@@ -227,6 +237,7 @@ On the 5-symbol slice notebooks the ranks are coarse quintiles
 ({0.2, 0.4, 0.6, 0.8, 1.0}); the full 33-symbol panel gives finer ranks.
 
 ### xs_rank_ret_21d *(Phase 4A)*
+
 Cross-sectional percentile rank of `ret_21d`.
 
 Relative 1-month momentum: is this symbol leading or lagging the panel this
@@ -248,6 +259,35 @@ Relative riskiness axis — the low-volatility anomaly (Ang et al., 2006) is
 a cross-sectional finding: the *quietest* names in the panel, not "low vol"
 in absolute terms, historically earn superior risk-adjusted returns.
 Lookback: 21 bars (inherited from `vol_21d`).
+
+---
+
+## Sentiment features (`aggregate_sentiment`) *(Phase 3)*
+
+Produced by `src/quant/features/sentiment.py` via FinBERT-scored 8-K / 10-K
+/ 10-Q filings and RSS items (see `src/quant/features/finbert.py` and
+`src/quant/ingest/edgar.py`). Attached when `build_features()` is called
+with a non-`None` `sentiment_df`.
+
+**Point-in-time rule:** `aggregate_sentiment()` uses a strict-less-than
+filter on `published_at` (`published_at < bar t`) and a fixed lookback
+window (default 30 calendar days), so the model sees only documents
+publicly available before the bar close.
+
+### sentiment_score
+Mean FinBERT sentiment score over documents published in the trailing
+`sentiment_lookback_days` window for this symbol. Range roughly [-1, +1];
+NaN when no documents in window.
+
+### doc_count
+Number of documents in the trailing window for this symbol. Provides the
+denominator behind `sentiment_score` and a coarse coverage signal in its
+own right.
+
+### has_coverage
+Binary flag: `(doc_count > 0).astype(float)`. Distinguishes "no news" from
+a neutral mean score and lets the model condition on whether sentiment
+information is present at all.
 
 ---
 
