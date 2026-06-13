@@ -84,7 +84,8 @@
       "Bash(echo *)",
       "Bash(mkdir *)",
       "Bash(nbstripout *)",
-      "Skill"
+      "Skill",
+      "Bash(python -c \"import json, sys; nb=json.load\\(sys.stdin\\); [print\\('---', i, c.get\\('cell_type',''\\), '---'\\); print\\(''.join\\(c.get\\('source',[]\\)\\)[:400]\\) for i,c in enumerate\\(nb['cells']\\)]\")"
     ]
   },
   "sandbox": {

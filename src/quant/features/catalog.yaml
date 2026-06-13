@@ -253,6 +253,7 @@ features:
   # Regime-indicator features (Phase 4A Milestone 3)  — _add_regime_features
   # M3 verdict: nb08 slice (5 symbols × 8 years, signed_returns labels)
   # PRD gate FAILED 2/3 — survivors trend_regime, xs_rank_vol_21d.
+  # M6 verdict (nb09, full panel): aggregate gate FAILED — see PHASE_4A_REPORT.md.
   # -------------------------------------------------------------------
   - name: vix_regime
     family: regime
@@ -303,7 +304,7 @@ features:
     added_phase: "4A"
     glossary_ref: "docs/concepts/feature-glossary.md#trend_regime"
     ablation_status: tested_edge
-    regime_notes: "M3 slice (nb08): survived gate via rate_cycle (lift +0.168, sign-consistent across regimes)"
+    regime_notes: "M3 slice (nb08): survived gate via rate_cycle (lift +0.168, sign-consistent across regimes). M6 full-panel (nb09): GBM signed Sharpe in rate_cycle = -0.442 vs ARIMA +0.405 — feature is in the 25-col final set but no marginal per-feature ablation at full panel (M6 ran 3 GBM scheme arms, not feature arms); slice-edge status not refuted, but not re-confirmed at full panel either."
     depends_on: ["ma200_ratio"]
 
   # -------------------------------------------------------------------
@@ -346,7 +347,7 @@ features:
     added_phase: "4A"
     glossary_ref: "docs/concepts/feature-glossary.md#xs_rank_vol_21d"
     ablation_status: tested_edge
-    regime_notes: "M3 slice (nb08): survived gate via covid (lift +0.636, CI90 [-0.01, 1.25])"
+    regime_notes: "M3 slice (nb08): survived gate via covid (lift +0.636, CI90 [-0.01, 1.25]). M6 full-panel (nb09): GBM signed Sharpe in covid = -1.280 vs ARIMA +0.403 — feature is in the 25-col final set but no marginal per-feature ablation at full panel (M6 ran 3 GBM scheme arms, not feature arms); slice-edge status not refuted, but not re-confirmed at full panel either."
     depends_on: ["vol_21d"]
 
   # -------------------------------------------------------------------
