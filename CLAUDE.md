@@ -10,8 +10,8 @@
 | Phase 2 — GBM model + exit gates | ✅ Complete | see below |
 | Phase 2.5 — Feature set improvement | ✅ Complete | see below |
 | Phase 3 — LLM sentiment feature | ✅ Complete | `phase-3-sentiment` branch |
-| Phase 4A — Feature/label redesign + regime-conditional eval | 🟡 In progress | Milestones 1 (regime harness), 2 (label ablation), 5 (FRED leakage — **leak confirmed + material**) + 3 (regime/cross-sectional features) landed locally; see PRD + plans |
-| Phase 5 — Autonomous research agents | 📋 Vision spec drafted | `docs/PHASE_5_AGENTS.md`; begins after Phase 4A's exit-gate report (either verdict) |
+| Phase 4A — Feature/label redesign + regime-conditional eval | ✅ Complete — **gate FAILED**, Track A deferred | M1 `af8d7da` → M2 `893db9a` → M5 `ef65256` → M3 `d83e5cf` → M4 `397f68a` → M6 (this session) |
+| Phase 5 — Autonomous research agents | 📋 Vision spec drafted | `docs/PHASE_5_AGENTS.md`; Phase 4A gate failed → no Track A; the open question now is which Phase 4A "No-go next directions" Phase 5 supports (see `docs/PHASE_4A_REPORT.md` §6) |
 
 Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
 `report.py`, 87-test suite, and an executed system-tour notebook at
@@ -105,17 +105,28 @@ short-stack loss the no-sentiment GBM took. See Section 9 of
 > below). Corrected full-panel numbers land in M6; do not re-run nb04 before
 > then.
 
-**Phase 4A — in progress.** The Phase 3 GBM does not beat ARIMA OOS, so the
-Phase 4 entry gate (*"prototype shows a real, honest, cost-net edge"*) is
-not met and Track A (transformers/foundation models) is deferred. Phase 4A
-is a focused diagnostic subproject — feature/label redesign + regime-
-conditional evaluation — that earns the right to Phase 4. PRD and plan:
+**Phase 4A — complete (2026-06-13).** Diagnostic subproject — feature/label
+redesign + regime-conditional evaluation — closed at Milestone 6 with a
+binary, pre-committed exit gate. **Gate FAILED.** All three GBM arms
+(signed_returns, vol_scaled, triple_barrier) lose to the ARIMA(1,0,0)
+control in every PRD-required regime on the full 33-symbol × 22-year OOS
+panel (2004-06-20 → 2026-03-30, 5,394 bars, 87 folds). Primary arm
+ΔSharpe vs ARIMA: −1.088 in `qe_bull`, −1.683 in `covid`, −0.847 in
+`rate_cycle`; DM p = 1.0000 in every required regime (ARIMA's errors are
+strictly smaller). No secondary arm clears the Bonferroni bar (α=0.0167).
+**Track A (transformers / foundation models) DEFERRED.** Full report:
+[`docs/PHASE_4A_REPORT.md`](docs/PHASE_4A_REPORT.md) — verdict, evidence,
+3 candidate "no-go next directions" (target reframing / new data sources /
+regime-conditional ensembling), and a trials-registry / deflated-Sharpe
+discussion (~62 effective comparisons across M2–M6). PRD and plan:
 
-- PRD: `.claude/prds/phase-4a-feature-and-label-redesign.prd.md`
+- PRD: `.claude/prds/phase-4a-feature-and-label-redesign.prd.md` (closed)
 - Milestone 1 plan: `.claude/plans/phase-4a-milestone-1-regime-harness.plan.md`
 - Milestone 2 plan: `.claude/plans/phase-4a-milestone-2-label-ablation.plan.md`
 - Milestone 5 plan: `.claude/plans/phase-4a-milestone-5-fred-leakage.plan.md`
 - Milestone 3 plan: `.claude/plans/phase-4a-milestone-3-regime-features.plan.md`
+- Milestone 4 plan: `.claude/plans/phase-4a-milestone-4-feature-catalog.plan.md`
+- Milestone 6 plan: `.claude/plans/phase-4a-milestone-6-exit-gate.plan.md`
 - Concept references: `docs/concepts/regime-evaluation.md`,
   `docs/concepts/label-schemes.md`, `docs/concepts/fred-publication-lag.md`
 
@@ -241,6 +252,50 @@ catalog entry + the drift test passes.** Adding a column without
 registering it, or removing one without updating the YAML, fails CI by
 naming the offender.
 
+Milestone 6 (exit-gate report and go/no-go for Track A, executed
+2026-06-13) delivered: new `scripts/run_phase4a_arms.py` — a headless
+per-arm runner (`--arm {signed,vol_scaled,triple_barrier,arima}`) with
+parquet checkpointing under `data/phase4a/{arm}/`, idempotent re-runs,
+a `--smoke` synthetic-panel mode for plumbing tests, and a module
+docstring quoting the pre-committed protocol verbatim (including the
+sample-weight parity audit: the runner dispatches each scheme to
+`run_portfolio_backtest` directly rather than `run_label_ablation` so
+`GBMModel(label_horizon=<scheme>)` matches the scheme's true horizon).
+Four full-panel arms (33 symbols, 25-column final feature set, corrected
+FRED joins, identical walk-forward kwargs) wrote `oos_returns.parquet`,
+`oos_forecast_errors.parquet`, and `metadata.json` per arm — total wall
+time ~90 min. New `notebooks/09_phase4a_exit_gate.ipynb` (checkpoint-only,
+no model fitting — pure load + align + verdict) computes the primary
+gate via duck-typed `SimpleNamespace` shims of `BacktestResult` so the
+same `compute_regime_metrics` + `regime_dm_test` calls the gate function
+uses internally produce a bit-for-bit equivalent verdict. New
+`docs/PHASE_4A_REPORT.md` — eight sections (verdict, gate verbatim with
+protocol deviations honestly declared, evidence tables, what Phase 4A
+changed across M2/M3/M4/M5, regime-by-regime interpretation, go/no-go +
+3 candidate next directions, trials registry + deflated-Sharpe note,
+reproducibility appendix). Catalog `ablation_status`/`regime_notes`
+write-back: M3 survivors (`xs_rank_vol_21d`, `trend_regime`) carry the
+nb08 slice-edge note plus an M6 full-panel re-statement clarifying that
+the *aggregate* gate failed and the slice-level edges were not
+re-isolated at full panel (no marginal per-feature ablation; the M6
+design ran scheme arms, not feature arms). 467-test suite (467 passed
+/ 4 skipped) holds; no library code changed in this milestone except
+the catalog write-back.
+
+**M6 aggregate result (33 symbols, 87 folds, OOS 2004-06-20 →
+2026-03-30):** ARIMA control Sharpe **+0.423** (sanity-matched to nb02
+re-run's +0.434, |Δ|=0.011); GBM signed **−0.336**, GBM vol_scaled
+**−0.339**, GBM triple_barrier **+0.177**. Cross-scheme Borda composite
+under GBM: triple_barrier wins (rank 1.4 mean across {aggregate, pre_qe,
+qe_bull, covid, rate_cycle}) — M2's ARIMA-control verdict (vol_scaled
+winner on the 5-symbol slice) does **not** hold under GBM at full panel.
+None of the three GBM arms wins any PRD-required era. The Phase 4A
+exit-gate verdict is unambiguous and the project's next move is the
+PRD-stated alternative (revisit features / labels / data sources / model
+class — *not* transformers). See `docs/PHASE_4A_REPORT.md` for the
+written-up evidence, deflated-Sharpe discussion, and concrete next-step
+proposals.
+
 ## Codebase map
 
 ```
@@ -284,6 +339,11 @@ src/quant/
 │   ├── report.py             format_report() / summary_table() / regime + ablation reporters
 │   └── CLAUDE.md             agent instructions for the backtest package
 └── utils/calendar.py         trading-day calendar (gap detection)
+
+scripts/
+└── run_phase4a_arms.py       headless runner for the 4 M6 arms — per-arm
+                              parquet checkpoints under data/phase4a/{arm}/
+                              (Phase 4A M6)
 ```
 
 Key invariant: **purge + embargo leakage controls must stay intact in
@@ -309,7 +369,7 @@ shell convenience for interactive prompts only.
 ## Running things
 
 ```bash
-# Full test suite (446 tests, ~77s, no network):
+# Full test suite (467 tests, ~77s, no network):
 .venv/bin/pytest tests/ -v
 
 # With coverage:
@@ -348,6 +408,16 @@ shell convenience for interactive prompts only.
 # — needs 3600s timeout:
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.timeout=3600 notebooks/08_phase4a_feature_ablation.ipynb
+# nb09 (Phase 4A M6 exit-gate verdict) is checkpoint-only — loads four parquet
+# arms from data/phase4a/ and renders the gate report. Runs in seconds:
+.venv/bin/jupyter nbconvert --to notebook --execute --inplace \
+    --ExecutePreprocessor.timeout=900 notebooks/09_phase4a_exit_gate.ipynb
+# The four M6 arms themselves run via the headless runner (NOT a notebook).
+# Each arm writes to data/phase4a/{arm}/; nb09 only consumes the checkpoints.
+.venv/bin/python scripts/run_phase4a_arms.py --arm arima
+.venv/bin/python scripts/run_phase4a_arms.py --arm signed
+.venv/bin/python scripts/run_phase4a_arms.py --arm vol_scaled
+.venv/bin/python scripts/run_phase4a_arms.py --arm triple_barrier
 
 # Lint / format:
 .venv/bin/ruff check src/ tests/
@@ -372,6 +442,7 @@ docs/
 ├── PHASE_2.5_FEATURE_IMPROVEMENT.md Phase 2.5 spec (feature set improvement)
 ├── PHASE_3_SENTIMENT.md            Phase 3 spec (LLM sentiment feature)
 ├── PHASE_4_ADVANCED.md             Phase 4 spec (Tracks A/B/C — advanced models, execution, event markets)
+├── PHASE_4A_REPORT.md              Phase 4A exit-gate report — verdict, evidence, go/no-go for Track A
 ├── PHASE_5_AGENTS.md               Phase 5 vision spec (autonomous research-agent fleet)
 ├── REFACTOR_PORTFOLIO_UNION_INDEX.md  union-of-indices refactor of run_portfolio_backtest
 └── concepts/
