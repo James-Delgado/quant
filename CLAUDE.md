@@ -10,7 +10,7 @@
 | Phase 2 — GBM model + exit gates | ✅ Complete | see below |
 | Phase 2.5 — Feature set improvement | ✅ Complete | see below |
 | Phase 3 — LLM sentiment feature | ✅ Complete | `phase-3-sentiment` branch |
-| Phase 4A — Feature/label redesign + regime-conditional eval | 🟡 In progress | Milestones 1 (regime harness), 2 (label ablation) + 5 (FRED leakage — **leak confirmed + material**) landed locally; see PRD + plans |
+| Phase 4A — Feature/label redesign + regime-conditional eval | 🟡 In progress | Milestones 1 (regime harness), 2 (label ablation), 5 (FRED leakage — **leak confirmed + material**) + 3 (regime/cross-sectional features) landed locally; see PRD + plans |
 | Phase 5 — Autonomous research agents | 📋 Vision spec drafted | `docs/PHASE_5_AGENTS.md`; begins after Phase 4A's exit-gate report (either verdict) |
 
 Phase 1 delivered: `walkforward.py`, `simulator.py`, `metrics.py`, `harness.py`,
@@ -115,6 +115,7 @@ conditional evaluation — that earns the right to Phase 4. PRD and plan:
 - Milestone 1 plan: `.claude/plans/phase-4a-milestone-1-regime-harness.plan.md`
 - Milestone 2 plan: `.claude/plans/phase-4a-milestone-2-label-ablation.plan.md`
 - Milestone 5 plan: `.claude/plans/phase-4a-milestone-5-fred-leakage.plan.md`
+- Milestone 3 plan: `.claude/plans/phase-4a-milestone-3-regime-features.plan.md`
 - Concept references: `docs/concepts/regime-evaluation.md`,
   `docs/concepts/label-schemes.md`, `docs/concepts/fred-publication-lag.md`
 
@@ -146,7 +147,7 @@ deepcopy; new ablation reporter (`ablation_summary_table`,
 1.333), `rate_cycle` winner `signed_returns` (control), `triple_barrier`
 last (Sharpe −0.479) — verdict on this slice is *"no scheme alone fixes
 the `rate_cycle` failure regime"*; Milestone 3 (regime-aware features)
-carries the work forward. Milestones 3, 4, and 6 + conditional 2.5
+carries the work forward. Milestones 4 and 6 + conditional 2.5
 (meta-labeling on M2 winner if one had emerged across all regimes) still
 pending; gate not yet evaluated on real data.
 
@@ -174,6 +175,37 @@ GBM model variance on day-shifted inputs, not lost predictive
 information; the IS-dominant/OOS-absent puzzle re-attributes to feature
 instability or label misspecification and hands to M3.
 
+Milestone 3 (cross-sectional + regime-aware features + per-feature
+ablation, executed 2026-06-13) delivered: new `features/cross_sectional.py`
+with `add_cross_sectional_features()` producing same-date percentile-rank
+columns (`xs_rank_ret_21d`, `xs_rank_ret_252d`, `xs_rank_vol_21d`) with a
+`min_symbols` NaN rule and a no-mutation contract; four regime-indicator
+columns appended in `build_features` (`vix_regime` reading thresholds from
+`backtest/regimes.VIXThresholdDetector` dataclass defaults — single source
+of truth, no re-typed numbers; `curve_inverted`; `vol_regime_ratio` with
+0-denominator NaN guard; `trend_regime`); column order pinned by a
+regression test (`mom_21d` at index 5 — nb02's `MomentumBaseline` positional
+contract). New `backtest/ablation.run_feature_ablation()` mirroring
+`run_label_ablation`'s deepcopy/kwargs discipline, plus helpers
+`make_add_one_sets()` and `make_leave_one_out_sets()`. New
+`backtest/statistics.bootstrap_sharpe_delta_ci()` — paired stationary block
+bootstrap (21-day blocks, T1 convention) for the gate's noise guard. New
+reporters in `backtest/report.py`: `feature_ablation_table` (per-regime
+Sharpe delta vs baseline), `feature_ablation_gate` (PRD metric verbatim:
+≥3 features, ≥0.1 lift, ≥1 regime; noise guard = paired-bootstrap 90% CI
+excludes 0 OR cross-regime sign-consistency), `format_feature_ablation_report`.
+432-test suite (432 passed / 4 skipped) — 71 new tests vs. Milestone 5.
+nb08 add-one ablation on the 5-symbol × 8-year slice (GBM preview,
+`n_iter=10`, `signed_returns` labels): **verdict PRD GATE FAILED (2/3
+qualifying)** — survivors `xs_rank_vol_21d`, `trend_regime`; documented as
+noise on this slice `xs_rank_ret_21d`, `xs_rank_ret_252d`, `vix_regime`,
+`curve_inverted`, `vol_regime_ratio`. SHAP-vs-ablation Spearman ρ =
+**−0.074** on the 7 candidates — IS importance does not transfer OOS on
+this slice (the nb03 puzzle again, on the new candidates). Slice verdict
+is **provisional**; the two survivors carry forward to M4 (catalog
+registration) and M6 (full-panel re-evaluation), which is the
+confirmatory test.
+
 ## Codebase map
 
 ```
@@ -194,7 +226,8 @@ src/quant/
 ├── features/
 │   ├── labels.py             generate_labels() → LabelResult(series, horizon_bars)
 │   ├── label_schemes.py      vol_scaled_returns() + triple_barrier_labels() + LDP_DEFAULT (Phase 4A M2)
-│   ├── engineering.py        build_features() — 17 features + optional sentiment_df (19 cols); lagged FRED join (FRED_PUBLICATION_LAGS, M5)
+│   ├── engineering.py        build_features() — 17 base + 4 regime cols (21; +3 with sentiment_df); lagged FRED join (FRED_PUBLICATION_LAGS, M5)
+│   ├── cross_sectional.py    add_cross_sectional_features() — xs_rank_* panel percentile ranks (Phase 4A M3)
 │   ├── weights.py            compute_sample_weights() — López de Prado uniqueness weights
 │   ├── finbert.py            FinBERT scorer — score_documents() → sentiment_scored/ (Phase 3)
 │   └── sentiment.py          aggregate_sentiment() + validate_point_in_time() (Phase 3)
@@ -207,7 +240,7 @@ src/quant/
 │   ├── simulator.py          vectorised trade simulator (next-bar fills, costs)
 │   ├── metrics.py            Sharpe / Sortino / Calmar / drawdown / hit-rate
 │   ├── harness.py            run_backtest() / run_portfolio_backtest() / evaluate_panel()
-│   ├── ablation.py           run_label_ablation() — Milestone 2 ablation orchestrator
+│   ├── ablation.py           run_label_ablation() (M2) + run_feature_ablation() / make_add_one_sets() / make_leave_one_out_sets() (M3)
 │   ├── regimes.py            RegimeDetector + VIXThresholdDetector + DateRangeDetector (M1)
 │   ├── regime_metrics.py     compute_regime_metrics() + regime_dm_test() + phase4a_gate_report() (M1)
 │   ├── statistics.py         diebold_mariano() — DM test with HLN small-sample correction
@@ -239,7 +272,7 @@ shell convenience for interactive prompts only.
 ## Running things
 
 ```bash
-# Full test suite (376 tests, ~58s, no network):
+# Full test suite (432 tests, ~66s, no network):
 .venv/bin/pytest tests/ -v
 
 # With coverage:
@@ -273,6 +306,11 @@ shell convenience for interactive prompts only.
 # (n_iter=10) + two IS SHAP fits on the 5-symbol slice — needs 1800s timeout:
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace \
     --ExecutePreprocessor.timeout=1800 notebooks/07_phase4a_fred_leakage.ipynb
+# nb08 (Phase 4A M3 feature ablation) runs 8 add-one + up to 3 leave-one-out
+# GBM preview backtests (n_iter=10) + one IS SHAP fit on the 5-symbol slice
+# — needs 3600s timeout:
+.venv/bin/jupyter nbconvert --to notebook --execute --inplace \
+    --ExecutePreprocessor.timeout=3600 notebooks/08_phase4a_feature_ablation.ipynb
 
 # Lint / format:
 .venv/bin/ruff check src/ tests/

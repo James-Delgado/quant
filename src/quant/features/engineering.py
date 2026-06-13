@@ -27,6 +27,14 @@ FRED series used:
 Derived macro features (computed post-merge from the shifted series):
   - yield_curve = DGS10 − DFF  (term spread; negative = inverted curve)
 
+Regime-indicator features (Phase 4A Milestone 3, appended after the 17 base
+columns on both FRED paths — NaN-propagating throughout):
+  - vix_regime       ordinal {0,1,2} from VIXCLS using the thresholds pinned
+                     in backtest/regimes.py (VIXThresholdDetector defaults)
+  - curve_inverted   binary: yield_curve < 0
+  - vol_regime_ratio vol_21d / vol_63d (vol_63d == 0 → NaN, not inf)
+  - trend_regime     binary: ma200_ratio > 1
+
 Excluded:
   - CPI, UNRATE — subject to large revisions released weeks after reference
     period; the lake keeps latest vintage only (see ingest/fred_macro.py),
@@ -37,11 +45,13 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Mapping
+from dataclasses import fields as _dataclass_fields
 
 import duckdb
 import numpy as np
 import pandas as pd
 
+from quant.backtest.regimes import VIXThresholdDetector
 from quant.features.sentiment import aggregate_sentiment
 from quant.storage.catalog import processed_glob
 
@@ -56,6 +66,16 @@ _FRED_SERIES: tuple[str, ...] = ("DGS10", "DFF", "VIXCLS")
 # ALFRED). Pre-committed on correctness grounds; do NOT retune to make a
 # model pass. Rationale: docs/concepts/fred-publication-lag.md.
 FRED_PUBLICATION_LAGS: dict[str, int] = {"DGS10": 1, "DFF": 1, "VIXCLS": 1}
+
+# VIX regime thresholds — read from VIXThresholdDetector's dataclass defaults
+# (backtest/regimes.py, Milestone 1) so the M1 evaluation axis and the M3
+# vix_regime feature can never drift apart. Single source of truth: do NOT
+# re-type the numbers here.
+_VIX_DETECTOR_DEFAULTS = {
+    f.name: f.default for f in _dataclass_fields(VIXThresholdDetector)
+}
+VIX_REGIME_LOW: float = _VIX_DETECTOR_DEFAULTS["low"]
+VIX_REGIME_HIGH: float = _VIX_DETECTOR_DEFAULTS["high"]
 
 
 def _rsi(close: pd.Series, window: int) -> pd.Series:
@@ -230,6 +250,42 @@ def _attach_fred_features(
     return merged
 
 
+def _add_regime_features(feat: pd.DataFrame) -> pd.DataFrame:
+    """Append regime-indicator columns derived from existing feature columns.
+
+    Columns are appended AFTER all existing ones — the positional contract
+    of the 17 base columns must not change (nb02's MomentumBaseline reads
+    ``mom_21d`` at index 5).
+
+    Runs as a post-pass on BOTH FRED paths: when the lake has no FRED data
+    the FRED-derived sources (``VIXCLS``, ``yield_curve``) are absent from
+    ``feat``, and the dependent regime columns are emitted as all-NaN so the
+    output column set is identical either way. Price-derived regime columns
+    (``vol_regime_ratio``, ``trend_regime``) compute regardless.
+
+    ``vix_regime`` follows VIXThresholdDetector's boundary convention:
+    ``VIXCLS <= low`` → 0, ``VIXCLS >= high`` → 2, else 1; NaN propagates.
+    """
+    out = feat.copy()
+    nan_col = pd.Series(np.nan, index=out.index)
+
+    vix = out["VIXCLS"] if "VIXCLS" in out.columns else nan_col
+    vix_regime = pd.Series(1.0, index=out.index)
+    vix_regime[vix <= VIX_REGIME_LOW] = 0.0
+    vix_regime[vix >= VIX_REGIME_HIGH] = 2.0
+    vix_regime[vix.isna()] = np.nan
+    out["vix_regime"] = vix_regime
+
+    curve = out["yield_curve"] if "yield_curve" in out.columns else nan_col
+    out["curve_inverted"] = (curve < 0).astype(float).where(curve.notna())
+
+    out["vol_regime_ratio"] = out["vol_21d"] / out["vol_63d"].replace(0, np.nan)
+
+    ma200 = out["ma200_ratio"]
+    out["trend_regime"] = (ma200 > 1).astype(float).where(ma200.notna())
+    return out
+
+
 def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """Load approved FRED series from the lake and pivot to wide format.
 
@@ -304,8 +360,8 @@ def build_features(
                              (columns: symbol, published_at, sentiment_score).
                              When provided, adds sentiment_score, doc_count,
                              and has_coverage columns to every feature matrix.
-                             Existing callers passing None get the original
-                             17-column output unchanged.
+                             Existing callers passing None get the 21-column
+                             output (17 base + 4 regime indicators).
     sentiment_lookback_days: Rolling window for sentiment aggregation (days).
     fred_publication_lags:   {series_id: lag in business days} applied to FRED
                              observation dates before the asof merge. Defaults
@@ -339,6 +395,7 @@ def build_features(
             if not fred_wide.empty
             else price_feats
         )
+        feat = _add_regime_features(feat)
 
         if sentiment_df is not None and not sentiment_df.empty:
             sent = aggregate_sentiment(

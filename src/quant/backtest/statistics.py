@@ -15,13 +15,26 @@ Reference:
 
 The Harvey et al. (1997) small-sample correction is applied by default.
 Without it the test over-rejects in small samples (T ~ 200-300 OOS bars).
+
+Paired block-bootstrap Sharpe-delta CI
+--------------------------------------
+``bootstrap_sharpe_delta_ci`` resamples blocks of *dates* shared by two
+return series and computes the Sharpe difference per resample. Used by the
+Phase 4A feature-ablation noise guard.
+
+Reference:
+  Politis, D.N., & Romano, J.P. (1994). The Stationary Bootstrap.
+  Journal of the American Statistical Association, 89(428), 1303-1313.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 from scipy import stats
+
+from quant.backtest.metrics import compute_metrics
 
 
 @dataclass(frozen=True)
@@ -139,3 +152,105 @@ def diebold_mariano(
         h=h,
         small_sample_corrected=small_sample_correction,
     )
+
+
+def _stationary_block_positions(
+    rng: np.random.Generator,
+    n: int,
+    block_len: int,
+) -> np.ndarray:
+    """One stationary-bootstrap resample: positions 0..n-1, length n.
+
+    Blocks start at a uniform random position, have geometric length with
+    mean ``block_len`` (Politis & Romano 1994), and wrap circularly so every
+    date is equally likely to be sampled.
+    """
+    positions = np.empty(n, dtype=np.intp)
+    filled = 0
+    while filled < n:
+        start = int(rng.integers(0, n))
+        length = min(int(rng.geometric(1.0 / block_len)), n - filled)
+        positions[filled:filled + length] = (start + np.arange(length)) % n
+        filled += length
+    return positions
+
+
+def bootstrap_sharpe_delta_ci(
+    returns_variant: pd.Series,
+    returns_baseline: pd.Series,
+    *,
+    block_len: int = 21,
+    n_boot: int = 1000,
+    ci: float = 0.90,
+    seed: int = 0,
+) -> tuple[float, float]:
+    """Paired stationary block-bootstrap CI on the annualized Sharpe delta.
+
+    Both series are aligned on their common index (inner join), then blocks
+    of *dates* — ~21 trading days, the T1 convention from
+    ``docs/concepts/evaluation-standards.md`` — are resampled with
+    replacement until the original length is reached. Within each resampled
+    block the pairing is kept intact: the same dates are drawn from both
+    series. Pairing preserves the (typically very high) variant/baseline
+    correlation, so the delta's sampling noise mostly cancels and the CI is
+    far tighter than independent per-arm resampling would give.
+
+    Per resample the statistic is ``sharpe(variant) − sharpe(baseline)``
+    (annualized, via ``compute_metrics`` so the definition matches every
+    other Sharpe in this codebase). The returned interval is the percentile
+    interval, e.g. (5th, 95th) for ``ci=0.90``.
+
+    Parameters
+    ----------
+    returns_variant, returns_baseline:
+        Daily return series with date indices. NaNs are dropped before
+        alignment.
+    block_len:
+        Mean block length in trading days (geometric distribution).
+    n_boot:
+        Number of bootstrap resamples.
+    ci:
+        Central coverage of the returned percentile interval.
+    seed:
+        Seed for ``np.random.default_rng`` — results are deterministic.
+
+    Returns
+    -------
+    ``(ci_low, ci_high)`` floats.
+
+    Raises
+    ------
+    ValueError if the two series have no overlapping observations, or on
+    invalid ``block_len`` / ``n_boot`` / ``ci``.
+    """
+    if block_len < 1:
+        raise ValueError(f"block_len must be >= 1, got {block_len}")
+    if n_boot < 1:
+        raise ValueError(f"n_boot must be >= 1, got {n_boot}")
+    if not 0.0 < ci < 1.0:
+        raise ValueError(f"ci must be in (0, 1), got {ci}")
+
+    variant = returns_variant.dropna()
+    baseline = returns_baseline.dropna()
+    common_idx = variant.index.intersection(baseline.index)
+    n = len(common_idx)
+    if n == 0:
+        raise ValueError(
+            "returns_variant and returns_baseline have no overlapping "
+            "observations — cannot compute a paired bootstrap"
+        )
+
+    v = variant.loc[common_idx].to_numpy(dtype=float)
+    b = baseline.loc[common_idx].to_numpy(dtype=float)
+
+    rng = np.random.default_rng(seed)
+    deltas = np.empty(n_boot, dtype=float)
+    for i in range(n_boot):
+        pos = _stationary_block_positions(rng, n, block_len)
+        sharpe_v = compute_metrics(pd.Series(v[pos]))["sharpe"]
+        sharpe_b = compute_metrics(pd.Series(b[pos]))["sharpe"]
+        deltas[i] = sharpe_v - sharpe_b
+
+    alpha = (1.0 - ci) / 2.0
+    lo, hi = np.quantile(deltas, [alpha, 1.0 - alpha])
+    return float(lo), float(hi)

@@ -16,7 +16,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from quant.backtest.ablation import LabelSchemeFn, run_label_ablation
+from quant.backtest.ablation import (
+    LabelSchemeFn,
+    make_add_one_sets,
+    make_leave_one_out_sets,
+    run_feature_ablation,
+    run_label_ablation,
+)
 from quant.backtest.harness import BacktestResult
 from quant.backtest.metrics import compute_metrics
 from quant.features.label_schemes import (
@@ -435,3 +441,572 @@ class TestAblationReport:
 
         with pytest.raises(ValueError, match="at least one"):
             ablation_summary_table({}, synthetic_regime_labels)
+
+
+# ─── Feature ablation (Phase 4A Milestone 3, Tasks 3-4) ─────────────────────
+
+
+@pytest.fixture(scope="module")
+def labels_by_sym(prices_by_sym: dict[str, pd.DataFrame]) -> dict[str, pd.Series]:
+    return {
+        sym: generate_labels(df["close"], horizon=1).series
+        for sym, df in prices_by_sym.items()
+    }
+
+
+BASELINE_COLS = ["f0", "f1", "f2"]
+FEATURE_SETS: dict[str, list[str]] = {
+    "baseline": BASELINE_COLS,
+    "+f3": BASELINE_COLS + ["f3"],
+    "+f4": BASELINE_COLS + ["f4"],
+}
+
+
+class TestFeatureSetHelpers:
+    def test_make_add_one_sets_n_plus_one(self) -> None:
+        sets = make_add_one_sets(["a", "b"], ["c", "d", "e"])
+        assert len(sets) == 4  # baseline + 3 candidates
+
+    def test_make_add_one_sets_contents(self) -> None:
+        sets = make_add_one_sets(["a", "b"], ["c", "d"])
+        assert sets["baseline"] == ["a", "b"]
+        assert sets["+c"] == ["a", "b", "c"]
+        assert sets["+d"] == ["a", "b", "d"]
+
+    def test_make_add_one_sets_does_not_mutate_baseline(self) -> None:
+        baseline = ["a", "b"]
+        sets = make_add_one_sets(baseline, ["c"])
+        sets["+c"].append("zzz")
+        assert baseline == ["a", "b"]
+        assert sets["baseline"] == ["a", "b"]
+
+    def test_make_add_one_sets_duplicate_candidate_raises(self) -> None:
+        with pytest.raises(ValueError, match="duplicate"):
+            make_add_one_sets(["a"], ["c", "c"])
+
+    def test_make_add_one_sets_candidate_in_baseline_raises(self) -> None:
+        with pytest.raises(ValueError, match="already"):
+            make_add_one_sets(["a", "b"], ["b"])
+
+    def test_make_leave_one_out_sets_n_plus_one(self) -> None:
+        sets = make_leave_one_out_sets(["a", "b", "c"])
+        assert len(sets) == 4  # all + 3 leave-outs
+
+    def test_make_leave_one_out_sets_contents(self) -> None:
+        sets = make_leave_one_out_sets(["a", "b", "c"])
+        assert sets["all"] == ["a", "b", "c"]
+        assert sets["-a"] == ["b", "c"]
+        assert sets["-b"] == ["a", "c"]
+        assert sets["-c"] == ["a", "b"]
+
+    def test_make_leave_one_out_sets_duplicate_raises(self) -> None:
+        with pytest.raises(ValueError, match="duplicate"):
+            make_leave_one_out_sets(["a", "a"])
+
+
+class _ColumnWidthModel:
+    """Records X column counts in a class attribute shared across deepcopies."""
+
+    widths_seen: list[int] = []
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> None:
+        type(self).widths_seen.append(int(X.shape[1]))
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        return np.zeros(len(X))
+
+
+class TestRunFeatureAblation:
+    def test_returns_dict_keyed_by_set_name(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+    ) -> None:
+        out = run_feature_ablation(
+            feature_sets=FEATURE_SETS,
+            model=_ConstantModel(),
+            features_by_symbol=features_by_sym,
+            labels_by_symbol=labels_by_sym,
+            prices_by_symbol=prices_by_sym,
+            train_window=TRAIN_W,
+            test_window=TEST_W,
+            step=STEP,
+            embargo=EMBARGO,
+        )
+        assert set(out.keys()) == set(FEATURE_SETS.keys())
+        for name, res in out.items():
+            assert isinstance(res, BacktestResult), f"set {name}: bad result type"
+            assert len(res.oos_returns) > 0
+
+    def test_model_receives_expected_column_count(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+    ) -> None:
+        _ColumnWidthModel.widths_seen = []
+        run_feature_ablation(
+            feature_sets={"baseline": BASELINE_COLS, "+f3": BASELINE_COLS + ["f3"]},
+            model=_ColumnWidthModel(),
+            features_by_symbol=features_by_sym,
+            labels_by_symbol=labels_by_sym,
+            prices_by_symbol=prices_by_sym,
+            train_window=TRAIN_W,
+            test_window=TEST_W,
+            step=STEP,
+            embargo=EMBARGO,
+        )
+        assert set(_ColumnWidthModel.widths_seen) == {3, 4}
+
+    def test_kwargs_forwarded_identically_across_sets(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: list[dict[str, Any]] = []
+        import quant.backtest.ablation as ablation_mod
+        real = ablation_mod.run_portfolio_backtest
+
+        def spy(*args: Any, **kwargs: Any) -> Any:
+            recorded = {
+                k: v for k, v in kwargs.items()
+                if k in ("train_window", "test_window", "step", "embargo",
+                         "label_horizon", "commission_per_share")
+            }
+            recorded["feature_cols"] = tuple(
+                next(iter(kwargs["features_by_symbol"].values())).columns
+            )
+            captured.append(recorded)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr("quant.backtest.ablation.run_portfolio_backtest", spy)
+
+        run_feature_ablation(
+            feature_sets=FEATURE_SETS,
+            model=_ConstantModel(),
+            features_by_symbol=features_by_sym,
+            labels_by_symbol=labels_by_sym,
+            prices_by_symbol=prices_by_sym,
+            train_window=TRAIN_W,
+            test_window=TEST_W,
+            step=STEP,
+            embargo=EMBARGO,
+            commission_per_share=0.01,
+        )
+        assert len(captured) == len(FEATURE_SETS)
+        # The feature columns vary per set...
+        cols_per_call = [c.pop("feature_cols") for c in captured]
+        assert cols_per_call == [tuple(cols) for cols in FEATURE_SETS.values()]
+        # ...but every other kwarg is byte-identical across calls.
+        first = captured[0]
+        for k in captured[1:]:
+            assert k == first, f"kwargs drifted: {k} vs {first}"
+
+    def test_model_template_not_mutated(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+    ) -> None:
+        class CountingModel:
+            def __init__(self) -> None:
+                self.fit_calls = 0
+
+            def fit(self, X: np.ndarray, y: np.ndarray) -> None:
+                self.fit_calls += 1
+
+            def predict(self, X: np.ndarray) -> np.ndarray:
+                return np.zeros(len(X))
+
+        template = CountingModel()
+        run_feature_ablation(
+            feature_sets=FEATURE_SETS,
+            model=template,
+            features_by_symbol=features_by_sym,
+            labels_by_symbol=labels_by_sym,
+            prices_by_symbol=prices_by_sym,
+            train_window=TRAIN_W,
+            test_window=TEST_W,
+            step=STEP,
+            embargo=EMBARGO,
+        )
+        assert template.fit_calls == 0, "template model should not be mutated"
+
+    def test_missing_column_raises_naming_column_and_symbol(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+    ) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            run_feature_ablation(
+                feature_sets={"bad": ["f0", "not_a_column"]},
+                model=_ConstantModel(),
+                features_by_symbol=features_by_sym,
+                labels_by_symbol=labels_by_sym,
+                prices_by_symbol=prices_by_sym,
+                train_window=TRAIN_W,
+                test_window=TEST_W,
+                step=STEP,
+                embargo=EMBARGO,
+            )
+        msg = str(excinfo.value)
+        assert "not_a_column" in msg
+        for sym in SYMBOLS:
+            assert sym in msg
+
+    def test_empty_sets_raises(
+        self,
+        features_by_sym: dict[str, pd.DataFrame],
+        labels_by_sym: dict[str, pd.Series],
+        prices_by_sym: dict[str, pd.DataFrame],
+    ) -> None:
+        with pytest.raises(ValueError, match="at least one feature set"):
+            run_feature_ablation(
+                feature_sets={},
+                model=_ConstantModel(),
+                features_by_symbol=features_by_sym,
+                labels_by_symbol=labels_by_sym,
+                prices_by_symbol=prices_by_sym,
+            )
+
+
+# ─── Feature-ablation reporters + PRD gate (Task 4b) ─────────────────────────
+
+
+REGIMES = ["qe_bull", "covid", "rate_cycle"]
+N_PER_REGIME = 80
+
+
+def _result_from_returns(returns: pd.Series) -> BacktestResult:
+    return BacktestResult(
+        oos_metrics=compute_metrics(returns),
+        is_metrics={"sharpe": 0.0},
+        equity_curve=(1 + returns).cumprod() * 100_000.0,
+        trade_log=pd.DataFrame(),
+        oos_returns=returns,
+        oos_forecast_errors=pd.Series(0.1, index=returns.index),
+    )
+
+
+@pytest.fixture(scope="module")
+def fa_baseline_returns() -> pd.Series:
+    rng = np.random.default_rng(100)
+    idx = pd.bdate_range("2012-01-03", periods=N_PER_REGIME * len(REGIMES))
+    return pd.Series(rng.normal(0.0003, 0.01, len(idx)), index=idx)
+
+
+@pytest.fixture(scope="module")
+def fa_regime_labels(fa_baseline_returns: pd.Series) -> pd.Series:
+    labels = pd.Series("", index=fa_baseline_returns.index, dtype=object)
+    for i, regime in enumerate(REGIMES):
+        labels.iloc[i * N_PER_REGIME:(i + 1) * N_PER_REGIME] = regime
+    return labels
+
+
+def _shifted_variant(
+    baseline: pd.Series,
+    regime_labels: pd.Series,
+    regime: str,
+    shift: float,
+) -> pd.Series:
+    """Variant identical to baseline except a constant shift inside one regime."""
+    out = baseline.copy()
+    out.loc[regime_labels == regime] += shift
+    return out
+
+
+def _noisy_variant(
+    baseline: pd.Series,
+    regime_labels: pd.Series,
+    regime: str,
+    noise_mean: float,
+    noise_vol: float,
+    seed: int,
+) -> pd.Series:
+    """Variant = baseline + independent noise inside one regime (CI straddles 0)."""
+    out = baseline.copy()
+    mask = regime_labels == regime
+    rng = np.random.default_rng(seed)
+    out.loc[mask] += rng.normal(noise_mean, noise_vol, int(mask.sum()))
+    return out
+
+
+def _regime_sharpe(returns: pd.Series, regime_labels: pd.Series, regime: str) -> float:
+    return compute_metrics(returns.loc[regime_labels == regime])["sharpe"]
+
+
+class TestFeatureAblationTable:
+    def test_baseline_row_absolute_variant_rows_delta(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_table
+
+        variant = _shifted_variant(fa_baseline_returns, fa_regime_labels, "covid", 0.004)
+        results = {
+            "baseline": _result_from_returns(fa_baseline_returns),
+            "+x": _result_from_returns(variant),
+        }
+        tbl = feature_ablation_table(results, "baseline", fa_regime_labels)
+
+        # Baseline row = absolute Sharpe.
+        base_covid = _regime_sharpe(fa_baseline_returns, fa_regime_labels, "covid")
+        assert tbl.loc["baseline", "covid"] == pytest.approx(base_covid)
+        assert tbl.loc["baseline", "aggregate"] == pytest.approx(
+            compute_metrics(fa_baseline_returns)["sharpe"]
+        )
+        # Variant rows = delta vs baseline, algebraically expected.
+        var_covid = _regime_sharpe(variant, fa_regime_labels, "covid")
+        assert tbl.loc["+x", "covid"] == pytest.approx(var_covid - base_covid)
+        # Outside the shifted regime the variant equals the baseline → delta 0.
+        assert tbl.loc["+x", "qe_bull"] == pytest.approx(0.0, abs=1e-12)
+        assert tbl.loc["+x", "rate_cycle"] == pytest.approx(0.0, abs=1e-12)
+
+    def test_has_aggregate_regime_and_n_bars_columns(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_table
+
+        results = {"baseline": _result_from_returns(fa_baseline_returns)}
+        tbl = feature_ablation_table(results, "baseline", fa_regime_labels)
+        for col in ["aggregate", *REGIMES, "n_bars"]:
+            assert col in tbl.columns, f"missing column {col!r}"
+        assert tbl.loc["baseline", "n_bars"] == len(fa_baseline_returns)
+
+    def test_unknown_baseline_raises(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_table
+
+        results = {"baseline": _result_from_returns(fa_baseline_returns)}
+        with pytest.raises(ValueError, match="nope"):
+            feature_ablation_table(results, "nope", fa_regime_labels)
+
+
+class TestFeatureAblationGate:
+    def _strong_results(
+        self,
+        baseline: pd.Series,
+        labels: pd.Series,
+        n_strong: int,
+    ) -> dict[str, BacktestResult]:
+        """Baseline + n strong variants (large constant shift in 'covid')."""
+        results = {"baseline": _result_from_returns(baseline)}
+        for i in range(n_strong):
+            variant = _shifted_variant(baseline, labels, "covid", 0.004 + 0.001 * i)
+            results[f"+strong_{i}"] = _result_from_returns(variant)
+        return results
+
+    def test_gate_fires_at_exactly_three_qualifying(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_gate
+
+        results = self._strong_results(fa_baseline_returns, fa_regime_labels, 3)
+        gate = feature_ablation_gate(
+            results, "baseline", fa_regime_labels, n_boot=200
+        )
+        assert gate["gate_passed"] is True
+        assert len(gate["qualifying_features"]) == 3
+        assert gate["n_candidates"] == 3
+        for name, info in gate["qualifying_features"].items():
+            assert info["regime"] == "covid", name
+            assert info["lift"] >= 0.1
+
+    def test_gate_does_not_fire_at_two(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_gate
+
+        results = self._strong_results(fa_baseline_returns, fa_regime_labels, 2)
+        # Add a hopeless variant: negligible shift → lift ≈ 0.
+        weak = _shifted_variant(fa_baseline_returns, fa_regime_labels, "covid", 1e-7)
+        results["+weak"] = _result_from_returns(weak)
+        gate = feature_ablation_gate(
+            results, "baseline", fa_regime_labels, n_boot=200
+        )
+        assert gate["gate_passed"] is False
+        assert len(gate["qualifying_features"]) == 2
+        assert "+weak" not in gate["qualifying_features"]
+
+    def test_noise_guard_rejects_straddling_ci(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import (
+            feature_ablation_gate,
+            feature_ablation_table,
+        )
+
+        # Independent noise in one regime: enough sample lift to clear 0.1,
+        # but the paired bootstrap CI straddles 0 and the delta is positive
+        # in only that one regime → no sign-consistency rescue.
+        noisy = _noisy_variant(
+            fa_baseline_returns, fa_regime_labels, "covid",
+            noise_mean=0.0003, noise_vol=0.01, seed=202,
+        )
+        results = {
+            "baseline": _result_from_returns(fa_baseline_returns),
+            "+noisy": _result_from_returns(noisy),
+        }
+        # Precondition: the raw lift clears the threshold.
+        tbl = feature_ablation_table(results, "baseline", fa_regime_labels)
+        assert tbl.loc["+noisy", "covid"] >= 0.1, (
+            f"test setup broken: lift {tbl.loc['+noisy', 'covid']:.3f} < 0.1 — retune seed"
+        )
+        gate = feature_ablation_gate(
+            results, "baseline", fa_regime_labels, n_boot=300
+        )
+        assert "+noisy" not in gate["qualifying_features"]
+        assert gate["gate_passed"] is False
+
+    def test_noise_guard_false_accepts_raw_lift(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_gate
+
+        noisy = _noisy_variant(
+            fa_baseline_returns, fa_regime_labels, "covid",
+            noise_mean=0.0003, noise_vol=0.01, seed=202,
+        )
+        results = {
+            "baseline": _result_from_returns(fa_baseline_returns),
+            "+noisy": _result_from_returns(noisy),
+        }
+        gate = feature_ablation_gate(
+            results, "baseline", fa_regime_labels, noise_guard=False, n_boot=200
+        )
+        assert "+noisy" in gate["qualifying_features"]
+
+    def test_sign_consistency_rescues_straddling_ci(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_gate
+
+        # Same noisy lift in 'covid' (CI straddles 0), plus a small positive
+        # constant shift in 'qe_bull' → delta > 0 in 2 regimes → qualifies
+        # via cross-regime sign-consistency (branch (b) of the noise guard).
+        variant = _noisy_variant(
+            fa_baseline_returns, fa_regime_labels, "covid",
+            noise_mean=0.0003, noise_vol=0.01, seed=202,
+        )
+        variant = _shifted_variant(variant, fa_regime_labels, "qe_bull", 0.0005)
+        results = {
+            "baseline": _result_from_returns(fa_baseline_returns),
+            "+consistent": _result_from_returns(variant),
+        }
+        gate = feature_ablation_gate(
+            results, "baseline", fa_regime_labels, n_boot=300
+        )
+        assert "+consistent" in gate["qualifying_features"]
+        assert gate["qualifying_features"]["+consistent"]["sign_consistent"] is True
+
+    def test_missing_regime_warns_not_crashes(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_gate
+
+        # Extend regime_labels with a regime that lives entirely outside the
+        # OOS index — it must warn and be skipped, not crash.
+        extra_idx = pd.bdate_range("2030-01-02", periods=10)
+        labels = pd.concat([
+            fa_regime_labels,
+            pd.Series("ghost_regime", index=extra_idx, dtype=object),
+        ])
+        results = self._strong_results(fa_baseline_returns, fa_regime_labels, 1)
+        with pytest.warns(UserWarning, match="ghost_regime"):
+            gate = feature_ablation_gate(results, "baseline", labels, n_boot=100)
+        assert "gate_passed" in gate
+
+    def test_gate_dict_shape(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_gate
+
+        results = self._strong_results(fa_baseline_returns, fa_regime_labels, 1)
+        gate = feature_ablation_gate(results, "baseline", fa_regime_labels, n_boot=100)
+        assert set(gate.keys()) == {
+            "gate_passed", "qualifying_features", "n_candidates", "thresholds",
+        }
+        assert gate["thresholds"]["min_lift"] == pytest.approx(0.1)
+        assert gate["thresholds"]["min_features"] == 3
+        assert gate["thresholds"]["noise_guard"] is True
+        info = gate["qualifying_features"]["+strong_0"]
+        assert set(info.keys()) == {
+            "regime", "lift", "ci_low", "ci_high", "sign_consistent",
+        }
+
+    def test_unknown_baseline_raises(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import feature_ablation_gate
+
+        results = {"baseline": _result_from_returns(fa_baseline_returns)}
+        with pytest.raises(ValueError, match="nope"):
+            feature_ablation_gate(results, "nope", fa_regime_labels)
+
+
+class TestFormatFeatureAblationReport:
+    def test_returns_string_with_sections(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import format_feature_ablation_report
+
+        variant = _shifted_variant(fa_baseline_returns, fa_regime_labels, "covid", 0.004)
+        results = {
+            "baseline": _result_from_returns(fa_baseline_returns),
+            "+x": _result_from_returns(variant),
+        }
+        out = format_feature_ablation_report(
+            results, "baseline", fa_regime_labels, n_boot=100
+        )
+        assert isinstance(out, str)
+        for name in results:
+            assert name in out
+        for regime in REGIMES:
+            assert regime in out
+        assert "PASSED" in out or "FAILED" in out
+
+    def test_gate_kwargs_forwarded(
+        self,
+        fa_baseline_returns: pd.Series,
+        fa_regime_labels: pd.Series,
+    ) -> None:
+        from quant.backtest.report import format_feature_ablation_report
+
+        variant = _shifted_variant(fa_baseline_returns, fa_regime_labels, "covid", 0.004)
+        results = {
+            "baseline": _result_from_returns(fa_baseline_returns),
+            "+x": _result_from_returns(variant),
+        }
+        # min_features=1 → this single strong feature passes the gate.
+        out = format_feature_ablation_report(
+            results, "baseline", fa_regime_labels, min_features=1, n_boot=100
+        )
+        assert "PASSED" in out

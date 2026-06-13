@@ -5,10 +5,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from quant.backtest.regimes import VIXThresholdDetector
 from quant.features.weights import compute_sample_weights
 from quant.features.engineering import (
     _FRED_SERIES,
     FRED_PUBLICATION_LAGS,
+    VIX_REGIME_HIGH,
+    VIX_REGIME_LOW,
+    _add_regime_features,
     _attach_fred_features,
     _compute_price_features,
     build_features,
@@ -456,6 +460,165 @@ class TestBuildFeatures:
         )
         result = build_features(["AAPL"], prices)
         assert result["AAPL"].index.equals(prices["AAPL"].index)
+
+
+class TestRegimeFeatures:
+    REGIME_COLS = ("vix_regime", "curve_inverted", "vol_regime_ratio", "trend_regime")
+
+    @staticmethod
+    def _fred_vix(values: list[float], start: str = "2023-01-02") -> pd.DataFrame:
+        dates = pd.bdate_range(start, periods=len(values), tz="UTC")
+        return pd.DataFrame(
+            {"DGS10": 4.0, "DFF": 5.0, "VIXCLS": values}, index=dates, dtype=float
+        )
+
+    def _build(self, monkeypatch, fred: pd.DataFrame, n: int = 30) -> pd.DataFrame:
+        monkeypatch.setattr(
+            "quant.features.engineering._load_fred_wide", lambda con: fred
+        )
+        return build_features(["AAPL"], {"AAPL": _ohlcv(n)})["AAPL"]
+
+    def test_thresholds_imported_from_detector_defaults(self):
+        from dataclasses import fields
+
+        defaults = {f.name: f.default for f in fields(VIXThresholdDetector)}
+        assert VIX_REGIME_LOW == defaults["low"]
+        assert VIX_REGIME_HIGH == defaults["high"]
+
+    def test_vix_regime_matches_detector_convention(self, monkeypatch):
+        # Span both thresholds, including exact boundary values.
+        fred = self._fred_vix([10.0, 15.0, 20.0, 25.0, 30.0, 14.9, 25.1, 18.0])
+        feat = self._build(monkeypatch, fred)
+
+        vix = feat["VIXCLS"].dropna()
+        detector = VIXThresholdDetector(vix_series=vix)
+        labels = detector.label(pd.DatetimeIndex(vix.index))
+        expected = labels.map(
+            {"low_vol": 0.0, "mid_vol": 1.0, "high_vol": 2.0}
+        ).astype(float)
+
+        pd.testing.assert_series_equal(
+            feat.loc[vix.index, "vix_regime"], expected, check_names=False
+        )
+
+    def test_vix_regime_boundary_values(self, monkeypatch):
+        fred = self._fred_vix([15.0, 25.0, 20.0, 15.0, 25.0, 20.0, 15.0, 25.0])
+        feat = self._build(monkeypatch, fred)
+
+        at_low = feat["VIXCLS"] == 15.0
+        at_high = feat["VIXCLS"] == 25.0
+        assert at_low.any() and at_high.any()
+        # Detector convention: vix <= low → low_vol(0), vix >= high → high_vol(2).
+        assert (feat.loc[at_low, "vix_regime"] == 0.0).all()
+        assert (feat.loc[at_high, "vix_regime"] == 2.0).all()
+
+    def test_nan_vixcls_and_yield_curve_propagate(self, monkeypatch):
+        # FRED starts two weeks after the bars: early bars have NaN macro values.
+        fred = self._fred_vix([20.0] * 5, start="2023-01-16")
+        feat = self._build(monkeypatch, fred)
+
+        early = feat.index < pd.Timestamp("2023-01-16", tz="UTC")
+        assert early.any()
+        assert feat.loc[early, "VIXCLS"].isna().all()
+        assert feat.loc[early, "vix_regime"].isna().all()
+        assert feat.loc[early, "curve_inverted"].isna().all()
+
+    def test_curve_inverted_values(self):
+        idx = pd.bdate_range("2023-01-02", periods=3, tz="UTC")
+        feat = pd.DataFrame(
+            {
+                "vol_21d": 0.1,
+                "vol_63d": 0.2,
+                "ma200_ratio": 1.0,
+                "VIXCLS": 20.0,
+                "yield_curve": [-0.5, 0.5, np.nan],
+            },
+            index=idx,
+        )
+
+        out = _add_regime_features(feat)
+
+        assert out["curve_inverted"].iloc[0] == 1.0
+        assert out["curve_inverted"].iloc[1] == 0.0
+        assert np.isnan(out["curve_inverted"].iloc[2])
+
+    def test_trend_regime_values(self):
+        idx = pd.bdate_range("2023-01-02", periods=4, tz="UTC")
+        feat = pd.DataFrame(
+            {
+                "vol_21d": 0.1,
+                "vol_63d": 0.2,
+                "ma200_ratio": [1.1, 0.9, 1.0, np.nan],
+                "VIXCLS": 20.0,
+                "yield_curve": 1.0,
+            },
+            index=idx,
+        )
+
+        out = _add_regime_features(feat)
+
+        assert out["trend_regime"].iloc[0] == 1.0
+        assert out["trend_regime"].iloc[1] == 0.0
+        assert out["trend_regime"].iloc[2] == 0.0, "ma200_ratio == 1 is not a trend"
+        assert np.isnan(out["trend_regime"].iloc[3])
+
+    def test_vol_regime_ratio_zero_denominator_is_nan_not_inf(self):
+        idx = pd.bdate_range("2023-01-02", periods=2, tz="UTC")
+        feat = pd.DataFrame(
+            {
+                "vol_21d": [0.1, 0.2],
+                "vol_63d": [0.0, 0.1],
+                "ma200_ratio": 1.0,
+                "VIXCLS": 20.0,
+                "yield_curve": 1.0,
+            },
+            index=idx,
+        )
+
+        out = _add_regime_features(feat)
+
+        assert np.isnan(out["vol_regime_ratio"].iloc[0])
+        assert not np.isinf(out["vol_regime_ratio"]).any()
+        assert out["vol_regime_ratio"].iloc[1] == pytest.approx(2.0)
+
+    def test_no_fred_path_regime_columns_exist(self, monkeypatch):
+        feat = self._build(monkeypatch, pd.DataFrame(), n=300)
+
+        for col in self.REGIME_COLS:
+            assert col in feat.columns
+        assert feat["vix_regime"].isna().all()
+        assert feat["curve_inverted"].isna().all()
+        assert feat["vol_regime_ratio"].notna().sum() > 0
+        assert feat["trend_regime"].notna().sum() > 0
+
+    def test_column_count_with_fred(self, monkeypatch):
+        feat = self._build(monkeypatch, _fred_wide(30))
+        assert len(feat.columns) == 21  # 17 base + 4 regime
+
+    def test_column_count_with_sentiment(self, monkeypatch):
+        monkeypatch.setattr(
+            "quant.features.engineering._load_fred_wide",
+            lambda con: _fred_wide(30),
+        )
+        scored = pd.DataFrame(
+            {
+                "symbol": ["AAPL"],
+                "published_at": pd.to_datetime(["2023-01-02"], utc=True),
+                "sentiment_score": [0.5],
+                "document_id": ["doc_0"],
+            }
+        )
+        feat = build_features(["AAPL"], {"AAPL": _ohlcv(30)}, sentiment_df=scored)["AAPL"]
+        assert len(feat.columns) == 24  # 17 base + 4 regime + 3 sentiment
+
+    def test_regime_columns_appended_after_base(self, monkeypatch):
+        feat = self._build(monkeypatch, _fred_wide(30))
+        assert list(feat.columns)[-4:] == list(self.REGIME_COLS)
+
+    def test_mom_21d_positional_contract(self, monkeypatch):
+        # nb02 MomentumBaseline reads mom_21d positionally at index 5.
+        feat = self._build(monkeypatch, _fred_wide(30))
+        assert list(feat.columns).index("mom_21d") == 5
 
 
 class TestGenerateLabels:
