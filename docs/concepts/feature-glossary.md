@@ -1,7 +1,9 @@
 # Feature Glossary
 
-> Succinct reference for all 17 features produced by
-> `src/quant/features/engineering.py:build_features()`.
+> Succinct reference for all features produced by
+> `src/quant/features/engineering.py:build_features()` (17 base + 4 regime
+> indicators) and `src/quant/features/cross_sectional.py:
+> add_cross_sectional_features()` (3 cross-sectional ranks).
 > All features are point-in-time correct — no lookahead.
 
 ---
@@ -156,6 +158,112 @@ Computed post-merge from existing series — no additional ingestion needed.
 
 ---
 
+## Regime-indicator features (`_add_regime_features`) *(Phase 4A)*
+
+Appended after the 17 base columns on both FRED paths. All four are
+NaN-propagating: a missing input produces a NaN indicator, never a silent
+default. Point-in-time rule: each indicator is a deterministic transform of
+already-point-in-time-correct columns at the same bar — no additional
+lookback, no additional leakage surface.
+
+### vix_regime *(Phase 4A)*
+Ordinal {0, 1, 2} bucket of `VIXCLS`: 0 = calm (VIX ≤ low threshold),
+1 = normal, 2 = stressed (VIX ≥ high threshold).
+
+Thresholds are read from `VIXThresholdDetector`'s dataclass defaults in
+`backtest/regimes.py` (single source of truth), so the Milestone 1
+*evaluation* axis and this *feature* can never drift apart. Gives the model
+an explicit handle for the volatility-regime conditioning that nb05 showed
+the evaluation needs. Lookback: none beyond the (already-lagged) VIXCLS
+join. NaN when VIXCLS is NaN.
+
+### curve_inverted *(Phase 4A)*
+Binary: `yield_curve < 0` (DGS10 − DFF inverted).
+
+The discrete version of the glossary's `yield_curve` thesis: every US
+recession since 1970 was preceded by an inversion. The binarization hands
+the GBM the economically meaningful threshold directly instead of asking it
+to discover the zero crossing from a continuous spread. Lookback: none;
+inherits the publication-lagged DGS10/DFF. NaN when `yield_curve` is NaN.
+
+### vol_regime_ratio *(Phase 4A)*
+`vol_21d / vol_63d` — near-term realized volatility relative to its
+quarterly baseline.
+
+Values > 1 mean volatility is expanding (stress building), < 1 contracting.
+Makes the ratio that `vol_21d`/`vol_63d` only encode *implicitly* an
+explicit input. `vol_63d == 0` maps to NaN, not inf. Lookback: 63 bars
+(inherited from `vol_63d`).
+
+### trend_regime *(Phase 4A)*
+Binary: `ma200_ratio > 1` — price above its 200-day moving average.
+
+The discrete bull/bear regime switch behind nb05's trend-fighting
+diagnosis: mean-reversion signals (e.g. `rsi_14`) pay in ranging markets
+and destroy value in persistent trends. Lookback: 200 bars (inherited from
+`ma200_ratio`). NaN during the MA warmup.
+
+---
+
+## Cross-sectional rank features (`add_cross_sectional_features`) *(Phase 4A)*
+
+Produced by `src/quant/features/cross_sectional.py`, not `build_features` —
+they need the whole panel at once. For each source column, every symbol
+receives its percentile rank (0–1] across the universe symbols with data on
+that date: "where does this symbol sit relative to the panel today".
+
+**Point-in-time rule:** each rank at bar *t* uses ONLY the same-date values
+of point-in-time features already produced by `build_features` —
+**same-date cross-sectional, no temporal aggregation, no lookahead by
+construction**. Dates where fewer than `min_symbols` symbols have data are
+NaN wholesale (a rank over two symbols is noise).
+
+**Survivorship caveat:** the ranked universe (DJIA 30 + ETFs, chosen in
+Phase 2.5) was selected with hindsight of which constituents survived to
+selection time. The rank features *inherit* that universe-membership bias;
+they do not add to it.
+
+On the 5-symbol slice notebooks the ranks are coarse quintiles
+({0.2, 0.4, 0.6, 0.8, 1.0}); the full 33-symbol panel gives finer ranks.
+
+### xs_rank_ret_21d *(Phase 4A)*
+Cross-sectional percentile rank of `ret_21d`.
+
+Relative 1-month momentum: is this symbol leading or lagging the panel this
+month? Cross-sectional momentum is more robust than time-series momentum to
+market-wide shocks, which shift every symbol's raw return but not the
+ordering. Lookback: 21 bars (inherited from `ret_21d`).
+
+### xs_rank_ret_252d *(Phase 4A)*
+Cross-sectional percentile rank of `ret_252d`.
+
+The classic cross-sectional momentum sort (Jegadeesh & Titman, 1993 ranks
+stocks exactly this way — the finding is *relative*, not absolute,
+momentum). Lookback: 252 bars (inherited from `ret_252d`).
+
+### xs_rank_vol_21d *(Phase 4A)*
+Cross-sectional percentile rank of `vol_21d`.
+
+Relative riskiness axis — the low-volatility anomaly (Ang et al., 2006) is
+a cross-sectional finding: the *quietest* names in the panel, not "low vol"
+in absolute terms, historically earn superior risk-adjusted returns.
+Lookback: 21 bars (inherited from `vol_21d`).
+
+---
+
+## Future candidates (parking lot)
+
+Candidate features surfaced *mid-milestone* are recorded here — **not**
+added to a running ablation. The Milestone 3 candidate list was
+pre-committed before any result was computed; widening it after seeing
+results would reintroduce the winner's-curse problem the ablation noise
+guard exists to prevent. Parking-lot entries graduate by being pre-committed
+into a *future* milestone's candidate list with their own ablation budget.
+
+*(empty)*
+
+---
+
 ## NaN warmup periods
 
 Rows with any NaN are dropped before backtesting. With 20 years of data the
@@ -169,4 +277,6 @@ Rows with any NaN are dropped before backtesting. With 20 years of data the
 | `vol_63d`, `volume_ratio` | 63 | 3 months |
 | `ret_126d` | 126 | 6 months |
 | `ma200_ratio` | 200 | 10 months |
+| `trend_regime` | 200 | 10 months |
 | `ret_252d` | 252 | 12 months |
+| `xs_rank_ret_252d` | 252 (every panel symbol) | 12 months |
