@@ -206,6 +206,41 @@ is **provisional**; the two survivors carry forward to M4 (catalog
 registration) and M6 (full-panel re-evaluation), which is the
 confirmatory test.
 
+Milestone 4 (machine-readable feature catalog, executed 2026-06-13)
+delivered: new `features/catalog.py` with a `FeatureRecord` pydantic
+model (12 pre-committed fields, `extra="forbid"`), `load_catalog()`
+(`yaml.safe_load` → schema validation → duplicate-name check →
+`depends_on` referential integrity, every error names the offending
+items), and `validate_catalog_coverage()` (two-way set comparison
+between produced columns and registered names, raising with
+`unregistered`/`phantom` lists). New `features/catalog.yaml` registers
+all 27 maximal columns: 12 price + 1 volume (`log_volume`)
++ 3 macro + 1 macro_derived + 4 regime + 3 cross_sectional + 3
+sentiment. Per-entry metadata captures `family`/`source`/`formula`/
+`lookback_bars` (matched to the glossary warmup table)/
+`publication_lag_days` (1 for the FRED-derived columns per M5's pinned
+lags, 0 elsewhere)/`point_in_time_rule`/`added_phase`/`glossary_ref`/
+`ablation_status`/`regime_notes`/`depends_on`. M3 survivors
+(`trend_regime`, `xs_rank_vol_21d`) recorded as `tested_edge`; the five
+M3 noise candidates as `tested_no_edge` with the nb08 best-regime lift
+in `regime_notes`; the 20 columns M3 did not ablate (13 price + 1 volume
++ 3 macro + 1 macro_derived + 3 sentiment) keep `untested`. New
+`tests/test_catalog.py` (14 tests, 446 / 4 skipped suite total)
+exercises loader behaviour (duplicates, bad enums, dangling
+`depends_on`, unknown top-level keys, unknown per-feature fields,
+missing required fields), the drift-enforcement positive + negative
+paths (builds a real maximal matrix offline and asserts
+`set(produced) == set(catalog)`), and the glossary anchor check (every
+`glossary_ref` resolves to a `### <name>` heading in
+`feature-glossary.md`). Glossary updated with the catalog/glossary
+division-of-labor note at the top and prose entries for the three
+sentiment columns the registry now references.
+
+**Rule for future agents and humans: new feature ⇒ glossary entry +
+catalog entry + the drift test passes.** Adding a column without
+registering it, or removing one without updating the YAML, fails CI by
+naming the offender.
+
 ## Codebase map
 
 ```
@@ -228,6 +263,8 @@ src/quant/
 │   ├── label_schemes.py      vol_scaled_returns() + triple_barrier_labels() + LDP_DEFAULT (Phase 4A M2)
 │   ├── engineering.py        build_features() — 17 base + 4 regime cols (21; +3 with sentiment_df); lagged FRED join (FRED_PUBLICATION_LAGS, M5)
 │   ├── cross_sectional.py    add_cross_sectional_features() — xs_rank_* panel percentile ranks (Phase 4A M3)
+│   ├── catalog.py            FeatureRecord + load_catalog() + validate_catalog_coverage() (Phase 4A M4)
+│   ├── catalog.yaml          machine-readable registry — 27 columns × 12 metadata fields (Phase 4A M4)
 │   ├── weights.py            compute_sample_weights() — López de Prado uniqueness weights
 │   ├── finbert.py            FinBERT scorer — score_documents() → sentiment_scored/ (Phase 3)
 │   └── sentiment.py          aggregate_sentiment() + validate_point_in_time() (Phase 3)
@@ -272,7 +309,7 @@ shell convenience for interactive prompts only.
 ## Running things
 
 ```bash
-# Full test suite (432 tests, ~66s, no network):
+# Full test suite (446 tests, ~77s, no network):
 .venv/bin/pytest tests/ -v
 
 # With coverage:
