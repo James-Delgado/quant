@@ -155,7 +155,8 @@ tasks:
     title: "Build trial-count ledger (data/ledger.yaml + writer + CI drift test)"
     project: A
     sub_project: methodology-upgrade-12
-    status: ready
+    status: in_progress
+    started_at: 2026-06-17T17:17:12Z
     depends_on: []
     blocks: [B1-PRD, B2-PRD, C1-PRD]
     deliverable:
