@@ -155,8 +155,9 @@ tasks:
     title: "Build trial-count ledger (data/ledger.yaml + writer + CI drift test)"
     project: A
     sub_project: methodology-upgrade-12
-    status: in_progress
+    status: done
     started_at: 2026-06-17T17:17:12Z
+    completed_at: 2026-06-17
     depends_on: []
     blocks: [B1-PRD, B2-PRD, C1-PRD]
     deliverable:
@@ -183,7 +184,7 @@ tasks:
     title: "Draft B1 (target reframing) PRD"
     project: B
     sub_project: B1
-    status: blocked
+    status: ready
     depends_on: [A-LEDGER]
     blocks: [B1-M1, B1-M2, B1-M3]
     deliverable:
@@ -211,7 +212,7 @@ tasks:
     title: "Draft B2 (OOS-only attribution method) PRD"
     project: B
     sub_project: B2
-    status: blocked
+    status: ready
     depends_on: [A-LEDGER]
     blocks: [B2-M1, B2-M2, B2-M3]
     deliverable:
@@ -237,7 +238,7 @@ tasks:
     title: "Draft C1 (live data + same-day inference pipeline) PRD"
     project: C
     sub_project: C1
-    status: blocked
+    status: ready
     depends_on: [A-LEDGER]
     blocks: [C1-M1, C1-M2, C1-M3, C2-PRD]
     deliverable:
@@ -549,6 +550,82 @@ tasks:
     notes: |
       Conditional: only draft if B1 + B3 do not surface edge. Lowest priority
       in Project B.
+
+  # ------ Project A methodology follow-ups (discovered during A-LEDGER) ------
+
+  - id: A-PRIORITIES-TEST
+    rank: 23
+    title: "Build tests/test_priorities.py (status enum + dependency-graph + single-in-progress drift test)"
+    project: A
+    sub_project: methodology-upgrade
+    status: ready
+    depends_on: []
+    blocks: []
+    deliverable:
+      file: tests/test_priorities.py
+    references:
+      primary: docs/PRIORITIES.yaml
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Referenced in this file's execution_model (task_lifecycle) and in
+      docs/AGENT_OPERATION.md Step 5 as a drift test, but it does not exist yet.
+      Enforce: (a) all status values in the enum, (b) all depends_on / blocks
+      references resolve to existing ids, (c) at most one task in_progress,
+      (d) done tasks have completed_at. Discovered during A-LEDGER (commit of
+      src/quant/ledger.py); mirrors the tests/test_ledger.py + tests/test_catalog.py
+      drift-test pattern.
+
+  - id: A-LEDGER-RUNNERS
+    rank: 24
+    title: "Wire append_ledger_entry into the runner pattern (runners write ledger entries automatically)"
+    project: A
+    sub_project: methodology-upgrade-12
+    status: ready
+    depends_on: [A-LEDGER]
+    blocks: []
+    deliverable:
+      file: scripts/run_phase4a_arms.py
+      tests: tests/test_ledger.py
+    references:
+      primary: src/quant/ledger.py
+      methodology: docs/METHODOLOGY.md
+      runner_pattern: scripts/run_phase4a_arms.py
+    est_complexity: small
+    notes: |
+      METHODOLOGY §12 says the ledger is "written by every runner". Today
+      data/ledger.yaml is hand-populated; no runner calls
+      quant.ledger.append_ledger_entry. Add a small helper that maps a
+      runner's metadata.json (config_hash, started_at/finished_at, n_folds,
+      verdict) to a LedgerEntry and appends it on completion. Backfill is
+      already done (Phase 4A M1-M6); this closes the loop for future B1/B2/C
+      runners so the deflation N stays current automatically. Discovered during
+      A-LEDGER.
+
+  - id: A-DSR-GATE
+    rank: 25
+    title: "DSR-aware gate function (deflated Sharpe second stage; N from cumulative_trial_count)"
+    project: A
+    sub_project: methodology-upgrade-13
+    status: ready
+    depends_on: [A-LEDGER]
+    blocks: []
+    deliverable:
+      file: src/quant/backtest/regime_metrics.py
+      tests: tests/test_regime_metrics.py
+    references:
+      primary: docs/METHODOLOGY.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      METHODOLOGY §13 ("DSR-aware gates"): gate-pass should require both the
+      pre-committed Sharpe threshold AND deflated Sharpe (Bailey & López de
+      Prado 2014) > 0, with the deflation N read from
+      quant.ledger.cumulative_trial_count(). Extend phase4a_gate_report (or add
+      a sibling) so future PRD gates consume N from the ledger rather than
+      hand-counting. Discovered during A-LEDGER — the ledger now makes N a code
+      value (PHASE_4A_REPORT §7 documents the N≈62 / ~0.71 best-of-N reasoning
+      this would formalize).
 
   # ------ D — Phase 5 (gated; not pickable until triggers met) ------
 

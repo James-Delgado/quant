@@ -1,0 +1,186 @@
+# Trial-count ledger — METHODOLOGY.md §12 ("Trial-count ledger as a code artifact").
+#
+# APPEND-ONLY. Each entry is one pre-registered, executed, verdict-reported
+# comparison. The cumulative trial count N = sum(n_comparisons) feeds the
+# Bailey-López de Prado deflated-Sharpe deflation; it must come from this file,
+# not from hand-counting.
+#
+# Schema (12 fields) is pinned in docs/METHODOLOGY.md §"Reference schemas" and
+# enforced by src/quant/ledger.py (LedgerEntry) + tests/test_ledger.py.
+# Writer: quant.ledger.append_ledger_entry — never rewrites existing bytes.
+#
+# Conventions:
+#   * Entries are ordered by non-decreasing started_at; ids are unique.
+#   * n_comparisons may be 0 for infrastructure milestones that ran no
+#     statistical comparison (e.g. M1 regime harness, M4 feature catalog);
+#     such entries keep the audit trail without inflating N.
+#   * Phase 4A M1-M5 entries are RECONSTRUCTED retroactively: started_at /
+#     completed_at are the milestone's git commit time (UTC) and config_hash is
+#     that commit SHA, because those milestones predate the runner config-hash
+#     pattern. M6 arm entries carry the runner's real config_hash + timestamps
+#     from data/phase4a/{arm}/metadata.json. Per-milestone n_comparisons are
+#     sourced from docs/PHASE_4A_REPORT.md §7 (total = 62).
+
+- id: ledger-2026-06-11-0001
+  prd: phase-4a
+  milestone: M1
+  agent: human
+  preregistration: .claude/plans/phase-4a-milestone-1-regime-harness.plan.md
+  config_hash: af8d7daf74a1137ff7fff9d4dc5101aaa2a3f1ac
+  n_comparisons: 0
+  started_at: 2026-06-11T21:31:33Z
+  completed_at: 2026-06-11T21:31:33Z
+  verdict: inconclusive
+  artifacts:
+    - src/quant/backtest/regimes.py
+    - src/quant/backtest/regime_metrics.py
+    - notebooks/05_phase4a_regime_harness.ipynb
+  notes: >-
+    Rolling-window + regime-conditional evaluation harness. Infrastructure
+    milestone — no statistical comparison (n_comparisons=0). Reconstructed
+    from commit af8d7da; config_hash is the commit SHA.
+
+- id: ledger-2026-06-11-0002
+  prd: phase-4a
+  milestone: M2
+  agent: human
+  preregistration: .claude/plans/phase-4a-milestone-2-label-ablation.plan.md
+  config_hash: 893db9a6f6e63ece304bef69be09257b00bf72e2
+  n_comparisons: 12
+  started_at: 2026-06-11T23:05:04Z
+  completed_at: 2026-06-11T23:05:04Z
+  verdict: inconclusive
+  artifacts:
+    - src/quant/features/label_schemes.py
+    - src/quant/backtest/ablation.py
+    - notebooks/06_phase4a_label_ablation.ipynb
+  notes: >-
+    Label-scheme ablation: 3 schemes × 4 columns (aggregate + 3 eras) on the
+    5-symbol × 8-year ARIMA-control slice (PHASE_4A_REPORT §7: 12 comparisons).
+    Slice-level diagnostic — Borda winner vol_scaled, but no scheme alone fixes
+    the rate_cycle regime; not a confirmatory gate. Reconstructed from 893db9a.
+
+- id: ledger-2026-06-12-0001
+  prd: phase-4a
+  milestone: M5
+  agent: human
+  preregistration: .claude/plans/phase-4a-milestone-5-fred-leakage.plan.md
+  config_hash: ef6525616cf61424f4225643ec13d325778afb44
+  n_comparisons: 8
+  started_at: 2026-06-12T23:03:10Z
+  completed_at: 2026-06-12T23:03:10Z
+  verdict: inconclusive
+  artifacts:
+    - src/quant/features/engineering.py
+    - docs/concepts/fred-publication-lag.md
+    - notebooks/07_phase4a_fred_leakage.ipynb
+  notes: >-
+    FRED publication-lag leakage A/B: leaked-vs-lagged × 4 regime axes (era +
+    vol) on the GBM slice (PHASE_4A_REPORT §7: 8 comparisons). Verdict LEAK
+    CONFIRMED + MATERIAL — a methodology fix, not a strategy gate, so
+    inconclusive for trial purposes. Reconstructed from ef65256.
+
+- id: ledger-2026-06-13-0001
+  prd: phase-4a
+  milestone: M3
+  agent: human
+  preregistration: .claude/plans/phase-4a-milestone-3-regime-features.plan.md
+  config_hash: d83e5cf56e58e8bbb379910952bd2fc81dffe531
+  n_comparisons: 30
+  started_at: 2026-06-13T17:36:41Z
+  completed_at: 2026-06-13T17:36:41Z
+  verdict: gate_failed
+  artifacts:
+    - src/quant/features/cross_sectional.py
+    - src/quant/backtest/ablation.py
+    - notebooks/08_phase4a_feature_ablation.ipynb
+  notes: >-
+    Per-feature add-one/LOO ablation: 7 candidates × 4 regimes + LOO spot-check
+    on 2 survivors, GBM slice (PHASE_4A_REPORT §7: 30 comparisons). nb08 verdict
+    PRD GATE FAILED (2/3 qualifying). Reconstructed from d83e5cf.
+
+- id: ledger-2026-06-13-0002
+  prd: phase-4a
+  milestone: M4
+  agent: human
+  preregistration: .claude/plans/phase-4a-milestone-4-feature-catalog.plan.md
+  config_hash: 397f68acc56c5fe146e4d61e18d5f6c3b976168e
+  n_comparisons: 0
+  started_at: 2026-06-13T17:55:43Z
+  completed_at: 2026-06-13T17:55:43Z
+  verdict: inconclusive
+  artifacts:
+    - src/quant/features/catalog.py
+    - src/quant/features/catalog.yaml
+    - tests/test_catalog.py
+  notes: >-
+    Machine-readable feature catalog + drift test. Infrastructure milestone —
+    no statistical comparison (n_comparisons=0). Reconstructed from 397f68a.
+
+- id: ledger-2026-06-13-0003
+  prd: phase-4a
+  milestone: M6
+  agent: human
+  preregistration: docs/PHASE_4A_REPORT.md#2--the-gate-verbatim
+  config_hash: f3b75332527b7b58e952522a1df093bd2dede78320b7a17747d995dcfe06fc49
+  n_comparisons: 0
+  started_at: 2026-06-13T18:14:19Z
+  completed_at: 2026-06-13T18:31:02Z
+  verdict: inconclusive
+  artifacts:
+    - data/phase4a/arima/
+  notes: >-
+    ARIMA(1,0,0) control arm — full-panel exit gate (33 symbols, 87 folds,
+    aggregate Sharpe +0.423). Control baseline; comparisons are attributed to
+    the GBM arms (n_comparisons=0). config_hash + timestamps from
+    data/phase4a/arima/metadata.json.
+
+- id: ledger-2026-06-13-0004
+  prd: phase-4a
+  milestone: M6
+  agent: human
+  preregistration: docs/PHASE_4A_REPORT.md#2--the-gate-verbatim
+  config_hash: 90e7cb484232a9df47c222f0bd624e7e6b39a58644da82ea5469e7917566fe9f
+  n_comparisons: 4
+  started_at: 2026-06-13T18:32:10Z
+  completed_at: 2026-06-13T18:56:17Z
+  verdict: gate_failed
+  artifacts:
+    - data/phase4a/signed/
+  notes: >-
+    GBM + signed_returns primary arm — 4 columns (aggregate + 3 eras) vs ARIMA
+    at DM α=0.05. Lost in every required regime (DM p=1.0000); aggregate Sharpe
+    −0.336. From data/phase4a/signed/metadata.json.
+
+- id: ledger-2026-06-13-0005
+  prd: phase-4a
+  milestone: M6
+  agent: human
+  preregistration: docs/PHASE_4A_REPORT.md#2--the-gate-verbatim
+  config_hash: b3bc413577a2a9476641d0987ef1504055f0bba4c7d7fa7ea7b080399776ac58
+  n_comparisons: 4
+  started_at: 2026-06-13T18:56:21Z
+  completed_at: 2026-06-13T19:20:58Z
+  verdict: gate_failed
+  artifacts:
+    - data/phase4a/vol_scaled/
+  notes: >-
+    GBM + vol_scaled secondary arm — Bonferroni α=0.0167. Aggregate Sharpe
+    −0.339. From data/phase4a/vol_scaled/metadata.json.
+
+- id: ledger-2026-06-13-0006
+  prd: phase-4a
+  milestone: M6
+  agent: human
+  preregistration: docs/PHASE_4A_REPORT.md#2--the-gate-verbatim
+  config_hash: 1157463a5bdd048ece21ccbdf55d58b0a712357583936d8b0f0fc16512ba7e91
+  n_comparisons: 4
+  started_at: 2026-06-13T19:21:03Z
+  completed_at: 2026-06-13T19:45:16Z
+  verdict: gate_failed
+  artifacts:
+    - data/phase4a/triple_barrier/
+  notes: >-
+    GBM + triple_barrier secondary arm — Bonferroni α=0.0167. Borda composite
+    winner among the GBM arms but its aggregate Sharpe +0.177 does not clear
+    deflation (~0.71 best-of-N at N≈62). From data/phase4a/triple_barrier/metadata.json.
