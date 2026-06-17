@@ -1,5 +1,26 @@
 {
   "permissions": {
+    "defaultMode": "bypassPermissions",
+    "deny": [
+      "Bash(sudo *)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf /)",
+      "Bash(rm -fr /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf $HOME*)",
+      "Bash(dd *)",
+      "Bash(mkfs*)",
+      "Bash(* | sh)",
+      "Bash(* | bash)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(chmod -R *)",
+      "Bash(chmod 777 *)",
+      "Bash(shutdown*)",
+      "Bash(reboot*)",
+      "Bash(halt*)",
+      "Bash(> /dev/*)"
+    ],
     "allow": [
       "Bash(~/.claude/skills/gstack/bin/gstack-review-read)",
       "Read(//Users/jamesdelgado/.local/bin/**)",
@@ -85,7 +106,8 @@
       "Bash(mkdir *)",
       "Bash(nbstripout *)",
       "Skill",
-      "Bash(python -c \"import json, sys; nb=json.load\\(sys.stdin\\); [print\\('---', i, c.get\\('cell_type',''\\), '---'\\); print\\(''.join\\(c.get\\('source',[]\\)\\)[:400]\\) for i,c in enumerate\\(nb['cells']\\)]\")"
+      "Bash(python -c \"import json, sys; nb=json.load\\(sys.stdin\\); [print\\('---', i, c.get\\('cell_type',''\\), '---'\\); print\\(''.join\\(c.get\\('source',[]\\)\\)[:400]\\) for i,c in enumerate\\(nb['cells']\\)]\")",
+      "Bash(rm -f .coverage)"
     ]
   },
   "sandbox": {
