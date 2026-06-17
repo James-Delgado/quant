@@ -1,0 +1,572 @@
+# Living priorities list — the agent (or human) entry point for "what's next."
+#
+# Read order for a fresh agent:
+#   1. docs/PROJECT_ROADMAP.md  (what we're building and why)
+#   2. docs/METHODOLOGY.md      (how to do it without p-hacking)
+#   3. docs/PRIORITIES.yaml     (this file — pick the top `ready` task)
+#   4. The task's `references` and `deliverable` fields
+#
+# Update this file every time a task moves between status values. The file
+# is the single source of truth for backlog state.
+
+version: 1
+last_updated: 2026-06-17
+
+# -----------------------------------------------------------------------------
+# Schema
+# -----------------------------------------------------------------------------
+schema:
+  task_status:
+    - ready        # all dependencies done; pickable now
+    - blocked      # one or more dependencies not done
+    - in_progress  # an agent or human has claimed it; only one at a time
+    - done         # complete; deliverable exists and tests (if any) pass
+    - skipped      # explicitly skipped per a conditional rule in a PRD
+  complexity:
+    - small        # < 1 day wall-time (drafting a PRD, building a single module + tests)
+    - medium       # 1–3 days (executing a milestone end-to-end)
+    - large        # > 3 days or > 1 hr compute (full-panel runs, multi-arm experiments)
+
+# -----------------------------------------------------------------------------
+# Execution model
+# -----------------------------------------------------------------------------
+execution_model:
+  concurrency: single-threaded
+  rationale: |
+    Parallel agent commits on overlapping files (most often
+    `backtest/harness.py`, `models/*.py`, `features/catalog.yaml`) will
+    produce merge conflicts that the harness is not yet built to resolve.
+    Single-threaded execution from the top of this list is the safe
+    default. Concurrent agent execution via git worktrees is a Phase 5
+    sub-feature — see docs/PHASE_5_AGENTS.md.
+
+  task_lifecycle: |
+    Completed tasks STAY in this file with `status: done` and
+    `completed_at: YYYY-MM-DD`. We do not delete them. Reasons:
+      - Dependency graph integrity: `depends_on: [A-LEDGER]` must
+        resolve for the lifetime of the file. Deleting `A-LEDGER`
+        breaks every forward reference.
+      - Project-state vs timeline: this file records the current
+        project state; git history records the timeline (who did what,
+        when). Mixing the two makes dependency checks impossible.
+      - Growth is bounded: at ~1 task/day, the file stays under 100KB
+        for years. Archive to docs/historical/PRIORITIES_done.yaml only
+        when pressure exists, never before.
+    A drift test (`tests/test_priorities.py`, planned alongside
+    `A-LEDGER`) enforces: (a) all status values are in the enum,
+    (b) all depends_on / blocks references resolve to existing task
+    ids, (c) at most one task is `in_progress`, (d) `done` tasks have
+    `completed_at`.
+
+  append_protocol: |
+    Any agent or human who discovers a new task during work APPENDS it
+    to the `tasks` array immediately. Discovered work is captured, not
+    dropped on the floor.
+      - Choose a unique `id` (kebab-uppercase, e.g. `C2-M2-SMOKE`).
+      - Set `status: ready` if it has no unmet dependencies, else
+        `blocked` with `depends_on` populated.
+      - Set `rank` to fit the priority order; renumber neighbours as
+        needed.
+      - Populate `notes` with a link to the commit, PR, or notebook
+        where the gap was discovered. This is the audit trail.
+      - Commit the appended task alongside the work that discovered it.
+    For Phase 5: Agent R inherits the triage layer (see
+    docs/PHASE_5_AGENTS.md §"Workstream 3"); appended tasks pass
+    through a `status: proposed` → `triaged` gate before becoming
+    `ready`.
+
+  pick_procedure: |
+    1. Read this file.
+    2. Find the lowest `rank` task with `status: ready`.
+    3. Read its `references.primary` and `references.methodology`
+       (docs/METHODOLOGY.md is binding for every task).
+    4. Set its `status` to `in_progress`, commit this file alone.
+    5. Do the work; produce the `deliverable.file`. Land tests
+       alongside per METHODOLOGY.md §15.
+    6. Post-task review (METHODOLOGY.md §20, MANDATORY before
+       flipping to `done`):
+         a. Re-read the deliverable for limitations, bugs, unintended
+            behaviour changes.
+         b. Cross-check against METHODOLOGY.md — particularly §1
+            (pre-committed thresholds), §6 (drift contracts), §15
+            (tests landed), §17 (E2E notebook if cross-module).
+         c. Append any discovered follow-up tasks to this file per
+            `append_protocol`.
+         d. Note any methodology deviations explicitly in the commit
+            message (METHODOLOGY.md §9).
+    7. Set its `status` to `done`, populate `completed_at` (ISO date),
+       and walk the `blocks` list — any blocked task whose `depends_on`
+       is now fully `done` flips to `ready`.
+    8. Commit the deliverable + this file together.
+
+# -----------------------------------------------------------------------------
+# Projects
+# -----------------------------------------------------------------------------
+projects:
+  A:
+    name: Research substrate & methodology
+    status: maintain
+    description: |
+      Harness, catalog, ablations, regime machinery, runner pattern. Built
+      through Phase 4A. Future tasks here are pattern improvements
+      identified in PHASE_4A_RETROSPECTIVE.md (trial-count ledger, DSR-aware
+      gates, etc.).
+    roadmap_section: docs/PROJECT_ROADMAP.md#project-a--research-substrate--methodology-done--maintain
+  B:
+    name: Predictive research (post-4A)
+    status: active
+    description: |
+      Replacement for Phase 4A's research mission. Sub-projects B1
+      (target reframing), B2 (OOS attribution), B3 (alternative data),
+      B4 (universe shift).
+    roadmap_section: docs/PROJECT_ROADMAP.md#project-b--predictive-research-post-4a
+  C:
+    name: Live execution & deployment infrastructure
+    status: active
+    description: |
+      Built in parallel with Project B. Sub-projects C1 (live data),
+      C2 (LEAN local + paper), C3 (sizing + risk), C4 (confidence
+      calibration), C5 (monitoring).
+    roadmap_section: docs/PROJECT_ROADMAP.md#project-c--live-execution--deployment-infrastructure
+  D:
+    name: Continuous research agents (Phase 5)
+    status: gated
+    triggers_required:
+      - "Project B has produced an ablation matrix with at least one cell that clears its pre-committed gate"
+      - "Project B2 OOS attribution method is in code with M3 catalog integration shipped"
+    description: |
+      Vision spec: docs/PHASE_5_AGENTS.md. Begins only when both triggers
+      above are met. Until then, every D-prefixed task in this file is
+      `blocked` and unpickable.
+
+# -----------------------------------------------------------------------------
+# Tasks (ranked; lowest rank = next up)
+# -----------------------------------------------------------------------------
+tasks:
+
+  # ------ Methodology infrastructure (unblocks everything else) ------
+
+  - id: A-LEDGER
+    rank: 1
+    title: "Build trial-count ledger (data/ledger.yaml + writer + CI drift test)"
+    project: A
+    sub_project: methodology-upgrade-12
+    status: ready
+    depends_on: []
+    blocks: [B1-PRD, B2-PRD, C1-PRD]
+    deliverable:
+      file: data/ledger.yaml
+      schema_doc: docs/METHODOLOGY.md
+      tests: tests/test_ledger.py
+    references:
+      primary: docs/METHODOLOGY.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Schema is in METHODOLOGY.md §"Reference schemas". Append-only YAML.
+      Writer can be a tiny library in src/quant/ledger.py (e.g. append_ledger_entry(record)).
+      CI test: tests/test_ledger.py asserting (a) schema validity for every existing entry,
+      (b) ids unique and monotonically dated, (c) the file is append-only across commits
+      (use git history to verify no entries were modified).
+      Populate retroactively: add ledger entries for each Phase 4A milestone (M1-M6)
+      pointing to the existing artifacts.
+
+  # ------ PRD drafting (parallel-ready once the ledger lands) ------
+
+  - id: B1-PRD
+    rank: 2
+    title: "Draft B1 (target reframing) PRD"
+    project: B
+    sub_project: B1
+    status: blocked
+    depends_on: [A-LEDGER]
+    blocks: [B1-M1, B1-M2, B1-M3]
+    deliverable:
+      file: .claude/prds/b1-target-reframing.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+      methodology: docs/METHODOLOGY.md
+      historical_context: docs/historical/PHASE_4_ADVANCED.md
+      verdict_context: docs/PHASE_4A_REPORT.md
+    est_complexity: small
+    notes: |
+      Use /plan-prd workflow. Pre-commit four candidate targets with rationale:
+        - 21-day drawdown classification (binary: P(>5% drawdown in next 21 bars))
+        - 21-day realized vol prediction (regression on log-vol)
+        - 5-day directional (binary up/down)
+        - 21-day cumulative direction (binary up/down)
+      Each target must declare:
+        - materiality threshold (ΔAUC for classification, ΔSharpe-equivalent for regression)
+        - significance threshold (bootstrapped 90% CI, paired against ARIMA baseline)
+        - DSR threshold (must clear at ledger N at completion time)
+      Pre-commit gate function (extension of phase4a_gate_report) in code BEFORE M2 starts.
+
+  - id: B2-PRD
+    rank: 3
+    title: "Draft B2 (OOS-only attribution method) PRD"
+    project: B
+    sub_project: B2
+    status: blocked
+    depends_on: [A-LEDGER]
+    blocks: [B2-M1, B2-M2, B2-M3]
+    deliverable:
+      file: .claude/prds/b2-oos-attribution.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+      methodology: docs/METHODOLOGY.md
+      problem_evidence: docs/PHASE_4A_RETROSPECTIVE.md
+    est_complexity: small
+    notes: |
+      Method shortlist (pick 2 of 3 to implement):
+        - permutation importance computed on the test fold only
+        - per-fold ablation as canonical OOS signal (M3-style, systematized)
+        - conformal feature relevance (theory-based, less established in finance)
+      Sanity test: each method's ranking, run on the M6 final feature set,
+      correlates with M3's per-fold ablation lifts at Spearman ρ > 0.5
+      (the inverse of the broken IS signal ρ = -0.074).
+      Catalog integration: add `attribution_status` field to catalog.yaml
+      with enum {none, ablation_only, oos_permutation, both, agreed}.
+
+  - id: C1-PRD
+    rank: 4
+    title: "Draft C1 (live data + same-day inference pipeline) PRD"
+    project: C
+    sub_project: C1
+    status: blocked
+    depends_on: [A-LEDGER]
+    blocks: [C1-M1, C1-M2, C1-M3, C2-PRD]
+    deliverable:
+      file: .claude/prds/c1-live-data.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+      methodology: docs/METHODOLOGY.md
+      existing_ingestors: src/quant/ingest/
+    est_complexity: small
+    notes: |
+      Audit current ingestors (Alpaca, Tiingo, FRED, EDGAR) for same-day freshness.
+      Each gets an SLA: "by what time of day can we have today's bar/observation?"
+      Define `get_pit_bar(symbol, asof)` returning the most recent point-in-time-correct
+      bar; integrate into build_features() such that build_features(asof=today) works.
+      No intraday — daily cadence per ratified decision (PROJECT_ROADMAP §8).
+
+  # ------ B1 execution ------
+
+  - id: B1-M1
+    rank: 5
+    title: "B1-M1: Candidate target catalog (4 targets pre-committed)"
+    project: B
+    sub_project: B1
+    status: blocked
+    depends_on: [B1-PRD]
+    blocks: [B1-M2]
+    deliverable:
+      file: src/quant/features/targets.py
+      tests: tests/test_targets.py
+    references:
+      primary: .claude/prds/b1-target-reframing.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+
+  - id: B1-M2
+    rank: 6
+    title: "B1-M2: Per-target ablation matrix on 5-symbol × 8-year slice"
+    project: B
+    sub_project: B1
+    status: blocked
+    depends_on: [B1-M1]
+    blocks: [B1-M3]
+    deliverable:
+      notebook: notebooks/10_b1_target_ablation.ipynb
+    references:
+      primary: .claude/prds/b1-target-reframing.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      Each of the 4 targets × {ARIMA control, GBM, naive baseline} on slice.
+      Verdict via phase4a_gate_report (extended for classification metrics
+      where applicable). Borda composite across regimes.
+
+  - id: B1-M3
+    rank: 7
+    title: "B1-M3: Full-panel confirmation of slice-winners (compute-gated)"
+    project: B
+    sub_project: B1
+    status: blocked
+    depends_on: [B1-M2]
+    blocks: []
+    deliverable:
+      runner: scripts/run_b1_arms.py
+      notebook: notebooks/11_b1_exit_gate.ipynb
+      report: docs/B1_REPORT.md
+    references:
+      primary: .claude/prds/b1-target-reframing.prd.md
+      methodology: docs/METHODOLOGY.md
+      runner_pattern: scripts/run_phase4a_arms.py
+    est_complexity: large
+
+  # ------ B2 execution ------
+
+  - id: B2-M1
+    rank: 8
+    title: "B2-M1: OOS attribution method shortlist + theory writeup"
+    project: B
+    sub_project: B2
+    status: blocked
+    depends_on: [B2-PRD]
+    blocks: [B2-M2]
+    deliverable:
+      file: docs/concepts/oos-attribution.md
+    references:
+      primary: .claude/prds/b2-oos-attribution.prd.md
+    est_complexity: small
+
+  - id: B2-M2
+    rank: 9
+    title: "B2-M2: Implementation + sanity test against M3 ablation lifts"
+    project: B
+    sub_project: B2
+    status: blocked
+    depends_on: [B2-M1]
+    blocks: [B2-M3]
+    deliverable:
+      file: src/quant/backtest/attribution.py
+      tests: tests/test_attribution.py
+    references:
+      primary: .claude/prds/b2-oos-attribution.prd.md
+    est_complexity: medium
+
+  - id: B2-M3
+    rank: 10
+    title: "B2-M3: Catalog integration (attribution_status field)"
+    project: B
+    sub_project: B2
+    status: blocked
+    depends_on: [B2-M2]
+    blocks: []
+    deliverable:
+      file: src/quant/features/catalog.yaml
+      schema_update: src/quant/features/catalog.py
+      tests: tests/test_catalog.py
+    references:
+      primary: .claude/prds/b2-oos-attribution.prd.md
+    est_complexity: small
+
+  # ------ C1 execution ------
+
+  - id: C1-M1
+    rank: 11
+    title: "C1-M1: Same-day data SLA audit per ingestor"
+    project: C
+    sub_project: C1
+    status: blocked
+    depends_on: [C1-PRD]
+    blocks: [C1-M2]
+    deliverable:
+      file: docs/concepts/data-freshness-slas.md
+    references:
+      primary: .claude/prds/c1-live-data.prd.md
+      ingestors: src/quant/ingest/
+    est_complexity: small
+
+  - id: C1-M2
+    rank: 12
+    title: "C1-M2: Point-in-time today's-bar reader + build_features integration"
+    project: C
+    sub_project: C1
+    status: blocked
+    depends_on: [C1-M1]
+    blocks: [C1-M3, C2-PRD]
+    deliverable:
+      file: src/quant/storage/realtime.py
+      tests: tests/test_realtime.py
+    references:
+      primary: .claude/prds/c1-live-data.prd.md
+    est_complexity: medium
+
+  - id: C1-M3
+    rank: 13
+    title: "C1-M3: Freshness monitor + alert (cron)"
+    project: C
+    sub_project: C1
+    status: blocked
+    depends_on: [C1-M2]
+    blocks: []
+    deliverable:
+      file: scripts/monitor_freshness.py
+      cron_doc: docs/concepts/freshness-monitor.md
+    references:
+      primary: .claude/prds/c1-live-data.prd.md
+    est_complexity: small
+
+  # ------ C2 — LEAN execution layer (PRD + milestones) ------
+
+  - id: C2-PRD
+    rank: 14
+    title: "Draft C2 (LEAN local + paper trading) PRD"
+    project: C
+    sub_project: C2
+    status: blocked
+    depends_on: [C1-PRD, C1-M2]
+    blocks: [C2-M1, C2-M2, C2-M3]
+    deliverable:
+      file: .claude/prds/c2-lean-paper.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+      lean_spec_context: docs/historical/PHASE_4_ADVANCED.md
+    est_complexity: small
+    notes: |
+      Platform decision: LEAN local first, Alpaca paper as fallback if LEAN
+      install friction exceeds 2 days. Placeholder strategy: ARIMA(1,0,0)
+      daily — exercises prediction emission, signal feed, paper execution,
+      reconciliation. GBM intentionally not used as placeholder (adds compute
+      without exercising additional deployment infrastructure).
+
+  - id: C2-M1
+    rank: 15
+    title: "C2-M1: LEAN local installed; hello-world algorithm runs"
+    project: C
+    sub_project: C2
+    status: blocked
+    depends_on: [C2-PRD]
+    blocks: [C2-M2]
+    deliverable:
+      docs: docs/concepts/lean-setup.md
+    references:
+      primary: .claude/prds/c2-lean-paper.prd.md
+    est_complexity: medium
+
+  - id: C2-M2
+    rank: 16
+    title: "C2-M2: ARIMA(1,0,0) daily signal feeds LEAN paper account"
+    project: C
+    sub_project: C2
+    status: blocked
+    depends_on: [C2-M1]
+    blocks: [C2-M3, C3-PRD, C4-PRD]
+    deliverable:
+      file: src/quant/execution/lean_bridge.py
+      tests: tests/test_lean_bridge.py
+    references:
+      primary: .claude/prds/c2-lean-paper.prd.md
+    est_complexity: large
+
+  - id: C2-M3
+    rank: 17
+    title: "C2-M3: Backtest-vs-paper reconciliation harness (>1% delta = investigate)"
+    project: C
+    sub_project: C2
+    status: blocked
+    depends_on: [C2-M2]
+    blocks: []
+    deliverable:
+      file: scripts/reconcile_paper_backtest.py
+      tests: tests/test_reconciliation.py
+    references:
+      primary: .claude/prds/c2-lean-paper.prd.md
+    est_complexity: medium
+
+  # ------ C3 / C4 / C5 — PRD drafting and milestones (sketch) ------
+
+  - id: C3-PRD
+    rank: 18
+    title: "Draft C3 (position sizing + risk management) PRD"
+    project: C
+    sub_project: C3
+    status: blocked
+    depends_on: [C2-M2]
+    blocks: []
+    deliverable:
+      file: .claude/prds/c3-sizing-risk.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+    est_complexity: small
+
+  - id: C4-PRD
+    rank: 19
+    title: "Draft C4 (confidence calibration) PRD"
+    project: C
+    sub_project: C4
+    status: blocked
+    depends_on: [C2-M2]
+    blocks: []
+    deliverable:
+      file: .claude/prds/c4-confidence.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+    est_complexity: small
+
+  - id: C5-PRD
+    rank: 20
+    title: "Draft C5 (monitoring + reconciliation dashboard) PRD"
+    project: C
+    sub_project: C5
+    status: blocked
+    depends_on: [C2-M3]
+    blocks: []
+    deliverable:
+      file: .claude/prds/c5-monitoring.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+    est_complexity: small
+
+  # ------ Conditional follow-on B sub-projects (queued) ------
+
+  - id: B3-PRD
+    rank: 21
+    title: "Draft B3 (alternative data — options-implied surfaces) PRD"
+    project: B
+    sub_project: B3
+    status: blocked
+    depends_on: [B1-M3]
+    blocks: []
+    deliverable:
+      file: .claude/prds/b3-options-implied.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+    est_complexity: small
+    notes: |
+      Conditional: only draft if B1 verdict is "no extractable edge on any
+      of the four targets with the current feature set."
+
+  - id: B4-PRD
+    rank: 22
+    title: "Draft B4 (universe shift — mid-cap / single-stock options / international) PRD"
+    project: B
+    sub_project: B4
+    status: blocked
+    depends_on: [B1-M3]
+    blocks: []
+    deliverable:
+      file: .claude/prds/b4-universe-shift.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+    est_complexity: small
+    notes: |
+      Conditional: only draft if B1 + B3 do not surface edge. Lowest priority
+      in Project B.
+
+  # ------ D — Phase 5 (gated; not pickable until triggers met) ------
+
+  - id: D-GATE
+    rank: 99
+    title: "Phase 5 trigger evaluation (gate for all D tasks)"
+    project: D
+    sub_project: phase-5-gate
+    status: blocked
+    depends_on: [B2-M3]   # plus the soft trigger from any B1/B3/B4 cell clearing its gate
+    blocks: []
+    deliverable:
+      file: docs/PHASE_5_TRIGGER_REPORT.md
+    references:
+      primary: docs/PHASE_5_AGENTS.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Pre-committed triggers (both required, per ratified ROADMAP §8 decision 7):
+        1. Project B has produced an ablation matrix with at least one cell
+           that clears its pre-committed gate (any sub-project).
+        2. Project B2 OOS attribution method is in code with B2-M3 catalog
+           integration shipped.
+      When both are met, this task generates the trigger report and unblocks
+      the Phase 5 milestone backlog (which gets appended to this file at that
+      time, not before — Phase 5's design depends on what B and C surfaced).
