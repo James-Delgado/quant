@@ -1,10 +1,11 @@
 # CLAUDE.md — quant project
 
 > **Read this first — entry point for any agent or new contributor:**
-> 1. [`docs/PROJECT_ROADMAP.md`](docs/PROJECT_ROADMAP.md) — what we're building, the post-4A portfolio (Projects A/B/C/D), ratified decisions.
-> 2. [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) — binding methodology + engineering contract (rules 1–20). Read this before writing any code or running any experiment.
-> 3. [`docs/PRIORITIES.yaml`](docs/PRIORITIES.yaml) — living task backlog. The next agent action is the lowest-`rank` task with `status: ready`. As of 2026-06-17 that is `A-LEDGER`.
-> 4. Completed phase docs (Phase 0–3, Phase 4 spec, refactor docs) live in [`docs/historical/`](docs/historical/).
+> 1. [`docs/AGENT_OPERATION.md`](docs/AGENT_OPERATION.md) — **the standard operating procedure**. If you're picking up a task, this tells you the exact 11-step procedure to follow. The user's default prompt is "pick up the next ready task from `docs/PRIORITIES.yaml`" — this doc is the rest of the instructions.
+> 2. [`docs/PROJECT_ROADMAP.md`](docs/PROJECT_ROADMAP.md) — what we're building, the post-4A portfolio (Projects A/B/C/D), ratified decisions.
+> 3. [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) — binding methodology + engineering contract (rules 1–20). Read this before writing any code or running any experiment.
+> 4. [`docs/PRIORITIES.yaml`](docs/PRIORITIES.yaml) — living task backlog. The next agent action is the lowest-`rank` task with `status: ready`. As of 2026-06-17 that is `A-LEDGER`.
+> 5. Completed phase docs (Phase 0–3, Phase 4 spec, refactor docs) live in [`docs/historical/`](docs/historical/).
 
 ## Project status
 
@@ -453,6 +454,7 @@ completed-phase docs moved to `docs/historical/`.
 
 ```
 docs/
+├── AGENT_OPERATION.md             standard operating procedure — the 11-step task workflow
 ├── PROJECT_ROADMAP.md             master pivot doc — portfolio, sequencing, ratified decisions
 ├── METHODOLOGY.md                 binding contract — rules 1–20 (research + engineering)
 ├── PRIORITIES.yaml                living task backlog — agents pick top `ready` task
