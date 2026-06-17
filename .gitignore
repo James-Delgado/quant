@@ -1,9 +1,15 @@
 # Secrets
 .env
 
-# Data lake — never commit data; it is reproducible from the raw layer / APIs
-data/
+# Data lake — never commit data; it is reproducible from the raw layer / APIs.
+# Use `data/*` (not `data/`) so the negations below can re-include specific
+# files — git cannot re-include a child of a fully-excluded directory.
+data/*
 !data/.gitkeep
+# Exception: the trial-count ledger is a tracked code artifact (METHODOLOGY.md
+# §12, ROADMAP §8.6). It must be committed so the append-only-across-commits
+# CI check (tests/test_ledger.py) can read its git history.
+!data/ledger.yaml
 
 # Python
 __pycache__/
