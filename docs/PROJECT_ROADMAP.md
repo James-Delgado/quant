@@ -6,11 +6,15 @@ prioritization layer above the phase docs. Completed phase docs have
 moved to [`docs/historical/`](historical/).*
 
 > **Reading order for a fresh agent or contributor:**
-> 1. This document — **what** we're building and why.
-> 2. [`METHODOLOGY.md`](METHODOLOGY.md) — **how** to do it honestly
+> 1. [`AGENT_OPERATION.md`](AGENT_OPERATION.md) — **the procedure** for
+>    picking up and executing a task end-to-end. Read first if you're
+>    operating; the default user prompt is "pick up the next ready task
+>    from `PRIORITIES.yaml`" and this doc is the rest of the instructions.
+> 2. This document — **what** we're building and why.
+> 3. [`METHODOLOGY.md`](METHODOLOGY.md) — **how** to do it honestly
 >    (binding contract for every PRD and every agent run).
-> 3. [`PRIORITIES.yaml`](PRIORITIES.yaml) — **next up** task to pick.
-> 4. The task's `references.primary` and any cited PRD or concept doc.
+> 4. [`PRIORITIES.yaml`](PRIORITIES.yaml) — **next up** task to pick.
+> 5. The task's `references.primary` and any cited PRD or concept doc.
 
 ---
 
