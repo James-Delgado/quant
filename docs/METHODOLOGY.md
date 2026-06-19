@@ -223,6 +223,33 @@ For Phase 5 agents this becomes an enforced `PostToolUse` /
 `Stop` hook that runs the review against the gate functions. Until
 then it is social contract plus this rule.
 
+### 21. Project closeout: end-to-end validation before a project is "done"
+
+A project does not flip to `done`/`maintain` on the strength of its
+tasks passing individually. Per-task unit tests and §20 reviews
+validate each piece in isolation; nothing otherwise validates the
+*assembled* project. Every project therefore ends with a terminal
+`<PROJECT>-CLOSE` task that `depends_on` **all** of the project's other
+tasks and produces:
+
+- an **end-to-end validation notebook** exercising the project's
+  combined surface across the module boundaries the individual tasks
+  created — the project-scale analog of §17's per-change E2E notebook.
+  A notebook is the right medium because it is human-reviewable *and*
+  agent-readable, and it forces the integration seam to be demonstrated
+  rather than assumed;
+- a **one-page closeout report** stating what the project delivered,
+  what the notebook validated, and any deferred scope — the
+  project-scale analog of §20's post-task review and of
+  `PHASE_4A_REPORT.md`.
+
+The closeout task is gated on the dependency graph, so a project cannot
+be declared complete while any of its tasks is unfinished. Corollary:
+any task appended to a project after its `<PROJECT>-CLOSE` exists must
+be added to that task's `depends_on` (otherwise closeout would certify
+a project whose newly-discovered work is unfinished). This keeps the
+definition-of-done honest as scope grows.
+
 ---
 
 ## Application to the agent harness (Phase 5)

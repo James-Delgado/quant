@@ -301,6 +301,38 @@ fine.
 
 ---
 
+## Project closeout (the definition-of-done for a whole project)
+
+Per-task validation (Step 5) and the post-task review (Step 6) certify
+each task in isolation. They do **not** certify that a project's tasks
+*compose* — that the modules the tasks created actually work together.
+That is the job of a project's terminal `<PROJECT>-CLOSE` task
+(METHODOLOGY.md §21).
+
+How it works:
+
+- Every project carries one `<PROJECT>-CLOSE` task whose `depends_on`
+  lists **all** the project's other tasks. It is `blocked` until they
+  are all `done`, then becomes the lowest-ranked `ready` task in that
+  project's band and is picked like any other.
+- Its deliverable is an **end-to-end validation notebook** (exercises
+  the project's combined surface — the integration seam per-task unit
+  tests can't reach) plus a **one-page closeout report**. The notebook
+  is human-reviewable and agent-readable; it is the project's
+  definition-of-done artifact.
+- Running it follows the same 11-step procedure as any task. If the
+  notebook surfaces an integration defect, that becomes a new
+  `ready`/`blocked` task (Step 7) and `<PROJECT>-CLOSE` stays open until
+  it is resolved.
+
+**Step 7 corollary (keep closeout honest as scope grows):** when you
+append a discovered follow-up that belongs to a project which already
+has a `<PROJECT>-CLOSE` task, add the new task's `id` to that
+`<PROJECT>-CLOSE`'s `depends_on`. Otherwise closeout could certify a
+project whose newly-discovered work is unfinished.
+
+---
+
 ## What this document is *not*
 
 - It is not a substitute for `METHODOLOGY.md`. It tells you how to
