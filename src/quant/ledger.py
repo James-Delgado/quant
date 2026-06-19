@@ -28,7 +28,8 @@ inflating the deflation `N` — `N` is the sum and they contribute nothing.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -196,3 +197,93 @@ def cumulative_trial_count(
     if entries is None:
         entries = load_ledger(path)
     return sum(e.n_comparisons for e in entries)
+
+
+def next_ledger_id(date: str, entries: Sequence[LedgerEntry]) -> str:
+    """Return the next free `ledger-<date>-NNNN` id for `date` (``YYYY-MM-DD``).
+
+    Scans `entries` for ids already using that date prefix and returns the
+    max sequence + 1, zero-padded to four digits (0001 if none exist).
+    """
+    prefix = f"ledger-{date}-"
+    seqs = [
+        int(e.id[len(prefix):])
+        for e in entries
+        if e.id.startswith(prefix) and e.id[len(prefix):].isdigit()
+    ]
+    nxt = (max(seqs) + 1) if seqs else 1
+    return f"{prefix}{nxt:04d}"
+
+
+def record_run(
+    metadata: Mapping[str, object] | dict | Path | str,
+    *,
+    prd: str,
+    milestone: str,
+    preregistration: str,
+    n_comparisons: int,
+    verdict: str,
+    agent: str = "human",
+    entry_id: str | None = None,
+    artifacts: Sequence[str] | None = None,
+    notes: str = "",
+    path: Path | str = DEFAULT_LEDGER_PATH,
+    skip_if_exists: bool = True,
+) -> LedgerEntry | None:
+    """Map a runner's `metadata.json` to a `LedgerEntry` and append it.
+
+    This is the integration point METHODOLOGY §12 asks for: every runner
+    records its trial in the ledger instead of the ledger being populated by
+    hand. `metadata` may be a dict or a path to a `metadata.json` written by a
+    runner (e.g. `scripts/run_phase4a_arms.py`). The run-specific fields
+    (`config_hash`, `started_at`, `finished_at`) come from the metadata; the
+    pre-registration fields (`prd`, `milestone`, `preregistration`,
+    `n_comparisons`, `verdict`) are supplied by the caller because they are not
+    knowable from run mechanics alone — in particular `verdict` is decided by
+    the gate, which runs *after* the arm produces its returns.
+
+    Idempotency: with `skip_if_exists=True` (default), if the ledger already
+    contains an entry with the same `config_hash` this is a no-op returning
+    `None` — so re-running a runner (or running one whose trial was backfilled,
+    as with Phase 4A M1-M6) does not double-count `N`.
+
+    `entry_id` defaults to the next free `ledger-<completed-date>-NNNN`.
+    Returns the appended `LedgerEntry`, or `None` if skipped.
+    """
+    if isinstance(metadata, (str, Path)):
+        with Path(metadata).open("r", encoding="utf-8") as f:
+            metadata = json.load(f)
+
+    config_hash = metadata["config_hash"]
+    started_at = metadata["started_at"]
+    completed_at = metadata.get("finished_at", metadata.get("completed_at"))
+    if completed_at is None:
+        raise KeyError(
+            "run metadata is missing a completion timestamp "
+            "('finished_at' or 'completed_at')"
+        )
+
+    path = Path(path)
+    existing = load_ledger(path)
+    if skip_if_exists and any(e.config_hash == config_hash for e in existing):
+        return None
+
+    if entry_id is None:
+        date = str(completed_at)[:10]  # YYYY-MM-DD prefix of the ISO timestamp
+        entry_id = next_ledger_id(date, existing)
+
+    entry = LedgerEntry(
+        id=entry_id,
+        prd=prd,
+        milestone=milestone,
+        agent=agent,
+        preregistration=preregistration,
+        config_hash=config_hash,
+        n_comparisons=n_comparisons,
+        started_at=started_at,
+        completed_at=completed_at,
+        verdict=verdict,
+        artifacts=list(artifacts or []),
+        notes=notes,
+    )
+    return append_ledger_entry(entry, path)

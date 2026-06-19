@@ -86,6 +86,7 @@ from quant.features.label_schemes import (
     vol_scaled_returns,
 )
 from quant.features.labels import LabelResult, generate_labels
+from quant.ledger import record_run
 from quant.models.arima_baseline import ARIMABaseline
 from quant.models.gbm import GBMModel
 from quant.storage import catalog, lake
@@ -460,6 +461,7 @@ def _run_arm(
     output_dir: Path,
     smoke: bool,
     force: bool,
+    ledger_meta: Mapping[str, Any] | None = None,
 ) -> int:
     """Execute one arm end-to-end. Return 0 on success / skip, nonzero on error.
 
@@ -570,6 +572,25 @@ def _run_arm(
         metadata["aggregate_max_dd"],
         elapsed,
     )
+
+    # METHODOLOGY §12: record the trial in the ledger (opt-in via --log-ledger).
+    # Idempotent by config_hash — re-running an arm (or one already backfilled,
+    # as with Phase 4A M1-M6) is a no-op, so the deflation N is not double-counted.
+    if ledger_meta is not None and smoke:
+        logger.info("arm=%s smoke run — NOT logging synthetic trial to the ledger", arm)
+    elif ledger_meta is not None:
+        entry = record_run(
+            metadata,
+            artifacts=[f"{arm_dir}/"],
+            **ledger_meta,
+        )
+        if entry is None:
+            logger.info(
+                "arm=%s ledger entry skipped — config_hash already recorded", arm
+            )
+        else:
+            logger.info("arm=%s recorded ledger entry %s", arm, entry.id)
+
     return 0
 
 
@@ -613,6 +634,42 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity (default INFO).",
     )
+    # ── Ledger logging (METHODOLOGY §12) ─────────────────────────────────────
+    # Opt-in: when --log-ledger is set, the arm appends its trial to
+    # data/ledger.yaml after writing checkpoints. The verdict is supplied here
+    # (not derived) because it is decided by the gate, which runs after the arm.
+    parser.add_argument(
+        "--log-ledger",
+        action="store_true",
+        help="Append this run's trial to data/ledger.yaml (idempotent by config_hash).",
+    )
+    parser.add_argument("--ledger-prd", default="phase-4a", help="Ledger entry prd field.")
+    parser.add_argument(
+        "--ledger-milestone", default="M6", help="Ledger entry milestone field."
+    )
+    parser.add_argument(
+        "--ledger-preregistration",
+        default="docs/PHASE_4A_REPORT.md#2--the-gate-verbatim",
+        help="Ledger entry preregistration path/anchor.",
+    )
+    parser.add_argument(
+        "--ledger-n-comparisons",
+        type=int,
+        default=0,
+        help="Number of per-regime comparisons this trial contributes to N.",
+    )
+    parser.add_argument(
+        "--ledger-verdict",
+        default="inconclusive",
+        choices=["gate_passed", "gate_failed", "inconclusive"],
+        help="Trial verdict (decided by the gate; supplied explicitly).",
+    )
+    parser.add_argument(
+        "--ledger-agent",
+        default="human",
+        choices=["human", "R", "F", "M"],
+        help="Who ran this trial (ledger agent field).",
+    )
     return parser
 
 
@@ -626,11 +683,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s | %(message)s",
     )
 
+    ledger_meta: dict[str, Any] | None = None
+    if args.log_ledger:
+        ledger_meta = {
+            "prd": args.ledger_prd,
+            "milestone": args.ledger_milestone,
+            "preregistration": args.ledger_preregistration,
+            "n_comparisons": args.ledger_n_comparisons,
+            "verdict": args.ledger_verdict,
+            "agent": args.ledger_agent,
+        }
+
     return _run_arm(
         arm=args.arm,
         output_dir=args.output_dir,
         smoke=args.smoke,
         force=args.force,
+        ledger_meta=ledger_meta,
     )
 
 
