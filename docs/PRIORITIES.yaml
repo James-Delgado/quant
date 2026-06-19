@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-17
+last_updated: 2026-06-19
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -159,7 +159,7 @@ tasks:
     started_at: 2026-06-17T17:17:12Z
     completed_at: 2026-06-17
     depends_on: []
-    blocks: [B1-PRD, B2-PRD, C1-PRD]
+    blocks: [B1-PRD, B2-PRD, C1-PRD, A-LEDGER-RUNNERS, A-DSR-GATE, A-CLOSE]
     deliverable:
       file: data/ledger.yaml
       schema_doc: docs/METHODOLOGY.md
@@ -255,10 +255,116 @@ tasks:
       bar; integrate into build_features() such that build_features(asof=today) works.
       No intraday — daily cadence per ratified decision (PROJECT_ROADMAP §8).
 
+  # ------ Project A methodology follow-ups + closeout (discovered during A-LEDGER) ------
+  # Ranked ahead of B/C execution because A-DSR-GATE and A-LEDGER-RUNNERS are
+  # methodology prerequisites that downstream tasks depend_on (B1-M2 -> A-DSR-GATE,
+  # B1-M3 -> A-LEDGER-RUNNERS). A-CLOSE is the Project A closeout (METHODOLOGY §21),
+  # gated on all A tasks. depends_on is the hard ordering constraint; rank is the hint.
+
+  - id: A-PRIORITIES-TEST
+    rank: 5
+    title: "Build tests/test_priorities.py (status enum + dependency-graph + single-in-progress drift test)"
+    project: A
+    sub_project: methodology-upgrade
+    status: ready
+    depends_on: []
+    blocks: [A-CLOSE]
+    deliverable:
+      file: tests/test_priorities.py
+    references:
+      primary: docs/PRIORITIES.yaml
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Referenced in this file's execution_model (task_lifecycle) and in
+      docs/AGENT_OPERATION.md Step 5 as a drift test, but it does not exist yet.
+      Enforce: (a) all status values in the enum, (b) all depends_on / blocks
+      references resolve to existing ids, (c) at most one task in_progress,
+      (d) done tasks have completed_at. Discovered during A-LEDGER (commit of
+      src/quant/ledger.py); mirrors the tests/test_ledger.py + tests/test_catalog.py
+      drift-test pattern.
+
+  - id: A-LEDGER-RUNNERS
+    rank: 6
+    title: "Wire append_ledger_entry into the runner pattern (runners write ledger entries automatically)"
+    project: A
+    sub_project: methodology-upgrade-12
+    status: ready
+    depends_on: [A-LEDGER]
+    blocks: [B1-M3, A-CLOSE]
+    deliverable:
+      file: scripts/run_phase4a_arms.py
+      tests: tests/test_ledger.py
+    references:
+      primary: src/quant/ledger.py
+      methodology: docs/METHODOLOGY.md
+      runner_pattern: scripts/run_phase4a_arms.py
+    est_complexity: small
+    notes: |
+      METHODOLOGY §12 says the ledger is "written by every runner". Today
+      data/ledger.yaml is hand-populated; no runner calls
+      quant.ledger.append_ledger_entry. Add a small helper that maps a
+      runner's metadata.json (config_hash, started_at/finished_at, n_folds,
+      verdict) to a LedgerEntry and appends it on completion. Backfill is
+      already done (Phase 4A M1-M6); this closes the loop for future B1/B2/C
+      runners so the deflation N stays current automatically. Discovered during
+      A-LEDGER.
+
+  - id: A-DSR-GATE
+    rank: 7
+    title: "DSR-aware gate function (deflated Sharpe second stage; N from cumulative_trial_count)"
+    project: A
+    sub_project: methodology-upgrade-13
+    status: ready
+    depends_on: [A-LEDGER]
+    blocks: [B1-M2, A-CLOSE]
+    deliverable:
+      file: src/quant/backtest/regime_metrics.py
+      tests: tests/test_regime_metrics.py
+    references:
+      primary: docs/METHODOLOGY.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      METHODOLOGY §13 ("DSR-aware gates"): gate-pass should require both the
+      pre-committed Sharpe threshold AND deflated Sharpe (Bailey & López de
+      Prado 2014) > 0, with the deflation N read from
+      quant.ledger.cumulative_trial_count(). Extend phase4a_gate_report (or add
+      a sibling) so future PRD gates consume N from the ledger rather than
+      hand-counting. Discovered during A-LEDGER — the ledger now makes N a code
+      value (PHASE_4A_REPORT §7 documents the N≈62 / ~0.71 best-of-N reasoning
+      this would formalize).
+
+  - id: A-CLOSE
+    rank: 8
+    title: "A-CLOSE: Project A closeout — E2E methodology-substrate notebook + closeout report"
+    project: A
+    sub_project: closeout
+    status: blocked
+    depends_on: [A-LEDGER, A-PRIORITIES-TEST, A-LEDGER-RUNNERS, A-DSR-GATE]
+    blocks: []
+    deliverable:
+      notebook: notebooks/12_project_a_closeout.ipynb
+      report: docs/PROJECT_A_CLOSEOUT.md
+    references:
+      primary: docs/METHODOLOGY.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Project-closeout task (METHODOLOGY §21 / AGENT_OPERATION "Project
+      closeout"). The notebook must exercise the assembled Project A substrate
+      end-to-end across module boundaries: load the feature catalog + ledger,
+      append a trial via the runner integration (A-LEDGER-RUNNERS), read N via
+      cumulative_trial_count(), evaluate a DSR-aware gate on it (A-DSR-GATE),
+      and show the priorities drift test (A-PRIORITIES-TEST) green. The report is
+      the one-page definition-of-done. Any integration defect the notebook
+      surfaces becomes a new task and keeps A-CLOSE open (AGENT_OPERATION Step 7
+      corollary).
+
   # ------ B1 execution ------
 
   - id: B1-M1
-    rank: 5
+    rank: 9
     title: "B1-M1: Candidate target catalog (4 targets pre-committed)"
     project: B
     sub_project: B1
@@ -274,12 +380,12 @@ tasks:
     est_complexity: medium
 
   - id: B1-M2
-    rank: 6
+    rank: 10
     title: "B1-M2: Per-target ablation matrix on 5-symbol × 8-year slice"
     project: B
     sub_project: B1
     status: blocked
-    depends_on: [B1-M1]
+    depends_on: [B1-M1, A-DSR-GATE]
     blocks: [B1-M3]
     deliverable:
       notebook: notebooks/10_b1_target_ablation.ipynb
@@ -293,12 +399,12 @@ tasks:
       where applicable). Borda composite across regimes.
 
   - id: B1-M3
-    rank: 7
+    rank: 11
     title: "B1-M3: Full-panel confirmation of slice-winners (compute-gated)"
     project: B
     sub_project: B1
     status: blocked
-    depends_on: [B1-M2]
+    depends_on: [B1-M2, A-LEDGER-RUNNERS]
     blocks: []
     deliverable:
       runner: scripts/run_b1_arms.py
@@ -313,7 +419,7 @@ tasks:
   # ------ B2 execution ------
 
   - id: B2-M1
-    rank: 8
+    rank: 12
     title: "B2-M1: OOS attribution method shortlist + theory writeup"
     project: B
     sub_project: B2
@@ -327,7 +433,7 @@ tasks:
     est_complexity: small
 
   - id: B2-M2
-    rank: 9
+    rank: 13
     title: "B2-M2: Implementation + sanity test against M3 ablation lifts"
     project: B
     sub_project: B2
@@ -342,7 +448,7 @@ tasks:
     est_complexity: medium
 
   - id: B2-M3
-    rank: 10
+    rank: 14
     title: "B2-M3: Catalog integration (attribution_status field)"
     project: B
     sub_project: B2
@@ -360,7 +466,7 @@ tasks:
   # ------ C1 execution ------
 
   - id: C1-M1
-    rank: 11
+    rank: 15
     title: "C1-M1: Same-day data SLA audit per ingestor"
     project: C
     sub_project: C1
@@ -375,7 +481,7 @@ tasks:
     est_complexity: small
 
   - id: C1-M2
-    rank: 12
+    rank: 16
     title: "C1-M2: Point-in-time today's-bar reader + build_features integration"
     project: C
     sub_project: C1
@@ -390,7 +496,7 @@ tasks:
     est_complexity: medium
 
   - id: C1-M3
-    rank: 13
+    rank: 17
     title: "C1-M3: Freshness monitor + alert (cron)"
     project: C
     sub_project: C1
@@ -407,7 +513,7 @@ tasks:
   # ------ C2 — LEAN execution layer (PRD + milestones) ------
 
   - id: C2-PRD
-    rank: 14
+    rank: 18
     title: "Draft C2 (LEAN local + paper trading) PRD"
     project: C
     sub_project: C2
@@ -428,7 +534,7 @@ tasks:
       without exercising additional deployment infrastructure).
 
   - id: C2-M1
-    rank: 15
+    rank: 19
     title: "C2-M1: LEAN local installed; hello-world algorithm runs"
     project: C
     sub_project: C2
@@ -442,7 +548,7 @@ tasks:
     est_complexity: medium
 
   - id: C2-M2
-    rank: 16
+    rank: 20
     title: "C2-M2: ARIMA(1,0,0) daily signal feeds LEAN paper account"
     project: C
     sub_project: C2
@@ -457,7 +563,7 @@ tasks:
     est_complexity: large
 
   - id: C2-M3
-    rank: 17
+    rank: 21
     title: "C2-M3: Backtest-vs-paper reconciliation harness (>1% delta = investigate)"
     project: C
     sub_project: C2
@@ -474,7 +580,7 @@ tasks:
   # ------ C3 / C4 / C5 — PRD drafting and milestones (sketch) ------
 
   - id: C3-PRD
-    rank: 18
+    rank: 22
     title: "Draft C3 (position sizing + risk management) PRD"
     project: C
     sub_project: C3
@@ -488,7 +594,7 @@ tasks:
     est_complexity: small
 
   - id: C4-PRD
-    rank: 19
+    rank: 23
     title: "Draft C4 (confidence calibration) PRD"
     project: C
     sub_project: C4
@@ -502,7 +608,7 @@ tasks:
     est_complexity: small
 
   - id: C5-PRD
-    rank: 20
+    rank: 24
     title: "Draft C5 (monitoring + reconciliation dashboard) PRD"
     project: C
     sub_project: C5
@@ -518,7 +624,7 @@ tasks:
   # ------ Conditional follow-on B sub-projects (queued) ------
 
   - id: B3-PRD
-    rank: 21
+    rank: 25
     title: "Draft B3 (alternative data — options-implied surfaces) PRD"
     project: B
     sub_project: B3
@@ -535,7 +641,7 @@ tasks:
       of the four targets with the current feature set."
 
   - id: B4-PRD
-    rank: 22
+    rank: 26
     title: "Draft B4 (universe shift — mid-cap / single-stock options / international) PRD"
     project: B
     sub_project: B4
@@ -550,82 +656,6 @@ tasks:
     notes: |
       Conditional: only draft if B1 + B3 do not surface edge. Lowest priority
       in Project B.
-
-  # ------ Project A methodology follow-ups (discovered during A-LEDGER) ------
-
-  - id: A-PRIORITIES-TEST
-    rank: 23
-    title: "Build tests/test_priorities.py (status enum + dependency-graph + single-in-progress drift test)"
-    project: A
-    sub_project: methodology-upgrade
-    status: ready
-    depends_on: []
-    blocks: []
-    deliverable:
-      file: tests/test_priorities.py
-    references:
-      primary: docs/PRIORITIES.yaml
-      methodology: docs/METHODOLOGY.md
-    est_complexity: small
-    notes: |
-      Referenced in this file's execution_model (task_lifecycle) and in
-      docs/AGENT_OPERATION.md Step 5 as a drift test, but it does not exist yet.
-      Enforce: (a) all status values in the enum, (b) all depends_on / blocks
-      references resolve to existing ids, (c) at most one task in_progress,
-      (d) done tasks have completed_at. Discovered during A-LEDGER (commit of
-      src/quant/ledger.py); mirrors the tests/test_ledger.py + tests/test_catalog.py
-      drift-test pattern.
-
-  - id: A-LEDGER-RUNNERS
-    rank: 24
-    title: "Wire append_ledger_entry into the runner pattern (runners write ledger entries automatically)"
-    project: A
-    sub_project: methodology-upgrade-12
-    status: ready
-    depends_on: [A-LEDGER]
-    blocks: []
-    deliverable:
-      file: scripts/run_phase4a_arms.py
-      tests: tests/test_ledger.py
-    references:
-      primary: src/quant/ledger.py
-      methodology: docs/METHODOLOGY.md
-      runner_pattern: scripts/run_phase4a_arms.py
-    est_complexity: small
-    notes: |
-      METHODOLOGY §12 says the ledger is "written by every runner". Today
-      data/ledger.yaml is hand-populated; no runner calls
-      quant.ledger.append_ledger_entry. Add a small helper that maps a
-      runner's metadata.json (config_hash, started_at/finished_at, n_folds,
-      verdict) to a LedgerEntry and appends it on completion. Backfill is
-      already done (Phase 4A M1-M6); this closes the loop for future B1/B2/C
-      runners so the deflation N stays current automatically. Discovered during
-      A-LEDGER.
-
-  - id: A-DSR-GATE
-    rank: 25
-    title: "DSR-aware gate function (deflated Sharpe second stage; N from cumulative_trial_count)"
-    project: A
-    sub_project: methodology-upgrade-13
-    status: ready
-    depends_on: [A-LEDGER]
-    blocks: []
-    deliverable:
-      file: src/quant/backtest/regime_metrics.py
-      tests: tests/test_regime_metrics.py
-    references:
-      primary: docs/METHODOLOGY.md
-      methodology: docs/METHODOLOGY.md
-    est_complexity: medium
-    notes: |
-      METHODOLOGY §13 ("DSR-aware gates"): gate-pass should require both the
-      pre-committed Sharpe threshold AND deflated Sharpe (Bailey & López de
-      Prado 2014) > 0, with the deflation N read from
-      quant.ledger.cumulative_trial_count(). Extend phase4a_gate_report (or add
-      a sibling) so future PRD gates consume N from the ledger rather than
-      hand-counting. Discovered during A-LEDGER — the ledger now makes N a code
-      value (PHASE_4A_REPORT §7 documents the N≈62 / ~0.71 best-of-N reasoning
-      this would formalize).
 
   # ------ D — Phase 5 (gated; not pickable until triggers met) ------
 
