@@ -27,6 +27,8 @@ from quant.ledger import (
     append_ledger_entry,
     cumulative_trial_count,
     load_ledger,
+    next_ledger_id,
+    record_run,
 )
 
 UTC = timezone.utc
@@ -245,6 +247,111 @@ class TestCumulativeTrialCount:
     def test_accepts_preloaded_entries(self):
         entries = [LedgerEntry(**_entry_dict(id="a", n_comparisons=2))]
         assert cumulative_trial_count(entries) == 2
+
+
+# --------------------------------------------------------------------- #
+# Runner integration: next_ledger_id + record_run
+# --------------------------------------------------------------------- #
+
+def _meta(
+    config_hash: str = "abc123",
+    started: str = "2026-07-01T00:00:00+00:00",
+    finished: str = "2026-07-01T01:00:00+00:00",
+) -> dict:
+    """Synthetic runner metadata.json payload."""
+    return {
+        "config_hash": config_hash,
+        "started_at": started,
+        "finished_at": finished,
+        "n_folds": 10,
+        "aggregate_sharpe": -0.1,
+    }
+
+
+class TestNextLedgerId:
+    def test_first_id_for_date(self):
+        assert next_ledger_id("2026-07-01", []) == "ledger-2026-07-01-0001"
+
+    def test_increments_within_date(self):
+        entries = [LedgerEntry(**_entry_dict(id="ledger-2026-07-01-0001"))]
+        assert next_ledger_id("2026-07-01", entries) == "ledger-2026-07-01-0002"
+
+    def test_independent_per_date(self):
+        entries = [LedgerEntry(**_entry_dict(id="ledger-2026-07-01-0003"))]
+        assert next_ledger_id("2026-07-02", entries) == "ledger-2026-07-02-0001"
+
+
+class TestRecordRun:
+    REG = dict(
+        prd="b1",
+        milestone="B1-M2",
+        preregistration="docs/x.md",
+        n_comparisons=4,
+        verdict="gate_failed",
+    )
+
+    def test_maps_metadata_fields(self, tmp_path: Path):
+        path = tmp_path / "ledger.yaml"
+        entry = record_run(_meta(), **self.REG, artifacts=["data/run/"], path=path)
+        assert entry is not None
+        assert entry.config_hash == "abc123"
+        assert entry.started_at.isoformat() == "2026-07-01T00:00:00+00:00"
+        assert entry.completed_at.isoformat() == "2026-07-01T01:00:00+00:00"
+        assert entry.n_comparisons == 4
+        assert entry.verdict == "gate_failed"
+        assert entry.artifacts == ["data/run/"]
+        # Round-trips through the file.
+        assert [e.id for e in load_ledger(path)] == [entry.id]
+
+    def test_auto_id_from_completed_date(self, tmp_path: Path):
+        path = tmp_path / "ledger.yaml"
+        e1 = record_run(_meta(config_hash="h1"), **self.REG, path=path)
+        e2 = record_run(
+            _meta(
+                config_hash="h2",
+                started="2026-07-01T02:00:00+00:00",
+                finished="2026-07-01T03:00:00+00:00",
+            ),
+            **self.REG,
+            path=path,
+        )
+        assert e1.id == "ledger-2026-07-01-0001"
+        assert e2.id == "ledger-2026-07-01-0002"
+
+    def test_explicit_id_honored(self, tmp_path: Path):
+        path = tmp_path / "ledger.yaml"
+        entry = record_run(_meta(), **self.REG, entry_id="ledger-custom-9", path=path)
+        assert entry.id == "ledger-custom-9"
+
+    def test_idempotent_on_duplicate_config_hash(self, tmp_path: Path):
+        path = tmp_path / "ledger.yaml"
+        first = record_run(_meta(config_hash="dup"), **self.REG, path=path)
+        assert first is not None
+        second = record_run(
+            _meta(
+                config_hash="dup",
+                started="2026-07-02T00:00:00+00:00",
+                finished="2026-07-02T01:00:00+00:00",
+            ),
+            **self.REG,
+            path=path,
+        )
+        assert second is None  # skipped — config_hash already recorded
+        assert len(load_ledger(path)) == 1
+
+    def test_reads_metadata_json_file(self, tmp_path: Path):
+        meta_path = tmp_path / "metadata.json"
+        import json as _json
+
+        meta_path.write_text(_json.dumps(_meta(config_hash="fromfile")))
+        path = tmp_path / "ledger.yaml"
+        entry = record_run(meta_path, **self.REG, path=path)
+        assert entry.config_hash == "fromfile"
+
+    def test_missing_completion_timestamp_raises(self, tmp_path: Path):
+        bad = {"config_hash": "x", "started_at": "2026-07-01T00:00:00+00:00"}
+        with pytest.raises(KeyError, match="completion timestamp"):
+            record_run(bad, **self.REG, path=tmp_path / "ledger.yaml")
 
 
 # --------------------------------------------------------------------- #
