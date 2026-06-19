@@ -289,7 +289,8 @@ tasks:
     title: "Wire append_ledger_entry into the runner pattern (runners write ledger entries automatically)"
     project: A
     sub_project: methodology-upgrade-12
-    status: ready
+    status: in_progress
+    started_at: 2026-06-19T21:16:10Z
     depends_on: [A-LEDGER]
     blocks: [B1-M3, A-CLOSE]
     deliverable:
