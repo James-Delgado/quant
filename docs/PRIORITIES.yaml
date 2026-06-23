@@ -214,8 +214,9 @@ tasks:
     title: "Draft B2 (OOS-only attribution method) PRD"
     project: B
     sub_project: B2
-    status: in_progress
+    status: done
     started_at: 2026-06-23T16:52:25Z
+    completed_at: 2026-06-23
     depends_on: [A-LEDGER]
     blocks: [B2-M1, B2-M2, B2-M3]
     deliverable:
@@ -441,7 +442,7 @@ tasks:
     title: "B2-M1: OOS attribution method shortlist + theory writeup"
     project: B
     sub_project: B2
-    status: blocked
+    status: ready
     depends_on: [B2-PRD]
     blocks: [B2-M2]
     deliverable:
@@ -703,6 +704,36 @@ tasks:
       NOT touch any numbered rule (§1–§21) — this is a forward-looking
       notes-section sync only (AGENT_OPERATION red-flag: no rule edits without
       a roadmap decision). Non-gating; low priority.
+
+  - id: A-METH-OOSATTR-SYNC
+    rank: 28
+    title: "Sync METHODOLOGY Open-Questions: OOS attribution method now picked in B2 PRD"
+    project: A
+    sub_project: methodology-upgrade
+    status: ready
+    depends_on: [B2-PRD]
+    blocks: []
+    deliverable:
+      file: docs/METHODOLOGY.md
+    references:
+      primary: .claude/prds/b2-oos-attribution.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B2-PRD drafting (commit of
+      .claude/prds/b2-oos-attribution.prd.md). METHODOLOGY.md §"Open questions
+      for the next research PRD" lists "OOS attribution method. Permutation
+      importance computed OOS, per-fold ablation as canonical, or conformal
+      feature relevance? Pick in Project B2." as still-open. The B2 PRD now makes
+      the pick: implement per-fold ablation as the canonical signal + OOS
+      permutation importance (validated against it at Spearman ρ ≥ 0.50), with
+      conformal feature relevance deferred as a conditional follow-on. Update that
+      open-questions bullet to mark it resolved-in-PRD and link the B2 PRD's
+      "Success Metrics"/"Pre-committed gate" sections; note the method ships in
+      code at B2-M2 and lands in the catalog at B2-M3 (Phase-5 Trigger 2). Do NOT
+      touch any numbered rule (§1–§21) — this is a forward-looking notes-section
+      sync only (AGENT_OPERATION red-flag: no rule edits without a roadmap
+      decision). Mirrors A-METH-NONSHARPE-SYNC. Non-gating; low priority.
 
   # ------ D — Phase 5 (gated; not pickable until triggers met) ------
 
