@@ -382,6 +382,19 @@ tasks:
       primary: .claude/prds/b1-target-reframing.prd.md
       methodology: docs/METHODOLOGY.md
     est_complexity: medium
+    notes: |
+      DESIGN FORK to weigh deliberately (do not default): is targets.py a flat
+      module of 4 functions, or a REGISTERED TARGET CATALOG mirroring
+      features/catalog.{py,yaml}? For B1's 4 hand-picked targets a flat module
+      suffices. But the Phase-5 Research agent (Agent F, ROADMAP §4 Project D:
+      "all candidate-generation artifact types ... prediction targets") needs the
+      catalog form to add targets SAFELY — a per-target YAML record (metric,
+      baseline, horizon, materiality threshold, ablation/gate status) under a
+      drift test, i.e. METHODOLOGY §4 (contract-before-consumer) + §6 (drift in
+      both directions) applied to targets, exactly as M4 did for features. Decide
+      flat-vs-catalog with that future consumer in mind; if flat, leave a note for
+      the eventual catalog migration. Captured 2026-06-23 from the B1-PRD review
+      discussion (after commit a481a18).
 
   - id: B1-M2
     rank: 10
