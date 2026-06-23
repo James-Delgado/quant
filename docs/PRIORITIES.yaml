@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-19
+last_updated: 2026-06-23
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -325,8 +325,9 @@ tasks:
     title: "DSR-aware gate function (deflated Sharpe second stage; N from cumulative_trial_count)"
     project: A
     sub_project: methodology-upgrade-13
-    status: in_progress
+    status: done
     started_at: 2026-06-23T20:30:00Z
+    completed_at: 2026-06-23
     depends_on: [A-LEDGER]
     blocks: [B1-M2, A-CLOSE]
     deliverable:
@@ -352,7 +353,7 @@ tasks:
     project: A
     sub_project: closeout
     status: blocked
-    depends_on: [A-LEDGER, A-PRIORITIES-TEST, A-PRIORITIES-TEST-TS, A-LEDGER-RUNNERS, A-DSR-GATE]
+    depends_on: [A-LEDGER, A-PRIORITIES-TEST, A-PRIORITIES-TEST-TS, A-LEDGER-RUNNERS, A-DSR-GATE, A-DSR-LEDGER-SHARPE, A-DSR-DOC-SYNC]
     blocks: []
     deliverable:
       notebook: notebooks/12_project_a_closeout.ipynb
@@ -766,6 +767,65 @@ tasks:
       the existing positive/negative validator pattern in the file. Non-gating;
       low priority. Added to A-CLOSE.depends_on per AGENT_OPERATION Step 7
       corollary (new Project-A task appended after A-CLOSE exists).
+
+  - id: A-DSR-LEDGER-SHARPE
+    rank: 32
+    title: "Store per-trial Sharpe in the ledger; compute empirical sharpe_std for the DSR benchmark"
+    project: A
+    sub_project: methodology-upgrade-13
+    status: ready
+    depends_on: [A-LEDGER, A-DSR-GATE]
+    blocks: [A-CLOSE]
+    deliverable:
+      file: src/quant/ledger.py
+      tests: tests/test_ledger.py
+    references:
+      primary: src/quant/backtest/statistics.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during A-DSR-GATE post-task review (commit of
+      src/quant/backtest/statistics.py deflated_sharpe_ratio). The canonical
+      Bailey-López de Prado (2014) DSR deflates against the empirical
+      cross-trial Sharpe variance V̂[{SR_n}]; our implementation uses a PINNED
+      scalar (statistics.DEFAULT_SHARPE_STD = 0.35, the rough M3 noise-guard
+      estimate from PHASE_4A_REPORT §7) because data/ledger.yaml stores
+      n_comparisons (counts), not per-trial Sharpes. Add an optional `sharpe`
+      field to LedgerEntry (back-compat: default None / omitted) and a helper
+      (e.g. quant.ledger.observed_sharpe_std()) that computes the std of the
+      recorded trial Sharpes, so dsr_aware_gate_report can pass an EMPIRICAL
+      sharpe_std instead of the scalar default. Non-gating; the scalar default
+      keeps the gate correct meanwhile. Low priority. Added to A-CLOSE.depends_on
+      per AGENT_OPERATION Step 7 corollary.
+
+  - id: A-DSR-DOC-SYNC
+    rank: 33
+    title: "Sync evaluation-standards.md T4 to reference the new deflated_sharpe_ratio implementation"
+    project: A
+    sub_project: methodology-upgrade
+    status: ready
+    depends_on: [A-DSR-GATE]
+    blocks: [A-CLOSE]
+    deliverable:
+      file: docs/concepts/evaluation-standards.md
+    references:
+      primary: src/quant/backtest/statistics.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during A-DSR-GATE post-task review (commit of
+      src/quant/backtest/statistics.py). evaluation-standards.md T4 describes the
+      DSR implementation in the present tense ("The implementation computes DSR
+      as `norm.cdf((sr - E[max_sr]) / se_sr)`") but no implementation existed
+      until A-DSR-GATE. Update T4 to point at
+      quant.backtest.statistics.deflated_sharpe_ratio + expected_max_sharpe and
+      quant.backtest.regime_metrics.dsr_aware_gate_report as the canonical code,
+      and note the DSR>0.5 ⟺ "deflated excess Sharpe > 0" ⟺ "SR > E[max]"
+      equivalence the implementation pins (METHODOLOGY §13). Also flag that the
+      T4 N (hyperparameter configs, ≤50) and the §12 ledger N (cumulative trials)
+      are DIFFERENT deflation populations — the gate uses the ledger N. Doc-only;
+      do NOT change the T4 = 0.5 threshold. Mirrors A-METH-*-SYNC. Non-gating;
+      low priority. Added to A-CLOSE.depends_on per Step 7 corollary.
 
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 

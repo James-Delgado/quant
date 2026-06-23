@@ -25,9 +25,25 @@ Phase 4A feature-ablation noise guard.
 Reference:
   Politis, D.N., & Romano, J.P. (1994). The Stationary Bootstrap.
   Journal of the American Statistical Association, 89(428), 1303-1313.
+
+Deflated Sharpe Ratio (Bailey & López de Prado)
+-----------------------------------------------
+``expected_max_sharpe`` is the expected best-of-N Sharpe a no-skill researcher
+obtains by trying N strategies; ``deflated_sharpe_ratio`` is the Probabilistic
+Sharpe Ratio measured against that benchmark, the second stage of the
+``regime_metrics.dsr_aware_gate_report`` gate (METHODOLOGY §13). The trial
+count N comes from ``quant.ledger.cumulative_trial_count`` — see
+``docs/concepts/evaluation-standards.md`` T4 for the pinned ``DSR > 0.5`` rule.
+
+Reference:
+  Bailey, D.H., & López de Prado, M. (2014). The Deflated Sharpe Ratio:
+  Correcting for Selection Bias, Backtest Overfitting, and Non-Normality.
+  Journal of Portfolio Management, 40(5), 94-107.
+  López de Prado, M. (2018). Advances in Financial Machine Learning, ch. 14.
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -254,3 +270,182 @@ def bootstrap_sharpe_delta_ci(
     alpha = (1.0 - ci) / 2.0
     lo, hi = np.quantile(deltas, [alpha, 1.0 - alpha])
     return float(lo), float(hi)
+
+
+# ─── Deflated Sharpe Ratio (Bailey & López de Prado 2014) ────────────────────
+
+# Euler-Mascheroni constant — appears in the expected-maximum-of-N-Gaussians
+# estimator below.
+EULER_MASCHERONI = 0.5772156649015329
+
+# Annualisation factor — must match metrics._TRADING_DAYS (252 for equity).
+TRADING_DAYS = 252
+
+# Default cross-trial Sharpe dispersion V̂[{SR_n}]^(1/2) (annualised) feeding the
+# expected-max benchmark. 0.35 is the rough M3 noise-guard estimate quoted in
+# docs/PHASE_4A_REPORT.md §7; overridable per call. PINNED (METHODOLOGY §1) — do
+# not retune it to make a result pass.
+DEFAULT_SHARPE_STD = 0.35
+
+# Gate threshold for the deflated-Sharpe second stage. DSR is a probability in
+# [0, 1]; DSR > 0.5 is exactly equivalent to "observed Sharpe exceeds the
+# best-of-N benchmark" (the DSR numerator changes sign at SR̂ = SR₀), which is
+# both METHODOLOGY §13's "deflated (excess) Sharpe > 0" and
+# evaluation-standards.md T4's "DSR > 0.5". PINNED (METHODOLOGY §1).
+DSR_THRESHOLD = 0.5
+
+
+@dataclass(frozen=True)
+class DSRResult:
+    """Result of a Deflated Sharpe Ratio computation.
+
+    All Sharpe fields are in the project's **annualised** convention (matching
+    ``compute_metrics``); the per-observation conversion the formula needs is
+    internal to ``deflated_sharpe_ratio``.
+    """
+
+    dsr: float                  # probability in [0, 1] — the deflated Sharpe ratio
+    sr_observed: float          # observed annualised Sharpe of the return series
+    sr_benchmark: float         # expected best-of-N annualised Sharpe under the null
+    n_trials: int               # N — the deflation trial count
+    n_obs: int                  # T — number of return observations
+    skew: float                 # skewness of the returns (γ₃)
+    kurtosis: float             # NON-excess kurtosis of the returns (γ₄; normal = 3)
+    sharpe_std: float           # annualised cross-trial Sharpe dispersion used
+    threshold: float            # DSR pass threshold
+    passed: bool                # dsr > threshold
+
+    def __str__(self) -> str:
+        verdict = "PASS" if self.passed else "FAIL"
+        return (
+            f"DSR={self.dsr:.4f} ({verdict} vs {self.threshold:.2f}): "
+            f"SR_obs={self.sr_observed:.3f} vs SR_benchmark={self.sr_benchmark:.3f} "
+            f"(N={self.n_trials}, T={self.n_obs})"
+        )
+
+
+def expected_max_sharpe(
+    n_trials: int,
+    sharpe_std: float = DEFAULT_SHARPE_STD,
+) -> float:
+    """Expected maximum Sharpe ratio under the null of no skill across N trials.
+
+    Bailey & López de Prado (2014) / AFML (2018) ch. 14 estimator of the best
+    Sharpe a no-skill researcher would obtain by trying ``n_trials`` independent
+    strategies whose Sharpe estimates have cross-sectional standard deviation
+    ``sharpe_std``::
+
+        E[max SR] ≈ sharpe_std · [ (1 − γ)·Z⁻¹(1 − 1/N) + γ·Z⁻¹(1 − 1/(N·e)) ]
+
+    where γ is the Euler-Mascheroni constant and Z⁻¹ is the inverse standard
+    normal CDF. The result is in the **same units** as ``sharpe_std``
+    (annualised in → annualised out).
+
+    For ``n_trials <= 1`` there is no multiple-testing selection, so the
+    benchmark collapses to ``0.0`` (a plain Sharpe-vs-zero test).
+    """
+    if sharpe_std < 0:
+        raise ValueError(f"sharpe_std must be non-negative, got {sharpe_std}")
+    if n_trials <= 1:
+        return 0.0
+    n = float(n_trials)
+    z1 = float(stats.norm.ppf(1.0 - 1.0 / n))
+    z2 = float(stats.norm.ppf(1.0 - 1.0 / (n * np.e)))
+    gamma = EULER_MASCHERONI
+    return float(sharpe_std * ((1.0 - gamma) * z1 + gamma * z2))
+
+
+def deflated_sharpe_ratio(
+    returns: pd.Series,
+    n_trials: int,
+    *,
+    sharpe_std: float = DEFAULT_SHARPE_STD,
+    trading_days: int = TRADING_DAYS,
+    threshold: float = DSR_THRESHOLD,
+) -> DSRResult:
+    """Deflated Sharpe Ratio (Bailey & López de Prado, 2014) for one return series.
+
+    The DSR is the Probabilistic Sharpe Ratio measured against a
+    multiple-testing benchmark — the probability that the strategy's true Sharpe
+    exceeds the expected best-of-``n_trials`` Sharpe a no-skill search would have
+    produced, adjusting for sample length and the return distribution's
+    skew/kurtosis::
+
+        DSR = Φ[ (SR̂ − SR₀)·√(T−1) / √(1 − γ₃·SR̂ + ((γ₄−1)/4)·SR̂²) ]
+
+    Here SR̂ and SR₀ are the **per-observation** (non-annualised) observed Sharpe
+    and the ``expected_max_sharpe`` benchmark, T is the number of returns, γ₃ is
+    skewness, and γ₄ is the **non-excess** kurtosis (normal = 3). Inputs and the
+    reported Sharpe fields use the project's annualised convention
+    (``compute_metrics``); the ÷√trading_days conversion is internal.
+
+    Parameters
+    ----------
+    returns:      Daily arithmetic return series. NaNs are dropped.
+    n_trials:     N — the deflation trial count (typically
+                  ``quant.ledger.cumulative_trial_count()``).
+    sharpe_std:   Annualised cross-trial Sharpe dispersion (default
+                  ``DEFAULT_SHARPE_STD``).
+    trading_days: Annualisation factor (default 252).
+    threshold:    DSR pass threshold (default ``DSR_THRESHOLD`` = 0.5).
+
+    Returns
+    -------
+    ``DSRResult`` — ``.passed`` is ``dsr > threshold``.
+
+    Raises
+    ------
+    ValueError if fewer than 2 non-NaN observations remain (DSR is undefined).
+    """
+    r = returns.dropna()
+    n_obs = len(r)
+    if n_obs < 2:
+        raise ValueError(
+            f"deflated_sharpe_ratio needs >= 2 non-NaN observations, got {n_obs}"
+        )
+
+    ann = float(trading_days)
+    sr_ann = compute_metrics(r)["sharpe"]
+    sr_obs = sr_ann / np.sqrt(ann)  # per-observation Sharpe
+
+    # pandas .skew()/.kurtosis() are undefined (NaN) on near-degenerate samples
+    # (constant series, n < 3/4). Fall back to the normal moments so the DSR is
+    # still defined — a flat series carries no skew/excess-kurtosis information.
+    skew = float(r.skew())
+    excess_kurt = float(r.kurtosis())  # pandas returns EXCESS (Fisher) kurtosis
+    if not np.isfinite(skew):
+        skew = 0.0
+    if not np.isfinite(excess_kurt):
+        excess_kurt = 0.0
+    kurt = excess_kurt + 3.0  # non-excess kurtosis (normal = 3) for the formula
+
+    sr0_ann = expected_max_sharpe(n_trials, sharpe_std)
+    sr0_obs = sr0_ann / np.sqrt(ann)
+
+    denom_var = 1.0 - skew * sr_obs + ((kurt - 1.0) / 4.0) * sr_obs ** 2
+    if denom_var <= 0:
+        # Extreme skew/kurtosis can drive the variance estimate non-positive.
+        # Clamp (loudly — never silently) so the gate degrades to a conservative
+        # verdict rather than crashing or NaN-propagating (METHODOLOGY §9).
+        warnings.warn(
+            f"DSR variance estimate non-positive ({denom_var:.4g}); "
+            "clamping to a tiny positive value — DSR is unreliable here",
+            stacklevel=2,
+        )
+        denom_var = 1e-12
+
+    dsr_stat = (sr_obs - sr0_obs) * np.sqrt(n_obs - 1) / np.sqrt(denom_var)
+    dsr = float(stats.norm.cdf(dsr_stat))
+
+    return DSRResult(
+        dsr=dsr,
+        sr_observed=float(sr_ann),
+        sr_benchmark=float(sr0_ann),
+        n_trials=int(n_trials),
+        n_obs=int(n_obs),
+        skew=skew,
+        kurtosis=kurt,
+        sharpe_std=float(sharpe_std),
+        threshold=float(threshold),
+        passed=bool(dsr > threshold),
+    )
