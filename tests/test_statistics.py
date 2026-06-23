@@ -5,10 +5,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from quant.backtest.metrics import compute_metrics
 from quant.backtest.statistics import (
+    DEFAULT_SHARPE_STD,
+    DSR_THRESHOLD,
     DMResult,
+    DSRResult,
     bootstrap_sharpe_delta_ci,
+    deflated_sharpe_ratio,
     diebold_mariano,
+    expected_max_sharpe,
 )
 
 
@@ -184,3 +190,113 @@ class TestBootstrapSharpeDeltaCI:
         b = _returns_series(50, seed=12, start="2020-01-06")
         with pytest.raises(ValueError, match="overlap"):
             bootstrap_sharpe_delta_ci(a, b)
+
+
+# ─── expected_max_sharpe ─────────────────────────────────────────────────────
+
+
+class TestExpectedMaxSharpe:
+    def test_no_multiple_testing_returns_zero(self):
+        """N <= 1 means no selection bias — benchmark collapses to 0."""
+        assert expected_max_sharpe(0) == 0.0
+        assert expected_max_sharpe(1) == 0.0
+
+    def test_monotonic_increasing_in_n(self):
+        """More trials searched → a higher expected best-of-N Sharpe."""
+        vals = [expected_max_sharpe(n) for n in (2, 5, 20, 62, 200)]
+        assert all(b > a for a, b in zip(vals, vals[1:]))
+
+    def test_scales_linearly_with_sharpe_std(self):
+        a = expected_max_sharpe(50, sharpe_std=0.2)
+        b = expected_max_sharpe(50, sharpe_std=0.4)
+        assert b == pytest.approx(2 * a)
+
+    def test_zero_dispersion_gives_zero_benchmark(self):
+        assert expected_max_sharpe(62, sharpe_std=0.0) == 0.0
+
+    def test_known_value_phase4a_n62(self):
+        """At the Phase 4A ledger N≈62 and the §7 0.35 dispersion estimate, the
+        Bailey-LdP expected-max benchmark is ~0.83 annualized (the report's
+        rougher √(2 ln N) sketch said ~0.71; both far exceed the +0.177 best
+        GBM arm, so the verdict is identical)."""
+        assert expected_max_sharpe(62, sharpe_std=0.35) == pytest.approx(0.825, abs=0.02)
+
+    def test_negative_dispersion_raises(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            expected_max_sharpe(50, sharpe_std=-0.1)
+
+
+# ─── deflated_sharpe_ratio ───────────────────────────────────────────────────
+
+
+class TestDeflatedSharpeRatio:
+    def test_returns_dsr_result(self):
+        r = _returns_series(300, mean=0.001, vol=0.01, seed=0)
+        res = deflated_sharpe_ratio(r, n_trials=1)
+        assert isinstance(res, DSRResult)
+
+    def test_dsr_in_unit_interval(self):
+        r = _returns_series(300, seed=1)
+        res = deflated_sharpe_ratio(r, n_trials=10)
+        assert 0.0 <= res.dsr <= 1.0
+
+    def test_strong_edge_low_n_passes(self):
+        """A strong positive-drift series vs a zero benchmark (N=1) clears DSR."""
+        r = _returns_series(500, mean=0.001, vol=0.01, seed=2)
+        res = deflated_sharpe_ratio(r, n_trials=1)
+        assert res.sr_benchmark == 0.0
+        assert res.dsr > 0.5
+        assert res.passed is True
+
+    def test_deflation_monotonic_in_n(self):
+        """Holding the series fixed, raising N raises the benchmark and lowers DSR."""
+        r = _returns_series(500, mean=0.0008, vol=0.01, seed=3)
+        dsr_low = deflated_sharpe_ratio(r, n_trials=2).dsr
+        dsr_high = deflated_sharpe_ratio(r, n_trials=500).dsr
+        assert dsr_high < dsr_low
+
+    def test_large_n_can_fail_a_modest_edge(self):
+        """A modest edge that passes at N=1 fails once deflated by many trials."""
+        r = _returns_series(400, mean=0.0004, vol=0.01, seed=4)
+        assert deflated_sharpe_ratio(r, n_trials=1).passed is True
+        assert deflated_sharpe_ratio(r, n_trials=100_000).passed is False
+
+    def test_zero_edge_does_not_pass(self):
+        r = _returns_series(500, mean=0.0, vol=0.01, seed=5)
+        res = deflated_sharpe_ratio(r, n_trials=10)
+        assert res.passed is False
+
+    def test_sr_observed_matches_compute_metrics(self):
+        """The reported observed Sharpe is the project's annualized convention."""
+        r = _returns_series(300, mean=0.0007, vol=0.01, seed=6)
+        res = deflated_sharpe_ratio(r, n_trials=5)
+        assert res.sr_observed == pytest.approx(compute_metrics(r)["sharpe"])
+
+    def test_kurtosis_is_non_excess(self):
+        """The stored γ₄ is non-excess (pandas excess + 3)."""
+        r = _returns_series(400, seed=7)
+        res = deflated_sharpe_ratio(r, n_trials=5)
+        assert res.kurtosis == pytest.approx(float(r.kurtosis()) + 3.0)
+
+    def test_custom_threshold_changes_verdict(self):
+        r = _returns_series(500, mean=0.0006, vol=0.01, seed=8)
+        loose = deflated_sharpe_ratio(r, n_trials=1, threshold=0.5)
+        strict = deflated_sharpe_ratio(r, n_trials=1, threshold=0.999999)
+        assert loose.passed is True
+        assert strict.passed is False
+
+    def test_drops_nans(self):
+        r = _returns_series(300, mean=0.001, seed=9)
+        r.iloc[::10] = np.nan
+        res = deflated_sharpe_ratio(r, n_trials=2)
+        assert res.n_obs == int(r.notna().sum())
+
+    def test_too_few_observations_raises(self):
+        r = pd.Series([0.01], index=pd.bdate_range("2020-01-02", periods=1))
+        with pytest.raises(ValueError, match=">= 2"):
+            deflated_sharpe_ratio(r, n_trials=1)
+
+    def test_defaults_are_pinned_constants(self):
+        """Guard the pinned §1 defaults against silent drift."""
+        assert DSR_THRESHOLD == 0.5
+        assert DEFAULT_SHARPE_STD == 0.35

@@ -8,10 +8,12 @@ import pytest
 from quant.backtest.harness import BacktestResult
 from quant.backtest.regime_metrics import (
     compute_regime_metrics,
+    dsr_aware_gate_report,
     phase4a_gate_report,
     regime_dm_test,
 )
 from quant.backtest.statistics import DMResult
+from quant.ledger import cumulative_trial_count
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -214,3 +216,99 @@ class TestPhase4aGateReport:
         report = phase4a_gate_report(gbm, arima, labels)
         for key in ("per_regime", "gate_passed", "pass_count", "dm_p_values", "regimes_required"):
             assert key in report
+
+
+# ─── dsr_aware_gate_report ───────────────────────────────────────────────────
+
+
+def _stage1_pass_fixture() -> tuple[BacktestResult, BacktestResult, pd.Series]:
+    """A stage-1-passing setup with a *modest* aggregate edge.
+
+    GBM beats ARIMA Sharpe in qe_bull + rate_cycle (small +0.0003 drift) and has
+    uniformly smaller forecast errors (DM-significant), so the regime gate
+    passes. The aggregate Sharpe is deliberately modest (~0.8 annualized) so the
+    DSR second stage can be flipped purely by the deflation N.
+    """
+    rng = np.random.default_rng(101)
+    n = 600
+    idx = pd.bdate_range("2010-01-04", periods=n)
+    labels = pd.Series("qe_bull", index=idx, dtype=object)
+    labels.iloc[400:500] = "covid"
+    labels.iloc[500:] = "rate_cycle"
+
+    gbm_returns = pd.Series(rng.normal(0.0, 0.005, n), index=idx)
+    gbm_returns.loc[labels == "qe_bull"] += 0.0003
+    gbm_returns.loc[labels == "rate_cycle"] += 0.0003
+    arima_returns = pd.Series(rng.normal(0.0, 0.005, n), index=idx)
+
+    gbm_errors = pd.Series(rng.normal(0.0, 0.05, n), index=idx)
+    arima_errors = pd.Series(rng.normal(0.0, 1.0, n), index=idx)
+
+    return (
+        _make_result(gbm_returns, gbm_errors),
+        _make_result(arima_returns, arima_errors),
+        labels,
+    )
+
+
+class TestDsrAwareGateReport:
+    def test_both_stages_pass(self) -> None:
+        gbm, arima, labels = _stage1_pass_fixture()
+        report = dsr_aware_gate_report(gbm, arima, labels, n_trials=1)
+        assert report["stage1_passed"] is True
+        assert report["dsr_passed"] is True
+        assert report["gate_passed"] is True
+
+    def test_stage1_passes_but_deflation_fails(self) -> None:
+        """Same modest edge, but a huge trial count lifts the benchmark above it."""
+        gbm, arima, labels = _stage1_pass_fixture()
+        report = dsr_aware_gate_report(gbm, arima, labels, n_trials=1_000_000)
+        assert report["stage1_passed"] is True
+        assert report["dsr_passed"] is False
+        assert report["gate_passed"] is False  # combined gate requires BOTH
+
+    def test_stage1_failure_forces_overall_failure(self) -> None:
+        """If the regime gate fails, the combined gate fails regardless of DSR."""
+        rng = np.random.default_rng(202)
+        n = 600
+        idx = pd.bdate_range("2010-01-04", periods=n)
+        labels = pd.Series("qe_bull", index=idx, dtype=object)
+        labels.iloc[400:500] = "covid"
+        labels.iloc[500:] = "rate_cycle"
+
+        # ARIMA wins the Sharpe regimes → stage 1 fails.
+        gbm_returns = pd.Series(rng.normal(0.0, 0.005, n), index=idx)
+        arima_returns = pd.Series(rng.normal(0.0, 0.005, n), index=idx)
+        arima_returns.loc[labels == "qe_bull"] += 0.002
+        arima_returns.loc[labels == "rate_cycle"] += 0.002
+        gbm = _make_result(gbm_returns, pd.Series(rng.normal(0.0, 1.0, n), index=idx))
+        arima = _make_result(arima_returns, pd.Series(rng.normal(0.0, 0.1, n), index=idx))
+
+        report = dsr_aware_gate_report(gbm, arima, labels, n_trials=1)
+        assert report["stage1_passed"] is False
+        assert report["gate_passed"] is False
+
+    def test_n_trials_defaults_to_ledger(self) -> None:
+        """With n_trials=None the gate deflates against the ledger's cumulative N."""
+        gbm, arima, labels = _stage1_pass_fixture()
+        report = dsr_aware_gate_report(gbm, arima, labels)
+        assert report["n_trials"] == cumulative_trial_count()
+
+    def test_report_carries_stage1_and_dsr_keys(self) -> None:
+        gbm, arima, labels = _stage1_pass_fixture()
+        report = dsr_aware_gate_report(gbm, arima, labels, n_trials=10)
+        for key in (
+            "per_regime", "gate_passed", "pass_count", "dm_p_values",
+            "regimes_required", "stage1_passed", "dsr", "dsr_passed",
+            "dsr_result", "n_trials", "sr_observed", "sr_benchmark",
+        ):
+            assert key in report
+        assert 0.0 <= report["dsr"] <= 1.0
+
+    def test_stage1_verdict_matches_phase4a_gate_report(self) -> None:
+        """The wrapper must not perturb the stage-1 verdict."""
+        gbm, arima, labels = _stage1_pass_fixture()
+        stage1 = phase4a_gate_report(gbm, arima, labels)
+        wrapped = dsr_aware_gate_report(gbm, arima, labels, n_trials=5)
+        assert wrapped["stage1_passed"] == stage1["gate_passed"]
+        assert wrapped["pass_count"] == stage1["pass_count"]

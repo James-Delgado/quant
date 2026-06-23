@@ -17,6 +17,10 @@ Public API
   success-gate verdict matching the PRD's metric exactly:
   "GBM beats ARIMA Sharpe in ≥ 2 of 3 recent regimes, with DM p < 0.05 in
   ≥ 1 of those regimes."
+* ``dsr_aware_gate_report(gbm, arima, regime_labels, ...)`` — the §13 two-stage
+  gate: ``phase4a_gate_report`` AND a deflated-Sharpe (Bailey & López de Prado
+  2014) second stage on the aggregate Sharpe, with the deflation N read from
+  ``quant.ledger.cumulative_trial_count``.
 
 DM-test semantics
 -----------------
@@ -35,7 +39,15 @@ import pandas as pd
 
 from quant.backtest.harness import BacktestResult
 from quant.backtest.metrics import compute_metrics
-from quant.backtest.statistics import DMResult, diebold_mariano
+from quant.backtest.statistics import (
+    DEFAULT_SHARPE_STD,
+    DSR_THRESHOLD,
+    DMResult,
+    DSRResult,
+    deflated_sharpe_ratio,
+    diebold_mariano,
+)
+from quant.ledger import cumulative_trial_count
 
 MIN_DM_OBS = 4
 
@@ -224,4 +236,95 @@ def phase4a_gate_report(
         "pass_count": pass_count,
         "dm_p_values": dm_p_values,
         "regimes_required": regimes_required,
+    }
+
+
+# ─── dsr_aware_gate_report ───────────────────────────────────────────────────
+
+
+def dsr_aware_gate_report(
+    gbm_result: BacktestResult,
+    arima_result: BacktestResult,
+    regime_labels: pd.Series,
+    *,
+    n_trials: int | None = None,
+    sharpe_std: float = DEFAULT_SHARPE_STD,
+    dsr_threshold: float = DSR_THRESHOLD,
+    regimes_required: tuple[str, ...] = DEFAULT_REGIMES_REQUIRED,
+    min_pass: int = 2,
+    dm_alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Two-stage gate: the regime Sharpe/DM gate AND a deflated-Sharpe second stage.
+
+    METHODOLOGY §13 ("DSR-aware gates"): a gate-pass must clear both the
+    pre-committed regime gate **and** the deflated Sharpe (Bailey & López de
+    Prado, 2014). The deflation trial count ``N`` is read from the ledger
+    (``quant.ledger.cumulative_trial_count``) rather than hand-counted, so future
+    PRD gates deflate against the project's *current* cumulative N automatically.
+
+    Stage 1 is ``phase4a_gate_report`` verbatim (unchanged — existing callers and
+    its verdict are untouched). Stage 2 computes the DSR on the GBM **aggregate**
+    OOS return series (``gbm_result.oos_returns``); the headline Sharpe is what
+    multiple-testing deflation applies to. The combined gate passes iff
+    ``stage1.gate_passed and dsr > dsr_threshold``.
+
+    Parameters
+    ----------
+    gbm_result, arima_result, regime_labels, regimes_required, min_pass, dm_alpha:
+        Passed straight through to ``phase4a_gate_report``.
+    n_trials:
+        Deflation N. ``None`` (default) reads ``cumulative_trial_count()`` from
+        the ledger; pass an int to deflate against a fixed N (used in tests).
+    sharpe_std:
+        Annualised cross-trial Sharpe dispersion for the expected-max benchmark
+        (default ``DEFAULT_SHARPE_STD``).
+    dsr_threshold:
+        DSR pass threshold (default ``DSR_THRESHOLD`` = 0.5).
+
+    Returns
+    -------
+    dict — every key from ``phase4a_gate_report`` plus:
+
+    * ``stage1_passed`` — bool — the regime gate verdict on its own
+    * ``dsr``           — float — the deflated Sharpe ratio (probability)
+    * ``dsr_passed``    — bool — ``dsr > dsr_threshold``
+    * ``dsr_result``    — ``DSRResult`` — full DSR detail (SR_obs, SR_benchmark, …)
+    * ``n_trials``      — int — the deflation N actually used
+    * ``sr_observed``   — float — GBM aggregate annualised Sharpe
+    * ``sr_benchmark``  — float — expected best-of-N annualised Sharpe under null
+
+    The top-level ``gate_passed`` is **overwritten** with the combined verdict;
+    the stage-1-only verdict is preserved under ``stage1_passed``.
+    """
+    stage1 = phase4a_gate_report(
+        gbm_result,
+        arima_result,
+        regime_labels,
+        regimes_required=regimes_required,
+        min_pass=min_pass,
+        dm_alpha=dm_alpha,
+    )
+
+    if n_trials is None:
+        n_trials = cumulative_trial_count()
+
+    dsr_result: DSRResult = deflated_sharpe_ratio(
+        gbm_result.oos_returns,
+        n_trials,
+        sharpe_std=sharpe_std,
+        threshold=dsr_threshold,
+    )
+
+    combined_passed = bool(stage1["gate_passed"] and dsr_result.passed)
+
+    return {
+        **stage1,
+        "stage1_passed": stage1["gate_passed"],
+        "dsr": dsr_result.dsr,
+        "dsr_passed": dsr_result.passed,
+        "dsr_result": dsr_result,
+        "n_trials": int(n_trials),
+        "sr_observed": dsr_result.sr_observed,
+        "sr_benchmark": dsr_result.sr_benchmark,
+        "gate_passed": combined_passed,
     }
