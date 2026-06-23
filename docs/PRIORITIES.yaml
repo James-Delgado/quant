@@ -272,7 +272,8 @@ tasks:
     title: "Build tests/test_priorities.py (status enum + dependency-graph + single-in-progress drift test)"
     project: A
     sub_project: methodology-upgrade
-    status: ready
+    status: in_progress
+    started_at: 2026-06-23T18:05:00Z
     depends_on: []
     blocks: [A-CLOSE]
     deliverable:
