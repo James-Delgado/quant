@@ -184,7 +184,8 @@ tasks:
     title: "Draft B1 (target reframing) PRD"
     project: B
     sub_project: B1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-23T16:26:35Z
     depends_on: [A-LEDGER]
     blocks: [B1-M1, B1-M2, B1-M3]
     deliverable:
