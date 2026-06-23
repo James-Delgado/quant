@@ -242,7 +242,8 @@ tasks:
     title: "Draft C1 (live data + same-day inference pipeline) PRD"
     project: C
     sub_project: C1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-23T17:30:00Z
     depends_on: [A-LEDGER]
     blocks: [C1-M1, C1-M2, C1-M3, C2-PRD]
     deliverable:
