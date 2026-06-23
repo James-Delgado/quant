@@ -737,10 +737,48 @@ tasks:
       sync only (AGENT_OPERATION red-flag: no rule edits without a roadmap
       decision). Mirrors A-METH-NONSHARPE-SYNC. Non-gating; low priority.
 
+  # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
+
+  - id: B-CLOSE
+    rank: 29
+    title: "B-CLOSE: Project B closeout — E2E predictive-research notebook + closeout report"
+    project: B
+    sub_project: closeout
+    status: blocked
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3]
+    blocks: []
+    deliverable:
+      notebook: notebooks/15_project_b_closeout.ipynb
+      report: docs/PROJECT_B_CLOSEOUT.md
+    references:
+      primary: docs/METHODOLOGY.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Project-closeout task (METHODOLOGY §21 / AGENT_OPERATION "Project
+      closeout"), mirroring A-CLOSE and C-CLOSE. The B2-PRD "Sequencing notes"
+      already committed to this ("Project B has no B-CLOSE task yet ... When one
+      is created, B2-M3 must be added to its depends_on ... Flagged as a
+      discovered follow-up") but the previous agent flagged it in PRD prose only
+      and never appended the task — a dropped Step-7 follow-up. Caught during the
+      C1-PRD post-task review (commit c0295be) when C-CLOSE was created and the
+      A/C-vs-B asymmetry became visible; appended standalone per user direction.
+      The notebook must exercise the assembled Project B predictive-research
+      surface end-to-end across module boundaries: the B1 target catalog +
+      per-target ablation/exit-gate path (B1-M1..M3) and the B2 OOS-attribution
+      method + catalog integration (B2-M1..M3), showing the gate functions and
+      the attribution_status catalog field working together. The report is the
+      one-page definition-of-done. depends_on covers the committed B1+B2 core
+      only: B3-PRD / B4-PRD are CONDITIONAL (drafted only if B1 finds no edge)
+      and may terminate as `skipped`, which would deadlock a closeout that
+      depended on them. Per the AGENT_OPERATION Step 7 corollary, if B3/B4 (or
+      any later B task) is ACTIVATED, its id must be added to this depends_on at
+      that time.
+
   # ------ Project C closeout (discovered during C1-PRD drafting) ------
 
   - id: C-CLOSE
-    rank: 29
+    rank: 30
     title: "C-CLOSE: Project C closeout — E2E deployment-substrate notebook + closeout report"
     project: C
     sub_project: closeout
