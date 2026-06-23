@@ -272,8 +272,9 @@ tasks:
     title: "Build tests/test_priorities.py (status enum + dependency-graph + single-in-progress drift test)"
     project: A
     sub_project: methodology-upgrade
-    status: in_progress
+    status: done
     started_at: 2026-06-23T18:05:00Z
+    completed_at: 2026-06-23
     depends_on: []
     blocks: [A-CLOSE]
     deliverable:
@@ -350,7 +351,7 @@ tasks:
     project: A
     sub_project: closeout
     status: blocked
-    depends_on: [A-LEDGER, A-PRIORITIES-TEST, A-LEDGER-RUNNERS, A-DSR-GATE]
+    depends_on: [A-LEDGER, A-PRIORITIES-TEST, A-PRIORITIES-TEST-TS, A-LEDGER-RUNNERS, A-DSR-GATE]
     blocks: []
     deliverable:
       notebook: notebooks/12_project_a_closeout.ipynb
@@ -737,6 +738,33 @@ tasks:
       touch any numbered rule (§1–§21) — this is a forward-looking notes-section
       sync only (AGENT_OPERATION red-flag: no rule edits without a roadmap
       decision). Mirrors A-METH-NONSHARPE-SYNC. Non-gating; low priority.
+
+  - id: A-PRIORITIES-TEST-TS
+    rank: 31
+    title: "Extend tests/test_priorities.py: timestamp presence + ordering (started_at on in_progress/done; completed_at >= started_at)"
+    project: A
+    sub_project: methodology-upgrade
+    status: ready
+    depends_on: [A-PRIORITIES-TEST]
+    blocks: [A-CLOSE]
+    deliverable:
+      file: tests/test_priorities.py
+    references:
+      primary: docs/PRIORITIES.yaml
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during A-PRIORITIES-TEST post-task review (commit of
+      tests/test_priorities.py). The four invariants that task pinned
+      (status enum, reference resolution, single in_progress, done-has-
+      completed_at) do NOT cover the timestamp fields, yet AGENT_OPERATION
+      Step 3 requires `started_at` on any claimed task and Step 8 requires
+      `completed_at` on `done`. Add checks: (a) every `in_progress` or `done`
+      task has `started_at`; (b) `completed_at >= started_at` (date ordering)
+      where both present; (c) timestamps parse as ISO dates/datetimes. Mirror
+      the existing positive/negative validator pattern in the file. Non-gating;
+      low priority. Added to A-CLOSE.depends_on per AGENT_OPERATION Step 7
+      corollary (new Project-A task appended after A-CLOSE exists).
 
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
