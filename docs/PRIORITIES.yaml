@@ -184,10 +184,11 @@ tasks:
     title: "Draft B1 (target reframing) PRD"
     project: B
     sub_project: B1
-    status: in_progress
+    status: done
     started_at: 2026-06-23T16:26:35Z
+    completed_at: 2026-06-23
     depends_on: [A-LEDGER]
-    blocks: [B1-M1, B1-M2, B1-M3]
+    blocks: [B1-M1, B1-M2, B1-M3, A-METH-NONSHARPE-SYNC]
     deliverable:
       file: .claude/prds/b1-target-reframing.prd.md
     references:
@@ -371,7 +372,7 @@ tasks:
     title: "B1-M1: Candidate target catalog (4 targets pre-committed)"
     project: B
     sub_project: B1
-    status: blocked
+    status: ready
     depends_on: [B1-PRD]
     blocks: [B1-M2]
     deliverable:
@@ -659,6 +660,35 @@ tasks:
     notes: |
       Conditional: only draft if B1 + B3 do not surface edge. Lowest priority
       in Project B.
+
+  # ------ Methodology doc-sync follow-ups (discovered during PRD drafting) ------
+
+  - id: A-METH-NONSHARPE-SYNC
+    rank: 27
+    title: "Sync METHODOLOGY Open-Questions: non-Sharpe materiality thresholds now set in B1 PRD"
+    project: A
+    sub_project: methodology-upgrade
+    status: ready
+    depends_on: [B1-PRD]
+    blocks: []
+    deliverable:
+      file: docs/METHODOLOGY.md
+    references:
+      primary: .claude/prds/b1-target-reframing.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B1-PRD drafting (commit of
+      .claude/prds/b1-target-reframing.prd.md). METHODOLOGY.md §"Open questions
+      for the next research PRD" lists "Materiality thresholds for non-Sharpe
+      targets ... Set during Project B1 / C4 PRD drafting" as still-open. The
+      B1 PRD now PINS the classification (ΔAUC ≥ 0.02) and vol-regression
+      (ΔMAE ≥ 5% relative) materiality thresholds. Update that open-questions
+      bullet to mark the B1 portion resolved and link the B1 PRD's "Success
+      Metrics" table; leave the C4 (confidence-calibration) portion open. Do
+      NOT touch any numbered rule (§1–§21) — this is a forward-looking
+      notes-section sync only (AGENT_OPERATION red-flag: no rule edits without
+      a roadmap decision). Non-gating; low priority.
 
   # ------ D — Phase 5 (gated; not pickable until triggers met) ------
 
