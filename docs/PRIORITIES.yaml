@@ -325,7 +325,8 @@ tasks:
     title: "DSR-aware gate function (deflated Sharpe second stage; N from cumulative_trial_count)"
     project: A
     sub_project: methodology-upgrade-13
-    status: ready
+    status: in_progress
+    started_at: 2026-06-23T20:30:00Z
     depends_on: [A-LEDGER]
     blocks: [B1-M2, A-CLOSE]
     deliverable:
