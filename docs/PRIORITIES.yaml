@@ -214,7 +214,8 @@ tasks:
     title: "Draft B2 (OOS-only attribution method) PRD"
     project: B
     sub_project: B2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-23T16:52:25Z
     depends_on: [A-LEDGER]
     blocks: [B2-M1, B2-M2, B2-M3]
     deliverable:
