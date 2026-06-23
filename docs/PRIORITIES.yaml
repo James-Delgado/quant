@@ -242,8 +242,9 @@ tasks:
     title: "Draft C1 (live data + same-day inference pipeline) PRD"
     project: C
     sub_project: C1
-    status: in_progress
+    status: done
     started_at: 2026-06-23T17:30:00Z
+    completed_at: 2026-06-23
     depends_on: [A-LEDGER]
     blocks: [C1-M1, C1-M2, C1-M3, C2-PRD]
     deliverable:
@@ -490,7 +491,7 @@ tasks:
     title: "C1-M1: Same-day data SLA audit per ingestor"
     project: C
     sub_project: C1
-    status: blocked
+    status: ready
     depends_on: [C1-PRD]
     blocks: [C1-M2]
     deliverable:
@@ -736,7 +737,39 @@ tasks:
       sync only (AGENT_OPERATION red-flag: no rule edits without a roadmap
       decision). Mirrors A-METH-NONSHARPE-SYNC. Non-gating; low priority.
 
-  # ------ D — Phase 5 (gated; not pickable until triggers met) ------
+  # ------ Project C closeout (discovered during C1-PRD drafting) ------
+
+  - id: C-CLOSE
+    rank: 29
+    title: "C-CLOSE: Project C closeout — E2E deployment-substrate notebook + closeout report"
+    project: C
+    sub_project: closeout
+    status: blocked
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C3-PRD, C4-PRD, C5-PRD]
+    blocks: []
+    deliverable:
+      notebook: notebooks/14_project_c_closeout.ipynb
+      report: docs/PROJECT_C_CLOSEOUT.md
+    references:
+      primary: docs/METHODOLOGY.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Project-closeout task (METHODOLOGY §21 / AGENT_OPERATION "Project
+      closeout"), mirroring A-CLOSE. Discovered during C1-PRD drafting (commit
+      of .claude/prds/c1-live-data.prd.md) — Project C had no closeout task while
+      Project A had A-CLOSE; the C1 PRD's "Project-C closeout" sequencing note
+      flagged the gap. The notebook must exercise the assembled Project C
+      deployment substrate end-to-end across module boundaries: same-day PIT
+      reader (C1-M2) -> build_features(asof) parity vs the batch path -> a
+      placeholder ARIMA(1,0,0) prediction through the LEAN/paper bridge (C2) ->
+      sizing/confidence (C3/C4) -> the monitoring + reconciliation surface
+      (C1-M3, C5). The report is the one-page definition-of-done. Any
+      integration defect the notebook surfaces becomes a new task and keeps
+      C-CLOSE open (AGENT_OPERATION Step 7 corollary). depends_on is the current
+      enumerated C task set; per the Step 7 corollary, every C task appended
+      later (e.g. C3/C4/C5 milestones) must be added to this depends_on.
+
 
   - id: D-GATE
     rank: 99
