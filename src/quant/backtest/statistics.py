@@ -44,6 +44,7 @@ Reference:
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -269,6 +270,114 @@ def bootstrap_sharpe_delta_ci(
 
     alpha = (1.0 - ci) / 2.0
     lo, hi = np.quantile(deltas, [alpha, 1.0 - alpha])
+    return float(lo), float(hi)
+
+
+def bootstrap_metric_delta_ci(
+    variant: np.ndarray,
+    baseline: np.ndarray,
+    metric_fn: Callable[[np.ndarray], float],
+    *,
+    block_len: int = 21,
+    n_boot: int = 1000,
+    ci: float = 0.90,
+    seed: int = 0,
+) -> tuple[float, float]:
+    """Paired stationary block-bootstrap CI on an arbitrary metric delta.
+
+    Generalises ``bootstrap_sharpe_delta_ci`` from Sharpe to any per-observation
+    metric — ROC-AUC, MAE, Sharpe — for the B1 gate's significance stage
+    (METHODOLOGY §10, the B1 PRD "Significance" column). ``variant`` and
+    ``baseline`` are per-observation arrays sharing row order; the same resampled
+    *rows* are drawn from both (paired), and per resample the statistic is
+    ``metric_fn(variant[rows]) - metric_fn(baseline[rows])``. The returned
+    interval is the percentile interval (e.g. 5th, 95th for ``ci=0.90``).
+
+    Both arrays may be 1-D (e.g. a return series for Sharpe) or 2-D (e.g.
+    ``column_stack([y_true, y_score])`` for AUC, ``column_stack([y_true, pred])``
+    for MAE) — the first axis is always the observation axis. Carrying ``y_true``
+    in a column of *both* arrays keeps the metrics commensurable: each resample
+    scores the variant and the baseline against the identically resampled truth.
+
+    The CI is computed on ``metric_fn(variant) - metric_fn(baseline)``; the gate's
+    significance test is "the interval excludes 0", which is sign-agnostic, so the
+    caller may order the arguments either way.
+
+    Parameters
+    ----------
+    variant, baseline:
+        Per-observation arrays, identical shape. Rows are observations.
+    metric_fn:
+        Maps a resampled array (same column layout as the inputs) to a scalar.
+    block_len, n_boot, ci, seed:
+        As ``bootstrap_sharpe_delta_ci``.
+
+    Returns
+    -------
+    ``(ci_low, ci_high)`` floats.
+
+    Raises
+    ------
+    ValueError on invalid ``block_len`` / ``n_boot`` / ``ci``, on shape mismatch,
+    on an empty observation axis, or when *every* resample's ``metric_fn`` call
+    failed (e.g. AUC undefined because a resample drew a single class throughout).
+    Individual failed resamples are dropped with a warning rather than aborting —
+    a known case for ROC-AUC on imbalanced labels.
+    """
+    if block_len < 1:
+        raise ValueError(f"block_len must be >= 1, got {block_len}")
+    if n_boot < 1:
+        raise ValueError(f"n_boot must be >= 1, got {n_boot}")
+    if not 0.0 < ci < 1.0:
+        raise ValueError(f"ci must be in (0, 1), got {ci}")
+
+    variant = np.asarray(variant, dtype=float)
+    baseline = np.asarray(baseline, dtype=float)
+    if variant.shape != baseline.shape:
+        raise ValueError(
+            f"variant and baseline must have the same shape, "
+            f"got {variant.shape} and {baseline.shape}"
+        )
+    if variant.ndim not in (1, 2):
+        raise ValueError(f"variant/baseline must be 1-D or 2-D, got {variant.ndim}-D")
+    n = variant.shape[0]
+    if n == 0:
+        raise ValueError("variant/baseline have no observations")
+
+    rng = np.random.default_rng(seed)
+    deltas = np.full(n_boot, np.nan, dtype=float)
+    n_failed = 0
+    for i in range(n_boot):
+        pos = _stationary_block_positions(rng, n, block_len)
+        try:
+            value = metric_fn(variant[pos]) - metric_fn(baseline[pos])
+        except ValueError:
+            # metric raised on this resample (e.g. a metric_fn that raises on a
+            # single-class AUC) — drop it rather than abort the whole CI.
+            n_failed += 1
+            continue
+        # Some metrics (e.g. sklearn roc_auc_score on a single-class resample)
+        # return NaN + warn instead of raising; treat non-finite as a drop too.
+        if np.isfinite(value):
+            deltas[i] = value
+        else:
+            n_failed += 1
+
+    finite = deltas[np.isfinite(deltas)]
+    if finite.size == 0:
+        raise ValueError(
+            "every bootstrap resample's metric_fn failed — the metric is "
+            "undefined on this data (e.g. a single-class target)"
+        )
+    if n_failed:
+        warnings.warn(
+            f"{n_failed}/{n_boot} bootstrap resamples dropped (metric_fn raised "
+            "ValueError, e.g. single-class AUC); CI computed on the remainder",
+            stacklevel=2,
+        )
+
+    alpha = (1.0 - ci) / 2.0
+    lo, hi = np.quantile(finite, [alpha, 1.0 - alpha])
     return float(lo), float(hi)
 
 
