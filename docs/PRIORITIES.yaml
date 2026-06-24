@@ -411,7 +411,8 @@ tasks:
     title: "B1-M2: Per-target ablation matrix on 5-symbol × 8-year slice"
     project: B
     sub_project: B1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-24T17:04:22Z
     depends_on: [B1-M1, A-DSR-GATE]
     blocks: [B1-M3]
     deliverable:
