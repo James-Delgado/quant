@@ -32,10 +32,13 @@ for the exact rule.
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from quant.features.targets import MaterialityCriterion, TargetSpec
 
 from quant.backtest.harness import BacktestResult
 from quant.backtest.metrics import compute_metrics
@@ -327,4 +330,152 @@ def dsr_aware_gate_report(
         "sr_observed": dsr_result.sr_observed,
         "sr_benchmark": dsr_result.sr_benchmark,
         "gate_passed": combined_passed,
+    }
+
+
+# ─── b1_gate_report ──────────────────────────────────────────────────────────
+
+
+def _criterion_met(
+    criterion: "MaterialityCriterion",
+    variant: float | None,
+    baseline: float | None,
+) -> tuple[bool, float | None]:
+    """Evaluate one ``MaterialityCriterion`` against a (variant, baseline) pair.
+
+    Returns ``(met, value)`` where ``value`` is the computed delta/reduction (or
+    ``None`` when an input is missing or the reduction denominator is zero).
+    """
+    if variant is None or baseline is None:
+        return False, None
+    if criterion.kind == "delta_higher":
+        delta = float(variant) - float(baseline)
+        return delta >= criterion.threshold, delta
+    if criterion.kind == "rel_reduction":
+        if baseline == 0:
+            return False, None
+        reduction = (float(baseline) - float(variant)) / float(baseline)
+        return reduction >= criterion.threshold, reduction
+    raise ValueError(f"unknown materiality kind {criterion.kind!r}")
+
+
+def b1_gate_report(
+    spec: "TargetSpec",
+    per_regime_metrics: dict[str, dict[str, dict[str, float]]],
+    significance_ci: dict[str, tuple[float, float]],
+    deflation_passed: bool,
+    *,
+    regimes_required: tuple[str, ...] = DEFAULT_REGIMES_REQUIRED,
+    min_pass: int = 2,
+    deflation_detail: Any = None,
+) -> dict[str, Any]:
+    """Pre-committed B1 target-reframing gate (PRD ``b1-target-reframing.prd.md``).
+
+    This is the source of truth for the B1 verdict (METHODOLOGY §2): the PRD's
+    "Pre-committed gate" prose describes this function; the function decides. It
+    generalises ``phase4a_gate_report`` from a fixed GBM-vs-ARIMA Sharpe test to
+    an arbitrary per-target metric supplied via ``spec.materiality``, and renders
+    a pure verdict over already-computed per-regime metrics, significance CIs, and
+    a deflation result — so it is deterministically unit-testable and the heavy
+    metric/bootstrap/DSR machinery lives in its callers (B1-M2).
+
+    For a single ``(target, arm)`` result the gate passes iff the conjunction of:
+
+    1. **Materiality** — *every* criterion in ``spec.materiality`` is met in a
+       regime (directional targets carry both an AUC and a Sharpe criterion), in
+       at least ``min_pass`` of the ``regimes_required``.
+    2. **Significance** — the paired stationary-block-bootstrap CI of the gated
+       metric delta (see ``statistics.bootstrap_metric_delta_ci``) **excludes 0**
+       in at least one required regime.
+    3. **Deflation** — ``deflation_passed`` is ``True`` (deflated Sharpe > 0 for
+       directional targets, or the vol/drawdown skill-z analog > 0), with the
+       deflation N read from ``quant.ledger.cumulative_trial_count`` by the caller
+       (the A-DSR-GATE deliverable; ``spec.deflation`` selects the method).
+
+    Parameters
+    ----------
+    spec:
+        The target's pre-committed ``TargetSpec`` (carries the metric thresholds).
+    per_regime_metrics:
+        ``{regime: {metric: {"variant": float, "baseline": float}}}`` — the
+        variant (model) and better-baseline value of each gated metric per regime.
+        Regimes outside ``regimes_required`` are ignored in the verdict.
+    significance_ci:
+        ``{regime: (ci_low, ci_high)}`` — the bootstrap CI of the gated metric
+        delta per regime. The significance test is "the interval excludes 0".
+    deflation_passed:
+        Stage-3 verdict, pre-computed by the caller per ``spec.deflation``.
+    regimes_required:
+        The regimes the gate evaluates (default ``qe_bull, covid, rate_cycle``).
+    min_pass:
+        Minimum count of materiality-passing required regimes (default 2).
+    deflation_detail:
+        Optional opaque detail (e.g. a ``DSRResult``) echoed in the output.
+
+    Returns
+    -------
+    dict with keys:
+
+    * ``target``              — ``spec.name``
+    * ``per_regime``          — per-required-regime materiality + significance detail
+    * ``materiality_passed``  — bool
+    * ``material_pass_count`` — int
+    * ``significance_passed`` — bool
+    * ``deflation_passed``    — bool
+    * ``deflation_detail``    — echo of input
+    * ``gate_passed``         — bool — the three-stage conjunction
+    * ``regimes_required`` / ``min_pass`` — echo of inputs
+    """
+    per_regime: dict[str, dict[str, Any]] = {}
+    for regime in regimes_required:
+        metrics = per_regime_metrics.get(regime, {})
+        criteria_detail: list[dict[str, Any]] = []
+        all_met = True
+        for crit in spec.materiality:
+            pair = metrics.get(crit.metric, {})
+            met, value = _criterion_met(
+                crit, pair.get("variant"), pair.get("baseline")
+            )
+            criteria_detail.append(
+                {
+                    "metric": crit.metric,
+                    "kind": crit.kind,
+                    "threshold": crit.threshold,
+                    "value": value,
+                    "met": met,
+                }
+            )
+            all_met = all_met and met
+
+        ci = significance_ci.get(regime)
+        ci_excludes_zero = ci is not None and (ci[0] > 0 or ci[1] < 0)
+
+        per_regime[regime] = {
+            "materiality_met": all_met,
+            "criteria": criteria_detail,
+            "significance_ci": ci,
+            "ci_excludes_zero": ci_excludes_zero,
+        }
+
+    material_pass_count = sum(
+        1 for r in regimes_required if per_regime[r]["materiality_met"]
+    )
+    materiality_passed = material_pass_count >= min_pass
+    significance_passed = any(
+        per_regime[r]["ci_excludes_zero"] for r in regimes_required
+    )
+    deflation_passed = bool(deflation_passed)
+    gate_passed = materiality_passed and significance_passed and deflation_passed
+
+    return {
+        "target": spec.name,
+        "per_regime": per_regime,
+        "materiality_passed": materiality_passed,
+        "material_pass_count": material_pass_count,
+        "significance_passed": significance_passed,
+        "deflation_passed": deflation_passed,
+        "deflation_detail": deflation_detail,
+        "gate_passed": gate_passed,
+        "regimes_required": regimes_required,
+        "min_pass": min_pass,
     }

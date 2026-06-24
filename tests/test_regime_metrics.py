@@ -7,12 +7,14 @@ import pytest
 
 from quant.backtest.harness import BacktestResult
 from quant.backtest.regime_metrics import (
+    b1_gate_report,
     compute_regime_metrics,
     dsr_aware_gate_report,
     phase4a_gate_report,
     regime_dm_test,
 )
 from quant.backtest.statistics import DMResult
+from quant.features.targets import TARGET_CATALOG
 from quant.ledger import cumulative_trial_count
 
 
@@ -312,3 +314,174 @@ class TestDsrAwareGateReport:
         wrapped = dsr_aware_gate_report(gbm, arima, labels, n_trials=5)
         assert wrapped["stage1_passed"] == stage1["gate_passed"]
         assert wrapped["pass_count"] == stage1["pass_count"]
+
+
+# ─── b1_gate_report ──────────────────────────────────────────────────────────
+
+
+class TestB1GateReport:
+    """The pre-committed B1 target-reframing gate (PRD b1-target-reframing)."""
+
+    DRAWDOWN = TARGET_CATALOG["drawdown_21d"]          # 1 criterion: auc ΔAUC ≥ 0.02
+    DIRECTIONAL = TARGET_CATALOG["directional_5d"]      # 2 criteria: auc + sharpe
+    VOL = TARGET_CATALOG["realized_vol_21d"]            # 1 criterion: mae rel_reduction
+
+    def _drawdown_pass_metrics(self) -> dict:
+        return {
+            "qe_bull": {"auc": {"variant": 0.60, "baseline": 0.50}},   # Δ 0.10 ✓
+            "covid": {"auc": {"variant": 0.55, "baseline": 0.50}},     # Δ 0.05 ✓
+            "rate_cycle": {"auc": {"variant": 0.50, "baseline": 0.51}},  # Δ -0.01 ✗
+        }
+
+    def _ci_one_excludes_zero(self) -> dict:
+        return {
+            "qe_bull": (0.01, 0.08),    # excludes 0
+            "covid": (-0.02, 0.06),     # includes 0
+            "rate_cycle": (-0.03, 0.02),  # includes 0
+        }
+
+    def test_all_stages_pass(self):
+        report = b1_gate_report(
+            self.DRAWDOWN,
+            self._drawdown_pass_metrics(),
+            self._ci_one_excludes_zero(),
+            deflation_passed=True,
+        )
+        assert report["materiality_passed"] is True
+        assert report["material_pass_count"] == 2
+        assert report["significance_passed"] is True
+        assert report["deflation_passed"] is True
+        assert report["gate_passed"] is True
+        assert report["target"] == "drawdown_21d"
+
+    def test_materiality_fails_when_only_one_regime_meets(self):
+        metrics = self._drawdown_pass_metrics()
+        metrics["covid"]["auc"]["variant"] = 0.505  # Δ 0.005 < 0.02 now ✗
+        report = b1_gate_report(
+            self.DRAWDOWN, metrics, self._ci_one_excludes_zero(), deflation_passed=True
+        )
+        assert report["material_pass_count"] == 1
+        assert report["materiality_passed"] is False
+        assert report["gate_passed"] is False
+
+    def test_significance_fails_when_no_ci_excludes_zero(self):
+        ci = {
+            "qe_bull": (-0.01, 0.08),
+            "covid": (-0.02, 0.06),
+            "rate_cycle": (-0.03, 0.02),
+        }
+        report = b1_gate_report(
+            self.DRAWDOWN, self._drawdown_pass_metrics(), ci, deflation_passed=True
+        )
+        assert report["materiality_passed"] is True
+        assert report["significance_passed"] is False
+        assert report["gate_passed"] is False
+
+    def test_deflation_fails_blocks_gate(self):
+        report = b1_gate_report(
+            self.DRAWDOWN,
+            self._drawdown_pass_metrics(),
+            self._ci_one_excludes_zero(),
+            deflation_passed=False,
+        )
+        assert report["materiality_passed"] is True
+        assert report["significance_passed"] is True
+        assert report["deflation_passed"] is False
+        assert report["gate_passed"] is False
+
+    def test_directional_requires_both_auc_and_sharpe(self):
+        # AUC clears in all three regimes, but Sharpe only in qe_bull -> a regime
+        # counts as material only when BOTH criteria are met.
+        metrics = {
+            "qe_bull": {
+                "auc": {"variant": 0.55, "baseline": 0.50},   # Δ 0.05 ✓
+                "sharpe": {"variant": 0.40, "baseline": 0.20},  # Δ 0.20 ✓
+            },
+            "covid": {
+                "auc": {"variant": 0.55, "baseline": 0.50},   # Δ 0.05 ✓
+                "sharpe": {"variant": 0.25, "baseline": 0.20},  # Δ 0.05 < 0.10 ✗
+            },
+            "rate_cycle": {
+                "auc": {"variant": 0.55, "baseline": 0.50},   # Δ 0.05 ✓
+                "sharpe": {"variant": 0.22, "baseline": 0.20},  # Δ 0.02 < 0.10 ✗
+            },
+        }
+        report = b1_gate_report(
+            self.DIRECTIONAL,
+            metrics,
+            {"qe_bull": (0.01, 0.10)},
+            deflation_passed=True,
+        )
+        assert report["material_pass_count"] == 1  # only qe_bull clears both
+        assert report["materiality_passed"] is False
+        assert report["gate_passed"] is False
+
+    def test_rel_reduction_materiality_for_vol_target(self):
+        # MAE lower is better: (baseline - variant)/baseline >= 0.05.
+        metrics = {
+            "qe_bull": {"mae": {"variant": 0.90, "baseline": 1.00}},   # 10% reduction ✓
+            "covid": {"mae": {"variant": 0.94, "baseline": 1.00}},     # 6% reduction ✓
+            "rate_cycle": {"mae": {"variant": 0.99, "baseline": 1.00}},  # 1% reduction ✗
+        }
+        report = b1_gate_report(
+            self.VOL, metrics, {"qe_bull": (0.01, 0.2)}, deflation_passed=True
+        )
+        assert report["material_pass_count"] == 2
+        assert report["gate_passed"] is True
+
+    def test_per_regime_detail_records_delta_value(self):
+        report = b1_gate_report(
+            self.DRAWDOWN,
+            self._drawdown_pass_metrics(),
+            self._ci_one_excludes_zero(),
+            deflation_passed=True,
+        )
+        qe = report["per_regime"]["qe_bull"]
+        crit = qe["criteria"][0]
+        assert crit["metric"] == "auc"
+        assert crit["value"] == pytest.approx(0.10)
+        assert crit["met"] is True
+        assert qe["ci_excludes_zero"] is True
+
+    def test_min_pass_override(self):
+        # With min_pass=1 a single material regime is enough.
+        metrics = self._drawdown_pass_metrics()
+        metrics["covid"]["auc"]["variant"] = 0.505  # only qe_bull material now
+        report = b1_gate_report(
+            self.DRAWDOWN,
+            metrics,
+            self._ci_one_excludes_zero(),
+            deflation_passed=True,
+            min_pass=1,
+        )
+        assert report["material_pass_count"] == 1
+        assert report["materiality_passed"] is True
+        assert report["gate_passed"] is True
+
+    def test_regimes_outside_required_are_ignored(self):
+        metrics = self._drawdown_pass_metrics()
+        metrics["low_vol"] = {"auc": {"variant": 0.99, "baseline": 0.50}}  # huge edge
+        report = b1_gate_report(
+            self.DRAWDOWN,
+            metrics,
+            self._ci_one_excludes_zero(),
+            deflation_passed=True,
+        )
+        # low_vol is not in regimes_required -> does not change the count.
+        assert report["material_pass_count"] == 2
+        assert "low_vol" not in report["per_regime"]
+
+    def test_missing_metric_is_not_material(self):
+        metrics = {
+            "qe_bull": {},  # no auc key -> criterion cannot be met
+            "covid": {"auc": {"variant": 0.55, "baseline": 0.50}},
+            "rate_cycle": {"auc": {"variant": 0.55, "baseline": 0.50}},
+        }
+        report = b1_gate_report(
+            self.DRAWDOWN,
+            metrics,
+            {"covid": (0.01, 0.08)},
+            deflation_passed=True,
+        )
+        assert report["per_regime"]["qe_bull"]["materiality_met"] is False
+        assert report["material_pass_count"] == 2  # covid + rate_cycle

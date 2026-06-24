@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-23
+last_updated: 2026-06-24
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -380,8 +380,9 @@ tasks:
     title: "B1-M1: Candidate target catalog (4 targets pre-committed)"
     project: B
     sub_project: B1
-    status: in_progress
+    status: done
     started_at: 2026-06-24T16:16:17Z
+    completed_at: 2026-06-24
     depends_on: [B1-PRD]
     blocks: [B1-M2]
     deliverable:
@@ -410,7 +411,7 @@ tasks:
     title: "B1-M2: Per-target ablation matrix on 5-symbol × 8-year slice"
     project: B
     sub_project: B1
-    status: blocked
+    status: ready
     depends_on: [B1-M1, A-DSR-GATE]
     blocks: [B1-M3]
     deliverable:
@@ -421,8 +422,31 @@ tasks:
     est_complexity: medium
     notes: |
       Each of the 4 targets × {ARIMA control, GBM, naive baseline} on slice.
-      Verdict via phase4a_gate_report (extended for classification metrics
-      where applicable). Borda composite across regimes.
+      Verdict via b1_gate_report (src/quant/backtest/regime_metrics.py, shipped
+      in B1-M1); it takes per-regime metric values, per-regime significance CIs
+      (from statistics.bootstrap_metric_delta_ci, shipped in B1-M1), and a
+      pre-computed deflation_passed bool. Borda composite across regimes.
+
+      Captured during B1-M1 post-task review (commit of src/quant/features/
+      targets.py) — work that lives in this milestone, surfaced while building
+      the gate:
+        (a) DEFLATION COMPUTATION. b1_gate_report consumes a deflation_passed
+            bool. For the directional targets (deflation="dsr") compute it via
+            statistics.deflated_sharpe_ratio (exists). For the non-tradeable
+            targets T1 drawdown + T2 vol (deflation="skill_z") there is NO helper
+            yet — M2 must add a forecast-skill z-score (z = mean(skill)/se(skill),
+            pass if > 0) before scoring those two targets.
+        (b) T1 DEFLATION METHOD (§1/§9). The B1 PRD T1 row literally says
+            "DSR > 0", but a drawdown PROBABILITY has no return series; B1-M1 set
+            TARGET_CATALOG["drawdown_21d"].deflation="skill_z" (the analog the PRD
+            prose grants the vol target). Confirm this method BEFORE scoring T1;
+            if it changes the gate it requires a new ledger entry, not a mid-
+            matrix override.
+        (c) INVARIANT-4 ASSERTION (backtest/CLAUDE.md). The new 5- and 21-bar
+            horizons exceed Phase 4A's 1-bar label. Assert invariant 4 (test-fold
+            length >> label_horizon + embargo) on THIS milestone's real slice
+            config; flag rather than silently shrink the training set. B1-M1
+            could not assert it (it produces labels, runs no backtest).
 
   - id: B1-M3
     rank: 11
@@ -828,6 +852,35 @@ tasks:
       do NOT change the T4 = 0.5 threshold. Mirrors A-METH-*-SYNC. Non-gating;
       low priority. Added to A-CLOSE.depends_on per Step 7 corollary.
 
+  - id: B1-TARGETS-CONCEPT-DOC
+    rank: 34
+    title: "Concept doc for the B1 candidate targets (docs/concepts/target-reframing.md)"
+    project: B
+    sub_project: B1
+    status: ready
+    depends_on: [B1-M1]
+    blocks: [B-CLOSE]
+    deliverable:
+      file: docs/concepts/target-reframing.md
+    references:
+      primary: src/quant/features/targets.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B1-M1 post-task review (commit of
+      src/quant/features/targets.py). The four B1 targets, their point-in-time
+      rules, and the pinned materiality thresholds live only in targets.py
+      docstrings + the B1 PRD; every other label family in the repo has a
+      companion concept doc (features/label_schemes.py <-> docs/concepts/
+      label-schemes.md). Write docs/concepts/target-reframing.md mirroring
+      label-schemes.md: per-target definition + PIT rule + horizon, the
+      flat-module-vs-catalog decision, the deflation-method choice per target
+      (dsr vs skill_z, including the T1 "DSR-literal vs skill-z analog" note),
+      and the 5/21-bar horizon embargo-coupling caveat. Doc-only; do NOT change
+      any pinned threshold (those stay sourced from targets.py / b1_gate_report).
+      Non-gating; low priority. Added to B-CLOSE.depends_on per AGENT_OPERATION
+      Step 7 corollary (new Project-B task appended after B-CLOSE exists).
+
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
   - id: B-CLOSE
@@ -836,7 +889,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb

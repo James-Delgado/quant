@@ -11,6 +11,7 @@ from quant.backtest.statistics import (
     DSR_THRESHOLD,
     DMResult,
     DSRResult,
+    bootstrap_metric_delta_ci,
     bootstrap_sharpe_delta_ci,
     deflated_sharpe_ratio,
     diebold_mariano,
@@ -300,3 +301,129 @@ class TestDeflatedSharpeRatio:
         """Guard the pinned §1 defaults against silent drift."""
         assert DSR_THRESHOLD == 0.5
         assert DEFAULT_SHARPE_STD == 0.35
+
+
+# ─── bootstrap_metric_delta_ci ───────────────────────────────────────────────
+
+
+def _sharpe_metric(a: np.ndarray) -> float:
+    return compute_metrics(pd.Series(a))["sharpe"]
+
+
+def _auc_metric(a: np.ndarray) -> float:
+    """ROC-AUC on column-stacked [y_true, score], raising on a single class.
+
+    sklearn's ``roc_auc_score`` returns NaN + warns on a single-class input;
+    raising ``ValueError`` instead exercises the documented ``metric_fn``
+    contract (the gate's significance bootstrap drops such resamples) and keeps
+    the test output free of ``UndefinedMetricWarning`` noise.
+    """
+    from sklearn.metrics import roc_auc_score
+
+    y_true = a[:, 0]
+    if len(np.unique(y_true)) < 2:
+        raise ValueError("only one class present in this resample")
+    return roc_auc_score(y_true, a[:, 1])
+
+
+class TestBootstrapMetricDeltaCI:
+    def test_returns_tuple_low_le_high(self):
+        rng = np.random.default_rng(0)
+        variant = rng.normal(0.001, 0.01, size=300)
+        baseline = rng.normal(0.0, 0.01, size=300)
+        lo, hi = bootstrap_metric_delta_ci(
+            variant, baseline, _sharpe_metric, n_boot=200
+        )
+        assert lo <= hi
+
+    def test_identical_series_brackets_zero(self):
+        base = np.random.default_rng(1).normal(0.0, 0.01, size=300)
+        lo, hi = bootstrap_metric_delta_ci(
+            base, base.copy(), _sharpe_metric, n_boot=200
+        )
+        assert lo <= 0.0 <= hi
+
+    def test_constant_shift_excludes_zero(self):
+        base = np.random.default_rng(2).normal(0.0, 0.005, size=300)
+        variant = base + 0.01  # uniformly higher returns -> higher Sharpe
+        lo, hi = bootstrap_metric_delta_ci(
+            variant, base, _sharpe_metric, n_boot=300
+        )
+        assert lo > 0.0
+
+    def test_deterministic_same_seed(self):
+        rng = np.random.default_rng(4)
+        variant = rng.normal(0.001, 0.01, size=200)
+        baseline = rng.normal(0.0, 0.01, size=200)
+        ci_a = bootstrap_metric_delta_ci(
+            variant, baseline, _sharpe_metric, n_boot=200, seed=42
+        )
+        ci_b = bootstrap_metric_delta_ci(
+            variant, baseline, _sharpe_metric, n_boot=200, seed=42
+        )
+        assert ci_a == ci_b
+
+    def test_2d_auc_variant_better_positive_ci(self):
+        rng = np.random.default_rng(5)
+        y_true = np.array([0.0, 1.0] * 40)  # balanced, well mixed
+        score_variant = y_true + rng.normal(0.0, 0.2, size=80)  # separates classes
+        score_baseline = rng.normal(0.0, 1.0, size=80)  # ~chance
+
+        variant = np.column_stack([y_true, score_variant])
+        baseline = np.column_stack([y_true, score_baseline])
+
+        lo, hi = bootstrap_metric_delta_ci(
+            variant, baseline, _auc_metric, n_boot=300, seed=0
+        )
+        assert lo > 0.0  # ΔAUC well above zero
+
+    def test_single_class_raises(self):
+        y_true = np.zeros(80)  # one class only -> AUC undefined everywhere
+        score = np.random.default_rng(6).normal(size=80)
+        variant = np.column_stack([y_true, score])
+        baseline = np.column_stack([y_true, score])
+
+        with pytest.raises(ValueError, match="every bootstrap resample"):
+            bootstrap_metric_delta_ci(variant, baseline, _auc_metric, n_boot=100)
+
+    def test_partial_failures_warn(self):
+        # Minority class clustered at the first 3 of 80 rows; with block_len=1
+        # many resamples miss it (single class -> dropped), some include it.
+        y_true = np.zeros(80)
+        y_true[:3] = 1.0
+        score = np.random.default_rng(7).normal(size=80)
+        variant = np.column_stack([y_true, score])
+        baseline = np.column_stack([y_true, score])
+
+        with pytest.warns(UserWarning, match="bootstrap resamples dropped"):
+            lo, hi = bootstrap_metric_delta_ci(
+                variant, baseline, _auc_metric, block_len=1, n_boot=300, seed=0
+            )
+        assert lo <= hi
+
+    def test_shape_mismatch_raises(self):
+        with pytest.raises(ValueError, match="same shape"):
+            bootstrap_metric_delta_ci(
+                np.zeros(10), np.zeros(11), _sharpe_metric
+            )
+
+    def test_empty_raises(self):
+        with pytest.raises(ValueError, match="no observations"):
+            bootstrap_metric_delta_ci(
+                np.array([]), np.array([]), _sharpe_metric
+            )
+
+    def test_3d_raises(self):
+        with pytest.raises(ValueError, match="1-D or 2-D"):
+            bootstrap_metric_delta_ci(
+                np.zeros((4, 2, 2)), np.zeros((4, 2, 2)), _sharpe_metric
+            )
+
+    def test_invalid_params_raise(self):
+        a = np.zeros(10)
+        with pytest.raises(ValueError, match="block_len"):
+            bootstrap_metric_delta_ci(a, a, _sharpe_metric, block_len=0)
+        with pytest.raises(ValueError, match="n_boot"):
+            bootstrap_metric_delta_ci(a, a, _sharpe_metric, n_boot=0)
+        with pytest.raises(ValueError, match="ci must be"):
+            bootstrap_metric_delta_ci(a, a, _sharpe_metric, ci=1.5)
