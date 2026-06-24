@@ -411,8 +411,9 @@ tasks:
     title: "B1-M2: Per-target ablation matrix on 5-symbol × 8-year slice"
     project: B
     sub_project: B1
-    status: in_progress
+    status: done
     started_at: 2026-06-24T17:04:22Z
+    completed_at: 2026-06-24
     depends_on: [B1-M1, A-DSR-GATE]
     blocks: [B1-M3]
     deliverable:
@@ -454,7 +455,7 @@ tasks:
     title: "B1-M3: Full-panel confirmation of slice-winners (compute-gated)"
     project: B
     sub_project: B1
-    status: blocked
+    status: ready
     depends_on: [B1-M2, A-LEDGER-RUNNERS]
     blocks: []
     deliverable:
@@ -882,6 +883,62 @@ tasks:
       Non-gating; low priority. Added to B-CLOSE.depends_on per AGENT_OPERATION
       Step 7 corollary (new Project-B task appended after B-CLOSE exists).
 
+  - id: B1-TARGETEVAL-DOC
+    rank: 35
+    title: "Concept doc for backtest/target_eval.py (OOS-prediction collector + skill-z + directional-signal convention)"
+    project: B
+    sub_project: B1
+    status: ready
+    depends_on: [B1-M2]
+    blocks: [B-CLOSE]
+    deliverable:
+      file: docs/concepts/target-evaluation.md
+    references:
+      primary: src/quant/backtest/target_eval.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B1-M2 (commit of src/quant/backtest/target_eval.py +
+      notebooks/10_b1_target_ablation.ipynb). B1-M2 added a new backtest module
+      (target_eval: collect_oos_predictions / simulate_signal_returns /
+      per_regime_metric) and a new statistics helper (forecast_skill_z), but unlike
+      every other backtest sub-module (regimes <-> regime-evaluation.md, label_schemes
+      <-> label-schemes.md) it has no companion concept doc. Write
+      docs/concepts/target-evaluation.md covering: why the return-simulator harness
+      cannot score AUC/MAE (the motivation), the purged-walk-forward prediction
+      collector contract, the directional Sharpe-arm sign(pred-0.5) convention (vs the
+      harness's sign(pred) at 0), and the skill-z deflation analog (Brier/abs-err
+      improvement z-score) for non-tradeable targets. Doc-only; do NOT change pinned
+      thresholds. Non-gating; low priority. Added to B-CLOSE.depends_on per
+      AGENT_OPERATION Step 7 corollary.
+
+  - id: B1-DD-VOLIMPLIED-BASELINE
+    rank: 36
+    title: "Formalize the T1 drawdown 'vol-implied DD probability' baseline (currently an EWMA-vol-rank proxy)"
+    project: B
+    sub_project: B1
+    status: ready
+    depends_on: [B1-M2]
+    blocks: [B-CLOSE]
+    deliverable:
+      file: notebooks/10_b1_target_ablation.ipynb
+    references:
+      primary: .claude/prds/b1-target-reframing.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B1-M2 (declared deviation, METHODOLOGY §9). The B1 PRD's T1
+      baseline is "ARIMA-vol-implied DD probability"; nb10 implements it as an
+      EWMA(0.94)-daily-vol score ranked against the 0/1 drawdown label (higher vol ->
+      higher DD prob) — a defensible monotone proxy but NOT a calibrated probability or
+      an ARIMA-on-vol forecast. On the slice this proxy was already STRONG (AUC 0.712
+      covid / 0.653 rate_cycle, beating the GBM's 0.622 / 0.508), so refining it only
+      strengthens the clean negative — hence low priority. If B1-M3 revisits T1, swap to
+      a principled vol-implied DD probability (e.g. map an ARIMA-on-log-vol forecast
+      through a parametric/empirical DD-probability function) under a new ledger entry.
+      Non-gating; low priority. Added to B-CLOSE.depends_on per AGENT_OPERATION Step 7
+      corollary.
+
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
   - id: B-CLOSE
@@ -890,7 +947,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb
