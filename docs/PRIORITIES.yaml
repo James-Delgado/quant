@@ -380,7 +380,8 @@ tasks:
     title: "B1-M1: Candidate target catalog (4 targets pre-committed)"
     project: B
     sub_project: B1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-24T16:16:17Z
     depends_on: [B1-PRD]
     blocks: [B1-M2]
     deliverable:
