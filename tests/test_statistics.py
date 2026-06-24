@@ -11,11 +11,13 @@ from quant.backtest.statistics import (
     DSR_THRESHOLD,
     DMResult,
     DSRResult,
+    SkillZResult,
     bootstrap_metric_delta_ci,
     bootstrap_sharpe_delta_ci,
     deflated_sharpe_ratio,
     diebold_mariano,
     expected_max_sharpe,
+    forecast_skill_z,
 )
 
 
@@ -427,3 +429,71 @@ class TestBootstrapMetricDeltaCI:
             bootstrap_metric_delta_ci(a, a, _sharpe_metric, n_boot=0)
         with pytest.raises(ValueError, match="ci must be"):
             bootstrap_metric_delta_ci(a, a, _sharpe_metric, ci=1.5)
+
+
+class TestForecastSkillZ:
+    """Skill-z deflation analog for the non-tradeable B1 targets (T1/T2)."""
+
+    def test_positive_mean_skill_passes(self):
+        rng = np.random.default_rng(0)
+        skill = rng.normal(0.05, 0.10, 500)  # variant reliably beats baseline
+        res = forecast_skill_z(skill)
+        assert isinstance(res, SkillZResult)
+        assert res.z > 0
+        assert res.passed
+        assert res.n_obs == 500
+        assert res.mean_skill == pytest.approx(float(np.mean(skill)))
+
+    def test_negative_mean_skill_fails(self):
+        rng = np.random.default_rng(1)
+        skill = rng.normal(-0.05, 0.10, 500)
+        res = forecast_skill_z(skill)
+        assert res.z < 0
+        assert not res.passed
+
+    def test_noise_around_zero_does_not_pass(self):
+        rng = np.random.default_rng(2)
+        skill = rng.normal(0.0, 1.0, 2000)  # no real skill
+        res = forecast_skill_z(skill)
+        assert abs(res.z) < 3  # not a confident positive
+        # passed only if z>0 by chance and small; assert it's not a strong claim
+        assert not (res.passed and res.z > 2)
+
+    def test_zero_dispersion_positive_is_inf_pass(self):
+        res = forecast_skill_z(np.full(50, 0.2))
+        assert res.z == float("inf")
+        assert res.passed
+        assert res.se_skill == 0.0
+
+    def test_zero_dispersion_negative_is_neg_inf_fail(self):
+        res = forecast_skill_z(np.full(50, -0.2))
+        assert res.z == float("-inf")
+        assert not res.passed
+
+    def test_zero_dispersion_at_threshold_is_zero_fail(self):
+        res = forecast_skill_z(np.zeros(50))
+        assert res.z == 0.0
+        assert not res.passed
+
+    def test_threshold_argument(self):
+        # mean skill 0.1, threshold 0.2 → should fail at the higher bar
+        rng = np.random.default_rng(3)
+        skill = rng.normal(0.1, 0.001, 1000)  # tightly around 0.1
+        assert forecast_skill_z(skill, threshold=0.0).passed
+        assert not forecast_skill_z(skill, threshold=float("inf")).passed
+
+    def test_nans_dropped(self):
+        skill = np.array([0.1, np.nan, 0.2, 0.15, np.nan, 0.05])
+        res = forecast_skill_z(skill)
+        assert res.n_obs == 4
+
+    def test_fewer_than_two_obs_raises(self):
+        with pytest.raises(ValueError, match=">= 2 non-NaN"):
+            forecast_skill_z(np.array([0.1]))
+        with pytest.raises(ValueError, match=">= 2 non-NaN"):
+            forecast_skill_z(np.array([0.1, np.nan]))
+
+    def test_accepts_pandas_series(self):
+        res = forecast_skill_z(pd.Series([0.1, 0.2, 0.15, 0.05]))
+        assert res.n_obs == 4
+        assert res.passed

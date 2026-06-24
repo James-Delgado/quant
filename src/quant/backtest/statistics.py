@@ -558,3 +558,100 @@ def deflated_sharpe_ratio(
         threshold=float(threshold),
         passed=bool(dsr > threshold),
     )
+
+
+# ─── Forecast-skill z-score (the DSR analog for non-tradeable targets) ────────
+
+
+@dataclass(frozen=True)
+class SkillZResult:
+    """Result of a forecast-skill z-score test.
+
+    The deflation second stage (METHODOLOGY §13) for the B1 targets that have **no
+    tradeable return series** — T1 drawdown probability and T2 log-realized-vol —
+    where the Bailey-López de Prado DSR is undefined. The skill statistic is a paired
+    per-observation improvement of the variant model over its better baseline (a
+    larger positive ``skill_i`` = the variant predicted observation ``i`` better),
+    and the test is whether the *mean* improvement is reliably positive::
+
+        z = mean(skill) / se(skill),   se(skill) = std(skill, ddof=1) / sqrt(n)
+
+    ``passed`` is ``z > threshold`` (default 0) — the analog of "deflated Sharpe > 0".
+    """
+
+    z: float
+    mean_skill: float
+    se_skill: float
+    n_obs: int
+    threshold: float
+    passed: bool
+
+    def __str__(self) -> str:
+        verdict = "PASS" if self.passed else "FAIL"
+        return (
+            f"skill-z={self.z:.4f} ({verdict} vs {self.threshold:.2f}): "
+            f"mean={self.mean_skill:.4g}, se={self.se_skill:.4g}, n={self.n_obs}"
+        )
+
+
+def forecast_skill_z(
+    skill: np.ndarray | pd.Series,
+    *,
+    threshold: float = 0.0,
+) -> SkillZResult:
+    """Forecast-skill z-score: is the mean per-observation skill reliably positive?
+
+    ``skill`` is a per-observation improvement series — for a regression target,
+    ``|baseline_error| - |variant_error|`` per bar; for a probability target, the
+    Brier-score improvement ``(baseline_prob - y)^2 - (variant_prob - y)^2`` per bar
+    — so a positive value means the variant beat the baseline on that observation.
+    The test computes ``z = mean / standard-error`` and passes when ``z > threshold``
+    (default 0). This is the ``spec.deflation == "skill_z"`` stage the B1 gate
+    consumes for the non-tradeable T1/T2 targets (the DSR is for the directional
+    Sharpe arms).
+
+    NaNs are dropped. With ``n >= 2`` and a positive dispersion the z-score is the
+    usual one-sample statistic. If every retained skill value is identical (zero
+    dispersion) the z-score is ``+inf`` when the constant mean exceeds ``threshold``,
+    ``-inf`` when it is below, and ``0`` when it equals ``threshold`` — so a perfectly
+    consistent improvement passes and a perfectly consistent non-improvement fails,
+    without a divide-by-zero.
+
+    Raises
+    ------
+    ValueError if fewer than 2 non-NaN observations remain (the standard error is
+    undefined).
+    """
+    s = np.asarray(skill, dtype=float)
+    s = s[np.isfinite(s)]
+    n = int(s.size)
+    if n < 2:
+        raise ValueError(
+            f"forecast_skill_z needs >= 2 non-NaN observations, got {n}"
+        )
+
+    mean_skill = float(s.mean())
+
+    if np.ptp(s) == 0.0:
+        # Zero dispersion: every observation has the identical skill value (ptp is
+        # exactly 0 even when std(ddof=1) carries float-rounding noise). The z-score
+        # limit is ±inf by the sign of (mean - threshold); 0 on a tie.
+        se = 0.0
+        if mean_skill > threshold:
+            z = float("inf")
+        elif mean_skill < threshold:
+            z = float("-inf")
+        else:
+            z = 0.0
+    else:
+        se = float(s.std(ddof=1)) / np.sqrt(n)
+        z = mean_skill / se
+
+    return SkillZResult(
+        z=float(z),
+        mean_skill=mean_skill,
+        se_skill=float(se),
+        n_obs=n,
+        threshold=float(threshold),
+        passed=bool(z > threshold),
+    )
