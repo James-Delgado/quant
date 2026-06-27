@@ -6,9 +6,12 @@ test in `tests/test_catalog.py` keeps the YAML and the code in lock-step —
 adding a column without registering it, or retiring one without removing it
 from the YAML, fails CI by naming the offender.
 
-Schema is pre-committed (12 fields, see `FeatureRecord`); intentionally
+Schema is pre-committed (13 fields, see `FeatureRecord`); intentionally
 *not* present: ownership, scheduling, prompts, or run history — those
 belong to the Phase 5 continuous-agent runtime, not to a Phase 4A artifact.
+The `attribution_status` field (Project B2-M3) records the OOS-attribution
+evidence for each feature (METHODOLOGY §14); it is mutable like
+`ablation_status`/`regime_notes`.
 
 Limitation: the drift test compares *set* membership, not column order.
 `mom_21d`'s positional contract (index 5 — read by `MomentumBaseline`) is
@@ -51,6 +54,9 @@ class FeatureRecord(BaseModel):
     ablation_status: Literal[
         "untested", "tested_no_edge", "tested_edge", "retired"
     ]
+    attribution_status: Literal[
+        "none", "ablation_only", "oos_permutation", "both", "agreed"
+    ] = "none"
     regime_notes: str | None = None
     depends_on: list[str] = Field(default_factory=list)
 

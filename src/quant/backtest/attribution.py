@@ -664,3 +664,59 @@ def b2_attribution_gate(
         "n_permutations": n_permutations,
         "reproduction_threshold": reproduction_threshold,
     }
+
+
+# ─── classify_attribution_status — the B2-M3 catalog-population rule ────────────
+
+ATTRIBUTION_STATUS_VALUES: tuple[str, ...] = (
+    "none",
+    "ablation_only",
+    "oos_permutation",
+    "both",
+    "agreed",
+)
+"""The catalog ``attribution_status`` enum (mirrors ``FeatureRecord``). Single
+source of truth so ``catalog.py`` and the B2-M3 population/drift test agree."""
+
+
+def classify_attribution_status(
+    ablation: float | None,
+    permutation: float | None,
+    *,
+    gate_passed: bool,
+) -> str:
+    """Map a feature's two OOS-attribution signals to a catalog ``attribution_status``.
+
+    The B2-M3 catalog-population rule, **pinned before per-feature results were
+    inspected** (METHODOLOGY §1). It encodes which evidence backs each feature:
+
+    * ``"agreed"`` — **both** signals computed **and** the OOS-permutation proxy is
+      *validated as a method* (the B2 G1 gate passed, ``gate_passed=True``) **and**
+      the two signals concur on the **sign** of this feature's OOS contribution.
+    * ``"both"`` — both signals computed but not certified to agree: either the
+      method-level gate failed (the proxy is untrusted — METHODOLOGY §14, so a
+      per-feature sign coincidence is **not** promoted to ``agreed``; that would be
+      post-hoc cherry-picking after a failed validation, METHODOLOGY §10) or the
+      signs disagree.
+    * ``"ablation_only"`` — only the canonical per-fold-ablation lift was computed.
+    * ``"oos_permutation"`` — only the (cheap-proxy) permutation importance was
+      computed.
+    * ``"none"`` — neither signal computed (the catalog default).
+
+    ``gate_passed`` is the ``b2_attribution_gate`` verdict (the source of truth,
+    METHODOLOGY §2): ``"agreed"`` is reachable only when the proxy validated, so a
+    failed B2 run records co-attributed features as ``"both"`` — both were tried,
+    neither feature is certified as agreeing.
+
+    Non-finite (NaN) inputs are treated as "not computed".
+    """
+    has_abl = ablation is not None and np.isfinite(ablation)
+    has_perm = permutation is not None and np.isfinite(permutation)
+    if has_abl and has_perm:
+        concordant = np.sign(ablation) == np.sign(permutation)
+        return "agreed" if (gate_passed and concordant) else "both"
+    if has_abl:
+        return "ablation_only"
+    if has_perm:
+        return "oos_permutation"
+    return "none"

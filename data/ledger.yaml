@@ -236,3 +236,17 @@
   artifacts:
   - data/b1/drawdown_21d/
   notes: B1-M3 full-panel arm; NO-GO, see docs/B1_REPORT.md
+- id: ledger-2026-06-27-0005
+  prd: b2
+  milestone: B2-M2
+  agent: human
+  preregistration: .claude/prds/b2-oos-attribution.prd.md
+  config_hash: 4ca7489f127313cf88377349476b4fd1938589c6cceb072b20a5f75f7d99a4e9
+  n_comparisons: 1
+  started_at: '2026-06-27T23:03:46.254409Z'
+  completed_at: '2026-06-27T23:22:31.045728Z'
+  verdict: gate_failed
+  artifacts:
+  - data/b2/slice/
+  notes: B2-M2 OOS-attribution validation (G1 permutation vs ablation; G2 port; G3
+    IS-vs-OOS).

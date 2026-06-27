@@ -30,12 +30,14 @@ from scipy import stats
 
 from quant.backtest.attribution import (
     ALPHA,
+    ATTRIBUTION_STATUS_VALUES,
     N_PERMUTATIONS,
     REPRODUCTION_THRESHOLD,
     RHO_THRESHOLD,
     AblationImportance,
     PermutationImportance,
     b2_attribution_gate,
+    classify_attribution_status,
     oos_permutation_importance,
     per_fold_ablation_attribution,
 )
@@ -373,3 +375,53 @@ class TestB2Gate:
         )
         assert out["g1_n_features"] == len(_FEATS7)
         assert out["g1_rho"] == pytest.approx(1.0)
+
+
+# ─── classify_attribution_status (B2-M3 catalog-population rule) ───────────────
+
+
+class TestClassifyAttributionStatus:
+    def test_both_signals_gate_passed_concordant_is_agreed(self):
+        # agreed requires the validated proxy (gate passed) AND sign concordance.
+        assert classify_attribution_status(0.3, 0.2, gate_passed=True) == "agreed"
+        assert classify_attribution_status(-0.3, -0.2, gate_passed=True) == "agreed"
+
+    def test_both_signals_gate_passed_discordant_is_both(self):
+        assert classify_attribution_status(0.3, -0.2, gate_passed=True) == "both"
+
+    def test_both_signals_gate_failed_is_both_even_when_concordant(self):
+        # A failed validation gate cannot be salvaged by per-feature sign luck
+        # (METHODOLOGY §10/§14) — co-attributed features are 'both', never 'agreed'.
+        assert classify_attribution_status(0.3, 0.2, gate_passed=False) == "both"
+        assert classify_attribution_status(0.3, -0.2, gate_passed=False) == "both"
+
+    def test_ablation_only(self):
+        assert (
+            classify_attribution_status(0.3, None, gate_passed=True) == "ablation_only"
+        )
+
+    def test_permutation_only(self):
+        assert (
+            classify_attribution_status(None, 0.3, gate_passed=True) == "oos_permutation"
+        )
+
+    def test_neither_is_none(self):
+        assert classify_attribution_status(None, None, gate_passed=True) == "none"
+
+    def test_nan_treated_as_not_computed(self):
+        assert (
+            classify_attribution_status(0.3, float("nan"), gate_passed=True)
+            == "ablation_only"
+        )
+        assert classify_attribution_status(
+            float("nan"), float("nan"), gate_passed=True
+        ) == "none"
+
+    def test_every_returned_value_is_a_catalog_enum_member(self):
+        for abl in (None, 0.1, -0.1, float("nan")):
+            for perm in (None, 0.1, -0.1, float("nan")):
+                for gp in (True, False):
+                    assert (
+                        classify_attribution_status(abl, perm, gate_passed=gp)
+                        in ATTRIBUTION_STATUS_VALUES
+                    )
