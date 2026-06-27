@@ -477,7 +477,8 @@ tasks:
     title: "B2-M1: OOS attribution method shortlist + theory writeup"
     project: B
     sub_project: B2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-27T21:44:46Z
     depends_on: [B2-PRD]
     blocks: [B2-M2]
     deliverable:
