@@ -477,8 +477,9 @@ tasks:
     title: "B2-M1: OOS attribution method shortlist + theory writeup"
     project: B
     sub_project: B2
-    status: in_progress
+    status: done
     started_at: 2026-06-27T21:44:46Z
+    completed_at: 2026-06-27
     depends_on: [B2-PRD]
     blocks: [B2-M2]
     deliverable:
@@ -492,7 +493,7 @@ tasks:
     title: "B2-M2: Implementation + sanity test against M3 ablation lifts"
     project: B
     sub_project: B2
-    status: blocked
+    status: ready
     depends_on: [B2-M1]
     blocks: [B2-M3]
     deliverable:
@@ -972,6 +973,33 @@ tasks:
       live in the committed runner. Added to B-CLOSE.depends_on per AGENT_OPERATION
       Step 7 corollary.
 
+  - id: B2-DOC-COLCOUNT
+    rank: 38
+    title: "Reconcile the attributed feature set: 25-col M6 model set vs 27-col catalog"
+    project: B
+    sub_project: B2
+    status: ready
+    depends_on: [B2-M1]
+    blocks: [B-CLOSE]
+    deliverable:
+      file: docs/concepts/oos-attribution.md
+    references:
+      primary: src/quant/features/catalog.yaml
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B2-M1 post-task review (commit of
+      docs/concepts/oos-attribution.md). The doc uses the B2 PRD's "25-column M6
+      feature set" as the attribution validation surface, while CLAUDE.md and
+      features/catalog.yaml reference 27 registered columns. These are two
+      different things (the M6 model INPUT set is a 25-col subset; the catalog
+      registers 27 known features), not an error — but B2-M2/M3 must pin exactly
+      which set gets an OOS attribution score and which catalog rows receive the
+      attribution_status field. Resolve the count, align the oos-attribution.md
+      wording and the catalog references, and state the attributed set explicitly
+      before B2-M3 populates the field. Doc/clarification only; non-gating. Added
+      to B-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
   - id: B-CLOSE
@@ -980,7 +1008,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-M3-TZTEST]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-M3-TZTEST, B2-DOC-COLCOUNT]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb
