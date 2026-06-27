@@ -493,7 +493,8 @@ tasks:
     title: "B2-M2: Implementation + sanity test against M3 ablation lifts"
     project: B
     sub_project: B2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-27T22:42:21Z
     depends_on: [B2-M1]
     blocks: [B2-M3]
     deliverable:
