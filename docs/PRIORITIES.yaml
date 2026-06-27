@@ -455,7 +455,8 @@ tasks:
     title: "B1-M3: Full-panel confirmation of slice-winners (compute-gated)"
     project: B
     sub_project: B1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-27T18:45:12Z
     depends_on: [B1-M2, A-LEDGER-RUNNERS]
     blocks: []
     deliverable:
