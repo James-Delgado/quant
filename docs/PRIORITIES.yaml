@@ -547,7 +547,8 @@ tasks:
     title: "C1-M2: Point-in-time today's-bar reader + build_features integration"
     project: C
     sub_project: C1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-27T23:55:00Z
     depends_on: [C1-M1]
     blocks: [C1-M3, C2-PRD]
     deliverable:
