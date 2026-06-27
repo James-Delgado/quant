@@ -510,8 +510,9 @@ tasks:
     title: "B2-M3: Catalog integration (attribution_status field)"
     project: B
     sub_project: B2
-    status: in_progress
+    status: done
     started_at: 2026-06-27T23:30:00Z
+    completed_at: 2026-06-27
     depends_on: [B2-M2]
     blocks: []
     deliverable:
@@ -1059,6 +1060,38 @@ tasks:
       attribution_status audit trail. CONDITIONAL / non-MVP, mirroring B3-PRD/B4-PRD —
       intentionally NOT in B-CLOSE.depends_on so an unrun optional confirmation cannot
       deadlock closeout. Low priority.
+
+  - id: B2-CONFORMAL-PRD
+    rank: 41
+    title: "Draft B2 conformal-feature-relevance follow-on PRD (triggered by B2 G1 fail)"
+    project: B
+    sub_project: B2
+    status: ready
+    depends_on: [B2-M2]
+    blocks: []
+    deliverable:
+      file: .claude/prds/b2-conformal-relevance.prd.md
+    references:
+      primary: docs/concepts/oos-attribution.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B2-M3 (the catalog-population run consumed the B2-M2
+      real-slice checkpoint, data/b2/slice/, ledger entry ledger-2026-06-27-0005).
+      The B2 G1 gate FAILED on the real 5x8 slice: Spearman rho(permutation,
+      ablation) = -0.004 (p = 0.505), far below the pinned 0.50 bar — OOS
+      permutation importance is NOT a validated cheap proxy for per-fold ablation
+      on this problem (G3 rho = 0.039 confirms IS-importance still does not
+      transfer). Per METHODOLOGY §5 (binding conditional trigger/skip path) and the
+      B2 PRD "Sequencing notes" / "Conditional follow-on", a FAILED G1 TRIGGERS
+      drafting the deferred third method — conformal feature relevance — as the next
+      attempt at a cheap OOS-attribution proxy. Per-fold ablation remains the SOLE
+      canonical OOS signal in the interim (METHODOLOGY §14 unchanged). A failed G1
+      cannot be revived by retuning rho_threshold (that needs a new PRD + ledger
+      entry); this conformal PRD is that new attempt. CONDITIONAL research follow-on
+      — like B3-PRD/B4-PRD it is intentionally NOT in B-CLOSE.depends_on (it may
+      terminate `skipped` if conformal is judged not worth the implementation risk,
+      which would deadlock a closeout that depended on it). Use /plan-prd.
 
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 

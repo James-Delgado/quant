@@ -8,15 +8,20 @@ offending column.
 """
 from __future__ import annotations
 
+import importlib.util
 import re
+import sys
 import textwrap
+import typing
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
 from pydantic import ValidationError
 
+from quant.backtest.attribution import ATTRIBUTION_STATUS_VALUES
 from quant.features.catalog import (
     FeatureRecord,
     load_catalog,
@@ -24,6 +29,17 @@ from quant.features.catalog import (
 )
 from quant.features.cross_sectional import add_cross_sectional_features
 from quant.features.engineering import build_features
+
+
+def _load_script(name: str, filename: str) -> Any:
+    """Load a ``scripts/<filename>`` module by path (scripts/ is not a package)."""
+    path = Path(__file__).resolve().parent.parent / "scripts" / filename
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 # --------------------------------------------------------------------- #
@@ -350,4 +366,136 @@ class TestGlossaryAnchors:
                 missing.append(f"{record.name} -> #{fragment}")
         assert not missing, (
             f"catalog glossary_ref anchors not found in feature-glossary.md: {missing}"
+        )
+
+
+# --------------------------------------------------------------------- #
+# attribution_status field (Project B2-M3 — METHODOLOGY §6 drift contract)
+# --------------------------------------------------------------------- #
+
+class TestAttributionStatusSchema:
+    """The enum constant, the schema default, and back-compat all stay in lock-step."""
+
+    def test_enum_constant_matches_schema_literal(self):
+        # ATTRIBUTION_STATUS_VALUES (attribution.py) is the single source of truth
+        # the population + drift test consume; it must equal the FeatureRecord
+        # Literal so the two cannot drift apart.
+        literal = typing.get_args(
+            FeatureRecord.model_fields["attribution_status"].annotation
+        )
+        assert set(literal) == set(ATTRIBUTION_STATUS_VALUES)
+
+    def test_default_is_none_when_field_omitted(self):
+        # Back-compat: an entry written before B2-M3 (no attribution_status) stays
+        # valid and defaults to "none" — existing YAML needs no edit to load.
+        record = FeatureRecord(
+            name="x",
+            family="price",
+            source="alpaca_ohlcv",
+            formula="f",
+            lookback_bars=0,
+            publication_lag_days=0,
+            point_in_time_rule="rule",
+            added_phase="2",
+            glossary_ref="ref",
+            ablation_status="untested",
+        )
+        assert record.attribution_status == "none"
+
+    def test_bad_attribution_status_enum_raises(self, tmp_path: Path):
+        path = tmp_path / "bad_attr.yaml"
+        path.write_text(
+            textwrap.dedent(
+                """
+                features:
+                  - name: x
+                    family: price
+                    source: alpaca_ohlcv
+                    formula: f
+                    lookback_bars: 0
+                    publication_lag_days: 0
+                    point_in_time_rule: rule
+                    added_phase: "2"
+                    glossary_ref: ref
+                    ablation_status: untested
+                    attribution_status: bogus
+                """
+            )
+        )
+        with pytest.raises(ValidationError):
+            load_catalog(path)
+
+    def test_every_catalog_entry_has_valid_attribution_status(self):
+        catalog = load_catalog()
+        offenders = [
+            f"{name}={r.attribution_status}"
+            for name, r in catalog.items()
+            if r.attribution_status not in ATTRIBUTION_STATUS_VALUES
+        ]
+        assert not offenders, f"invalid attribution_status values: {offenders}"
+
+
+class TestAttributionStatusDrift:
+    """Both-directions code-vs-config drift (METHODOLOGY §6).
+
+    The catalog's ``attribution_status`` must agree with the B2 attribution
+    *surface* — which features got which signal(s) — defined by the runner's
+    frozen feature sets:
+
+      * G1 set (``FINAL_FEATURE_COLUMNS``, 25 cols) ran **both** the canonical
+        ablation reference and the permutation proxy → status ``both``/``agreed``.
+      * the candidate-only features (in ``CANDIDATES`` but not the G1 set) ran
+        ablation only → status ``ablation_only``.
+      * every other feature ran no OOS attribution → status ``none``.
+
+    The agreed-vs-both split within the G1 set is data-driven (populated from the
+    slice checkpoint, recorded via the ledger); this test enforces the *class*
+    contract, which is what a future catalog edit could silently violate.
+    """
+
+    @classmethod
+    def _surface(cls) -> tuple[set[str], set[str]]:
+        runner = _load_script("b2_runner_for_catalog", "run_b2_attribution.py")
+        g1 = set(runner.FINAL_FEATURE_COLUMNS)
+        ablation_only = set(runner.CANDIDATES) - g1
+        return g1, ablation_only
+
+    def test_g1_features_have_both_signal_status(self):
+        catalog = load_catalog()
+        g1, _ = self._surface()
+        offenders = [
+            f"{name}={catalog[name].attribution_status}"
+            for name in sorted(g1)
+            if catalog[name].attribution_status not in {"both", "agreed"}
+        ]
+        assert not offenders, (
+            "G1 features (both signals computed) must be 'both' or 'agreed': "
+            f"{offenders}"
+        )
+
+    def test_candidate_only_features_are_ablation_only(self):
+        catalog = load_catalog()
+        _, ablation_only = self._surface()
+        offenders = [
+            f"{name}={catalog[name].attribution_status}"
+            for name in sorted(ablation_only)
+            if catalog[name].attribution_status != "ablation_only"
+        ]
+        assert not offenders, (
+            f"candidate-only features must be 'ablation_only': {offenders}"
+        )
+
+    def test_unattributed_features_stay_none(self):
+        # Reverse direction: a feature outside the B2 surface must NOT claim any
+        # attribution it never received (no phantom attribution).
+        catalog = load_catalog()
+        g1, ablation_only = self._surface()
+        attributed = g1 | ablation_only
+        offenders = [
+            f"{name}={catalog[name].attribution_status}"
+            for name in sorted(catalog)
+            if name not in attributed and catalog[name].attribution_status != "none"
+        ]
+        assert not offenders, (
+            f"features outside the B2 attribution surface must be 'none': {offenders}"
         )

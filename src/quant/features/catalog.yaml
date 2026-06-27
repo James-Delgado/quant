@@ -9,9 +9,13 @@
 # in both directions. Adding a column without registering it, or retiring
 # one without removing the YAML entry, fails CI by naming the offender.
 #
-# Mutable fields: `ablation_status` and `regime_notes` (records what the
-# milestone learned). Every other field describes the feature definition
-# and changes only when the feature itself changes.
+# Mutable fields: `ablation_status`, `attribution_status`, and `regime_notes`
+# (record what each milestone learned). `attribution_status` (Project B2-M3,
+# enum none|ablation_only|oos_permutation|both|agreed) records OOS-attribution
+# evidence per feature (METHODOLOGY §14); populated from the B2-M2 slice run
+# checkpoint (data/b2/slice/) via attribution.classify_attribution_status.
+# Every other field describes the feature definition and changes only when
+# the feature itself changes.
 #
 # Conventions:
 #   - `lookback_bars`: warmup bars before the first valid value (0 if none)
@@ -34,6 +38,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#ret_1d"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -47,6 +52,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#ret_5d"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -60,6 +66,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#ret_21d"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -73,6 +80,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#vol_21d"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -86,6 +94,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#vol_63d"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -99,6 +108,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#mom_21d"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -112,6 +122,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#rsi_14"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -125,6 +136,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#log_volume"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -138,6 +150,7 @@ features:
     added_phase: "2.5"
     glossary_ref: "docs/concepts/feature-glossary.md#ret_252d"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -151,6 +164,7 @@ features:
     added_phase: "2.5"
     glossary_ref: "docs/concepts/feature-glossary.md#ret_126d"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -164,6 +178,7 @@ features:
     added_phase: "2.5"
     glossary_ref: "docs/concepts/feature-glossary.md#ma200_ratio"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -177,6 +192,7 @@ features:
     added_phase: "2.5"
     glossary_ref: "docs/concepts/feature-glossary.md#ma50_ratio"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -190,6 +206,7 @@ features:
     added_phase: "2.5"
     glossary_ref: "docs/concepts/feature-glossary.md#volume_ratio"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -207,6 +224,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#DGS10"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -220,6 +238,7 @@ features:
     added_phase: "2"
     glossary_ref: "docs/concepts/feature-glossary.md#DFF"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -233,6 +252,7 @@ features:
     added_phase: "2.5"
     glossary_ref: "docs/concepts/feature-glossary.md#VIXCLS"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -246,6 +266,7 @@ features:
     added_phase: "2.5"
     glossary_ref: "docs/concepts/feature-glossary.md#yield_curve"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: ["DGS10", "DFF"]
 
@@ -265,6 +286,7 @@ features:
     added_phase: "4A"
     glossary_ref: "docs/concepts/feature-glossary.md#vix_regime"
     ablation_status: tested_no_edge
+    attribution_status: both
     regime_notes: "M3 slice (nb08): best-regime lift +0.213 in rate_cycle; not qualifying under noise guard"
     depends_on: ["VIXCLS"]
 
@@ -278,6 +300,7 @@ features:
     added_phase: "4A"
     glossary_ref: "docs/concepts/feature-glossary.md#curve_inverted"
     ablation_status: tested_no_edge
+    attribution_status: both
     regime_notes: "M3 slice (nb08): best-regime lift +0.133 in rate_cycle; not qualifying under noise guard"
     depends_on: ["yield_curve"]
 
@@ -291,6 +314,7 @@ features:
     added_phase: "4A"
     glossary_ref: "docs/concepts/feature-glossary.md#vol_regime_ratio"
     ablation_status: tested_no_edge
+    attribution_status: both
     regime_notes: "M3 slice (nb08): best-regime lift +0.082 in rate_cycle; not qualifying under noise guard"
     depends_on: ["vol_21d", "vol_63d"]
 
@@ -304,6 +328,7 @@ features:
     added_phase: "4A"
     glossary_ref: "docs/concepts/feature-glossary.md#trend_regime"
     ablation_status: tested_edge
+    attribution_status: both
     regime_notes: "M3 slice (nb08): survived gate via rate_cycle (lift +0.168, sign-consistent across regimes). M6 full-panel (nb09): GBM signed Sharpe in rate_cycle = -0.442 vs ARIMA +0.405 — feature is in the 25-col final set but no marginal per-feature ablation at full panel (M6 ran 3 GBM scheme arms, not feature arms); slice-edge status not refuted, but not re-confirmed at full panel either."
     depends_on: ["ma200_ratio"]
 
@@ -321,6 +346,7 @@ features:
     added_phase: "4A"
     glossary_ref: "docs/concepts/feature-glossary.md#xs_rank_ret_21d"
     ablation_status: tested_no_edge
+    attribution_status: ablation_only
     regime_notes: "M3 slice (nb08): best-regime lift +0.134 in rate_cycle; not qualifying under noise guard"
     depends_on: ["ret_21d"]
 
@@ -334,6 +360,7 @@ features:
     added_phase: "4A"
     glossary_ref: "docs/concepts/feature-glossary.md#xs_rank_ret_252d"
     ablation_status: tested_no_edge
+    attribution_status: ablation_only
     regime_notes: "M3 slice (nb08): best-regime lift +0.281 in rate_cycle; not qualifying under noise guard"
     depends_on: ["ret_252d"]
 
@@ -347,6 +374,7 @@ features:
     added_phase: "4A"
     glossary_ref: "docs/concepts/feature-glossary.md#xs_rank_vol_21d"
     ablation_status: tested_edge
+    attribution_status: both
     regime_notes: "M3 slice (nb08): survived gate via covid (lift +0.636, CI90 [-0.01, 1.25]). M6 full-panel (nb09): GBM signed Sharpe in covid = -1.280 vs ARIMA +0.403 — feature is in the 25-col final set but no marginal per-feature ablation at full panel (M6 ran 3 GBM scheme arms, not feature arms); slice-edge status not refuted, but not re-confirmed at full panel either."
     depends_on: ["vol_21d"]
 
@@ -363,6 +391,7 @@ features:
     added_phase: "3"
     glossary_ref: "docs/concepts/feature-glossary.md#sentiment_score"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -376,6 +405,7 @@ features:
     added_phase: "3"
     glossary_ref: "docs/concepts/feature-glossary.md#doc_count"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: []
 
@@ -389,5 +419,6 @@ features:
     added_phase: "3"
     glossary_ref: "docs/concepts/feature-glossary.md#has_coverage"
     ablation_status: untested
+    attribution_status: both
     regime_notes: null
     depends_on: ["doc_count"]
