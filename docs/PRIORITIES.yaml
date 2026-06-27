@@ -530,8 +530,9 @@ tasks:
     title: "C1-M1: Same-day data SLA audit per ingestor"
     project: C
     sub_project: C1
-    status: in_progress
+    status: done
     started_at: 2026-06-27T23:44:11Z
+    completed_at: 2026-06-27
     depends_on: [C1-PRD]
     blocks: [C1-M2]
     deliverable:
@@ -546,7 +547,7 @@ tasks:
     title: "C1-M2: Point-in-time today's-bar reader + build_features integration"
     project: C
     sub_project: C1
-    status: blocked
+    status: ready
     depends_on: [C1-M1]
     blocks: [C1-M3, C2-PRD]
     deliverable:
@@ -1093,6 +1094,39 @@ tasks:
       — like B3-PRD/B4-PRD it is intentionally NOT in B-CLOSE.depends_on (it may
       terminate `skipped` if conformal is judged not worth the implementation risk,
       which would deadlock a closeout that depended on it). Use /plan-prd.
+
+  - id: C1-M1-MEASURE
+    rank: 42
+    title: "Live-measure per-source data availability times to confirm/tighten the C1 freshness SLAs"
+    project: C
+    sub_project: C1
+    status: ready
+    depends_on: [C1-M1]
+    blocks: []
+    deliverable:
+      file: docs/concepts/data-freshness-slas.md
+    references:
+      primary: docs/concepts/data-freshness-slas.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C1-M1 (declared deviation, METHODOLOGY §9, in
+      docs/concepts/data-freshness-slas.md "Declared deviations"). The per-source
+      "available by" times in the C1-M1 audit are DESK-RESEARCH / code-derived
+      estimates of each publisher's release schedule (Alpaca IEX settle, Tiingo
+      adjusted EOD, FRED release calendar, EDGAR/RSS liveness), not the output of a
+      multi-day live-measured pull that timestamps the first moment today's bar is
+      actually fetchable. They are deliberately conservative so the SLA does not
+      false-alarm. This task instruments a live daily run for >= 2 weeks to record
+      the real first-availability time per feed and either confirms or LOOSENS the
+      pinned SLA values (it can only loosen the conservatism). Any change to a
+      pinned SLA value follows the C1-M1 update protocol (PRD revision + new ledger
+      entry) and updates this doc AND the C1-M3 module constant in lock-step (the
+      drift contract). CONDITIONAL / non-MVP confirmation — the SLA is already
+      pinned in the ratified C1 PRD and the C1-M1 audit confirms it; per the
+      B2-FULLPANEL-AGREEMENT precedent this is intentionally NOT in
+      C-CLOSE.depends_on so an unrun optional measurement cannot deadlock closeout.
+      Low priority.
 
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
