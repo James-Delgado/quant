@@ -455,10 +455,11 @@ tasks:
     title: "B1-M3: Full-panel confirmation of slice-winners (compute-gated)"
     project: B
     sub_project: B1
-    status: in_progress
+    status: done
     started_at: 2026-06-27T18:45:12Z
+    completed_at: 2026-06-27
     depends_on: [B1-M2, A-LEDGER-RUNNERS]
-    blocks: []
+    blocks: [B3-PRD, B4-PRD]
     deliverable:
       runner: scripts/run_b1_arms.py
       notebook: notebooks/11_b1_exit_gate.ipynb
@@ -681,7 +682,7 @@ tasks:
     title: "Draft B3 (alternative data — options-implied surfaces) PRD"
     project: B
     sub_project: B3
-    status: blocked
+    status: ready
     depends_on: [B1-M3]
     blocks: []
     deliverable:
@@ -699,7 +700,7 @@ tasks:
     project: B
     sub_project: B4
     status: blocked
-    depends_on: [B1-M3]
+    depends_on: [B1-M3, B3-PRD]
     blocks: []
     deliverable:
       file: .claude/prds/b4-universe-shift.prd.md
@@ -940,6 +941,36 @@ tasks:
       Non-gating; low priority. Added to B-CLOSE.depends_on per AGENT_OPERATION Step 7
       corollary.
 
+  - id: B1-M3-TZTEST
+    rank: 37
+    title: "Regression test for run_b1_arms tz-alignment (NY price index vs UTC feature index)"
+    project: B
+    sub_project: B1
+    status: ready
+    depends_on: []
+    blocks: [B-CLOSE]
+    deliverable:
+      file: tests/test_run_b1_arms.py
+    references:
+      primary: scripts/run_b1_arms.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B1-M3 (commit of scripts/run_b1_arms.py + docs/B1_REPORT.md
+      §5 declared deviation). The first full-panel launch dropped all 33 symbols:
+      the lake price index is America/New_York (close 20:00-04:00) while
+      build_features returns UTC, and a tz_localize(None) strip mis-aligned feature
+      vs label indices by the UTC offset (feature 00:00 UTC vs label 20:00 naive).
+      Fixed with run_b1_arms._to_naive_utc (tz_convert->strip, preserving the
+      instant) and verified manually on real 6-symbol data, but the smoke test could
+      NOT catch it — the synthetic panel is tz-naive, so _to_naive_utc is a no-op
+      there. Add a regression test that feeds a tz-AWARE (NY) price frame + a UTC-tz
+      feature frame through _to_naive_utc / _aligned_target_panel and asserts
+      feature.index.equals(label.index) and a non-empty aligned panel, so the
+      alignment contract is covered, not merely exercised. Non-gating; the fix is
+      live in the committed runner. Added to B-CLOSE.depends_on per AGENT_OPERATION
+      Step 7 corollary.
+
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
   - id: B-CLOSE
@@ -948,7 +979,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-M3-TZTEST]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb
