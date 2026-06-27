@@ -184,3 +184,55 @@
     GBM + triple_barrier secondary arm — Bonferroni α=0.0167. Borda composite
     winner among the GBM arms but its aggregate Sharpe +0.177 does not clear
     deflation (~0.71 best-of-N at N≈62). From data/phase4a/triple_barrier/metadata.json.
+- id: ledger-2026-06-27-0001
+  prd: b1
+  milestone: B1-M3
+  agent: human
+  preregistration: .claude/prds/b1-target-reframing.prd.md#pre-committed-gate
+  config_hash: 592558f7f5ae0d3d8001cbc94076bc04d23310d505f79a3b4015448be995eb46
+  n_comparisons: 3
+  started_at: '2026-06-27T19:15:06.262694Z'
+  completed_at: '2026-06-27T19:51:20.237653Z'
+  verdict: gate_failed
+  artifacts:
+  - data/b1/directional_21d/
+  notes: B1-M3 full-panel arm; NO-GO, see docs/B1_REPORT.md
+- id: ledger-2026-06-27-0002
+  prd: b1
+  milestone: B1-M3
+  agent: human
+  preregistration: .claude/prds/b1-target-reframing.prd.md#pre-committed-gate
+  config_hash: 670f763005e7bea4b14895de1d5e0554bbb51b67cd0673c2df0391b5ed2a6363
+  n_comparisons: 3
+  started_at: '2026-06-27T19:51:24.633432Z'
+  completed_at: '2026-06-27T20:26:59.899759Z'
+  verdict: gate_failed
+  artifacts:
+  - data/b1/directional_5d/
+  notes: B1-M3 full-panel arm; NO-GO, see docs/B1_REPORT.md
+- id: ledger-2026-06-27-0003
+  prd: b1
+  milestone: B1-M3
+  agent: human
+  preregistration: .claude/prds/b1-target-reframing.prd.md#pre-committed-gate
+  config_hash: f137b039195074b7c5cee39facbe17e110d63b6208b649bbfcc303c13394b422
+  n_comparisons: 3
+  started_at: '2026-06-27T20:27:03.528930Z'
+  completed_at: '2026-06-27T20:59:28.114849Z'
+  verdict: gate_failed
+  artifacts:
+  - data/b1/realized_vol_21d/
+  notes: B1-M3 full-panel arm; NO-GO, see docs/B1_REPORT.md
+- id: ledger-2026-06-27-0004
+  prd: b1
+  milestone: B1-M3
+  agent: human
+  preregistration: .claude/prds/b1-target-reframing.prd.md#pre-committed-gate
+  config_hash: 649b764de208bad1242d43bc2a560a6cbb9ebc81f73ac4cecc2fc81a3eff8b02
+  n_comparisons: 3
+  started_at: '2026-06-27T20:59:31.893097Z'
+  completed_at: '2026-06-27T21:26:15.672553Z'
+  verdict: gate_failed
+  artifacts:
+  - data/b1/drawdown_21d/
+  notes: B1-M3 full-panel arm; NO-GO, see docs/B1_REPORT.md

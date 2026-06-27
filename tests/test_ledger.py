@@ -361,7 +361,7 @@ class TestRecordRun:
 class TestRealLedger:
     """Validate the committed data/ledger.yaml."""
 
-    EXPECTED_TOTAL_N = 62  # PHASE_4A_REPORT.md §7 trials registry.
+    EXPECTED_TOTAL_N = 74  # 62 Phase 4A (PHASE_4A_REPORT.md §7) + 12 B1-M3 (B1_REPORT.md §6: 4 arms × 3).
 
     def test_loads_and_validates(self):
         entries = load_ledger()
