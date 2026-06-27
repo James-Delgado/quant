@@ -530,7 +530,8 @@ tasks:
     title: "C1-M1: Same-day data SLA audit per ingestor"
     project: C
     sub_project: C1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-27T23:44:11Z
     depends_on: [C1-PRD]
     blocks: [C1-M2]
     deliverable:
