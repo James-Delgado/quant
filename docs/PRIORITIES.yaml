@@ -493,8 +493,9 @@ tasks:
     title: "B2-M2: Implementation + sanity test against M3 ablation lifts"
     project: B
     sub_project: B2
-    status: in_progress
+    status: done
     started_at: 2026-06-27T22:42:21Z
+    completed_at: 2026-06-27
     depends_on: [B2-M1]
     blocks: [B2-M3]
     deliverable:
@@ -509,7 +510,7 @@ tasks:
     title: "B2-M3: Catalog integration (attribution_status field)"
     project: B
     sub_project: B2
-    status: blocked
+    status: ready
     depends_on: [B2-M2]
     blocks: []
     deliverable:
@@ -1001,6 +1002,63 @@ tasks:
       before B2-M3 populates the field. Doc/clarification only; non-gating. Added
       to B-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
 
+  - id: B2-M2-G2-NB08
+    rank: 39
+    title: "G2 exact reproduction: systematized ablation vs nb08's frozen best-regime lifts"
+    project: B
+    sub_project: B2
+    status: ready
+    depends_on: [B2-M2]
+    blocks: [B-CLOSE]
+    deliverable:
+      file: scripts/run_b2_attribution.py
+      tests: tests/test_run_b2_attribution.py
+    references:
+      primary: .claude/prds/b2-oos-attribution.prd.md
+      methodology: docs/METHODOLOGY.md
+      nb08: notebooks/08_phase4a_feature_ablation.ipynb
+    est_complexity: small
+    notes: |
+      Discovered during B2-M2 (commit of scripts/run_b2_attribution.py — DECLARED
+      DEVIATION, METHODOLOGY §9). The B2 PRD's G2 ("systematized ablation reproduces
+      M3, Spearman ρ ≥ 0.90 vs nb08's published per-feature lifts") names nb08's
+      *best-regime add-one lift* as the reference. The runner instead computes an
+      *aggregate-OOS-Sharpe* add-one lift (Sharpe(base17+c) − Sharpe(base17)) as the
+      G2 reference, because nb08's per-candidate lift vector is NOT frozen to a file
+      (it is recomputed at notebook runtime; cf. B2-DOC-COLCOUNT's 25-vs-27 surface
+      question). Two gaps to close: (a) freeze nb08's published best-regime lifts as a
+      checkpointed reference vector (or recompute via compute_regime_metrics on the
+      add-one results), and (b) point b2_attribution_gate's `reproduction` arg at it,
+      so G2 reproduces nb08's *exact* statistic rather than the aggregate proxy. Until
+      then the real-slice G2 ρ is provisional. Non-gating for the B2-M2 module (the
+      gate function + tests are correct); blocks B-CLOSE so the assembled-B verdict is
+      not certified on the proxy. Added to B-CLOSE.depends_on per Step 7 corollary.
+
+  - id: B2-FULLPANEL-AGREEMENT
+    rank: 40
+    title: "Optional full-panel G1 agreement confirmation (permutation vs ablation, 33-symbol panel)"
+    project: B
+    sub_project: B2
+    status: ready
+    depends_on: [B2-M2]
+    blocks: []
+    deliverable:
+      runner: scripts/run_b2_attribution.py
+    references:
+      primary: .claude/prds/b2-oos-attribution.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B2-M2. The B2 PRD pins G1/G2 to the 5-symbol × 8-year slice
+      (the like-for-like nb08 reproduction surface) and explicitly flags a full-panel
+      agreement check as a "desirable confirmation but NOT an MVP gate" (B2 validates a
+      method, not an edge). Add a --panel mode to run_b2_attribution that runs G1
+      (permutation vs ablation) on the full 33-symbol union panel and reports whether
+      the slice agreement survives at scale; record it in the catalog
+      attribution_status audit trail. CONDITIONAL / non-MVP, mirroring B3-PRD/B4-PRD —
+      intentionally NOT in B-CLOSE.depends_on so an unrun optional confirmation cannot
+      deadlock closeout. Low priority.
+
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
   - id: B-CLOSE
@@ -1009,7 +1067,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-M3-TZTEST, B2-DOC-COLCOUNT]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb
