@@ -1161,8 +1161,9 @@ tasks:
     title: "Sync evaluation-standards.md T4 to reference the new deflated_sharpe_ratio implementation"
     project: A
     sub_project: methodology-upgrade
-    status: in_progress
+    status: done
     started_at: 2026-06-28T23:30:00Z
+    completed_at: 2026-06-28
     depends_on: [A-DSR-GATE]
     blocks: [A-CLOSE]
     deliverable:

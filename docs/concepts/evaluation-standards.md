@@ -89,27 +89,54 @@ model imposes costs without compensating return.
 
 **Threshold:** DSR > 0.5.
 
-**Rationale:** The Deflated Sharpe Ratio (Bailey & López de Prado 2012) adjusts
-the observed OOS Sharpe for the number of hyperparameter configurations tried
-(N) and the non-normality of the return distribution. The implementation computes
-DSR as `norm.cdf((sr - E[max_sr]) / se_sr)`, which returns a probability in
-[0, 1]. A DSR > 0.5 means the observed Sharpe is more likely to be a genuine
-edge than a selection-bias artifact across the N trials searched. With N=50 (the
-hard cap on hyperparameter configurations), this is achievable when the
-underlying edge is real.
+**Rationale:** The Deflated Sharpe Ratio (Bailey & López de Prado) adjusts the
+observed OOS Sharpe for the number of trials tried (N) and the non-normality of
+the return distribution. It returns a probability in [0, 1]. A DSR > 0.5 means
+the observed Sharpe is more likely to be a genuine edge than a selection-bias
+artifact across the N trials searched.
 
-**Hyperparameter search cap:** N ≤ 50 configurations (RandomizedSearchCV,
-`n_iter=50`). This is both a computational budget and a DSR input. Do not raise
-N without recalculating the DSR threshold.
+**Canonical implementation (since A-DSR-GATE):** the DSR lives in code as
 
-**Formula inputs:** observed Sharpe, N = number of configs tried, skewness and
-kurtosis of the strategy returns distribution, T = number of OOS observations.
+- `quant.backtest.statistics.deflated_sharpe_ratio(returns, n_trials, ...)` —
+  returns a `DSRResult` (`.dsr`, `.passed`, observed/benchmark Sharpe, …),
+- `quant.backtest.statistics.expected_max_sharpe(n_trials, sharpe_std)` — the
+  best-of-N benchmark Sharpe `E[max SR]` under the no-skill null, and
+- `quant.backtest.regime_metrics.dsr_aware_gate_report(...)` — the two-stage
+  gate that runs the regime Sharpe/DM gate **and** the DSR second stage
+  (METHODOLOGY §13). The combined gate passes iff stage 1 passes *and* DSR > 0.5.
 
-**Reference:** Bailey, D., & López de Prado, M. (2012). *The Sharpe Ratio
-Efficient Frontier.* Journal of Risk.
+The pass threshold and benchmark dispersion are pinned constants
+(`statistics.DSR_THRESHOLD = 0.5`, `statistics.DEFAULT_SHARPE_STD = 0.35`;
+METHODOLOGY §1) — do not retune them to make a result pass.
 
-**If not met:** DSR ≤ 0.5 suggests the result is consistent with overfitting the
-hyperparameter space. Reduce N or extend the OOS period.
+**The DSR > 0.5 ⟺ "deflated excess Sharpe > 0" equivalence.** DSR is
+`Φ[(SR̂ − SR₀)·√(T−1) / √(denom_var)]` with `SR₀ = expected_max_sharpe(N)`.
+The denominator is positive, so the statistic changes sign exactly at
+`SR̂ = SR₀`. Therefore **DSR > 0.5 ⟺ SR̂ > E[max SR] ⟺ deflated (excess)
+Sharpe > 0** — the same condition METHODOLOGY §13 states ("DSR above zero") and
+the T4 "DSR > 0.5" threshold here. The two phrasings are one test, not two.
+
+**Two different N populations — do not conflate them.** T4 historically deflated
+against the **hyperparameter-search** cap (N ≤ 50 configs, RandomizedSearchCV
+`n_iter=50`). The §12/§13 ledger deflation uses a **different** N — the
+*cumulative trial count across all PRDs* read from
+`quant.ledger.cumulative_trial_count()`. `dsr_aware_gate_report` uses the
+**ledger N** (it is the project-wide multiple-testing population). The T4
+hyperparameter cap remains a per-model computational budget; it is not the gate's
+deflation N. Do not raise either N without recalculating the relevant DSR.
+
+**Formula inputs:** observed per-observation Sharpe, N (ledger cumulative
+trials), skewness and (non-excess) kurtosis of the strategy returns, T = number
+of OOS observations, and the cross-trial Sharpe dispersion `sharpe_std`.
+
+**Reference:** Bailey, D., & López de Prado, M. (2014). *The Deflated Sharpe
+Ratio: Correcting for Selection Bias, Backtest Overfitting, and Non-Normality.*
+Journal of Portfolio Management. (The 2012 *Sharpe Ratio Efficient Frontier*
+paper, cited below, introduces the underlying Probabilistic Sharpe Ratio.)
+
+**If not met:** DSR ≤ 0.5 (equivalently SR̂ ≤ E[max SR]) suggests the result is
+consistent with selection bias across the N trials searched. Extend the OOS
+period, or reduce the number of trials feeding the ledger N.
 
 ---
 
@@ -201,6 +228,10 @@ They should be revisited when the universe changes.
   (Chapter 14: Backtest Statistics; Chapter 8: Feature Importance.)
 - Bailey, D., & López de Prado, M. (2012). The Sharpe Ratio Efficient Frontier.
   *Journal of Risk*, 15(2), 3–44.
+- Bailey, D., & López de Prado, M. (2014). The Deflated Sharpe Ratio: Correcting
+  for Selection Bias, Backtest Overfitting, and Non-Normality. *Journal of
+  Portfolio Management*, 40(5), 94–107. (Implemented in
+  `quant.backtest.statistics.deflated_sharpe_ratio`.)
 - Diebold, F.X., & Mariano, R.S. (1995). Comparing Predictive Accuracy.
   *Journal of Business & Economic Statistics*, 13(3), 253–263.
 - Harvey, D., Leybourne, S., & Newbold, P. (1997). Testing the equality of
