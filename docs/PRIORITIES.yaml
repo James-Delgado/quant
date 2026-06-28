@@ -1283,7 +1283,8 @@ tasks:
     title: "Regression test for run_b1_arms tz-alignment (NY price index vs UTC feature index)"
     project: B
     sub_project: B1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T23:30:00Z
     depends_on: []
     blocks: [B-CLOSE]
     deliverable:
