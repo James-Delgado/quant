@@ -1896,7 +1896,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -1906,7 +1906,8 @@ tasks:
     est_complexity: small
     notes: |
       PRD §7 E1-CLOSE / METHODOLOGY §21. End-to-end validation that the console
-      builds and renders ALL eight panels from freshly exported real artifacts
+      builds and renders ALL nine panels (incl. the Strategy Portfolio) from
+      freshly exported real artifacts
       (export -> static fetch -> panels), plus a one-page closeout report
       stating delivered scope + deferred items (E3/E4 live tiles). Any
       integration defect the validation surfaces becomes a new task and keeps
@@ -2580,8 +2581,9 @@ tasks:
     title: "Project E: strategy-portfolio panel (in-use + idle strategies) from the C6 registry"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T18:08:58Z
+    completed_at: 2026-06-28
     depends_on: [C6-M1]
     blocks: []
     deliverable:
@@ -2602,6 +2604,30 @@ tasks:
       PROJECT E OWNER (another agent is actively building E1): slot it into the
       right E1 panel and add this id to E1-CLOSE.depends_on — left untouched here
       to avoid a cross-agent PRIORITIES merge conflict in the active E1 region.
+
+  - id: E1-OVERVIEW-PORTFOLIO-TILE
+    rank: 75
+    title: "Project E: Overview cross-link / summary tile to the Strategy Portfolio panel"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E-STRATEGIES-PANEL]
+    blocks: []
+    deliverable:
+      file: frontend/src/pages/Overview.tsx
+    references:
+      primary: docs/project-e/E-STRATEGIES-PANEL.md
+      roadmap: docs/PROJECT_ROADMAP.md
+    est_complexity: small
+    notes: |
+      Discovered during E-STRATEGIES-PANEL post-task review (commit adding
+      frontend/src/pages/Portfolio.tsx). The new Strategy Portfolio panel is
+      reachable only via the nav; the Overview "daily job-to-be-done"
+      (DECISIONS #7 — "which live strategies are up/down") would benefit from a
+      small portfolio-summary tile ("N in use / M idle", equal-weight) that
+      cross-links to the Portfolio panel. Keep it honest: counts + a link, no
+      faked live P&L (that is E3). Added to E1-CLOSE.depends_on per the
+      AGENT_OPERATION Step 7 corollary (E1-scoped follow-up).
 
   - id: C2-M3-RECON-CORE-LIFT
     rank: 69

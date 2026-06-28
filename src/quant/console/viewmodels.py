@@ -87,6 +87,46 @@ class StrategyDetail:
     commit_url: str | None
 
 
+# ── Strategy Portfolio panel (C6 registry) ───────────────────────────────────
+
+
+@dataclass(frozen=True)
+class PortfolioStrategy:
+    """One deployable strategy from the C6 registry, as the console renders it.
+
+    The deployment-side counterpart to :class:`StrategyCard` (which is a
+    *research* arm). Fields mirror the serializable view-model C6-M1 exposes
+    (``strategy_registry.strategy_view_models``); the console wraps them in a
+    frozen DTO so the export is schema-checked like every other panel. ``status``
+    is ``"enabled"`` (in-use) or ``"idle"``; ``allocation_pct`` is the
+    equal-weight capital share (0 for idle strategies). No live P&L is carried —
+    realized per-strategy performance is E3 (live monitoring), deliberately
+    absent here (DECISIONS #5/#7).
+    """
+
+    id: str
+    display_name: str
+    description: str
+    model_ref: str
+    target_ref: str
+    universe: list[str]
+    cadence: str
+    broker: str
+    status: str  # "enabled" (in-use) | "idle"
+    allocation_pct: float
+    provenance: str
+    provenance_summary: str
+
+
+@dataclass(frozen=True)
+class PortfolioView:
+    """The strategy portfolio: enabled (in-use) + idle strategies + counts."""
+
+    strategies: list[PortfolioStrategy]
+    n_enabled: int
+    n_idle: int
+
+
 # ── Conditions panel ─────────────────────────────────────────────────────────
 
 

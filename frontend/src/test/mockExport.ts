@@ -5,6 +5,7 @@ import type {
   DataStatusView,
   LedgerView,
   MarketSnapshot,
+  PortfolioView,
   ProvenanceView,
   StrategyCard,
   StrategyDetail,
@@ -90,6 +91,41 @@ function detail(id: string, name: string, sharpe: number, why: string): Strategy
 export const STRATEGY_DETAIL: Record<string, StrategyDetail> = {
   arima: detail("arima", "ARIMA(1,0,0) control", 0.42, "It stays aligned with the long trend."),
   signed: detail("signed", "GBM · signed returns", -0.34, "It fights the trend in up-markets."),
+};
+
+export const PORTFOLIO: PortfolioView = {
+  n_enabled: 1,
+  n_idle: 1,
+  strategies: [
+    {
+      id: "arima_placeholder",
+      display_name: "ARIMA(1,0,0) Placeholder",
+      description: "Infrastructure placeholder. Makes no edge claim.",
+      model_ref: "arima_baseline",
+      target_ref: "next_bar_return",
+      universe: ["SPY", "QQQ", "IWM"],
+      cadence: "daily",
+      broker: "alpaca_paper",
+      status: "enabled",
+      allocation_pct: 100.0,
+      provenance: "placeholder",
+      provenance_summary: "Placeholder (infrastructure — no edge claim)",
+    },
+    {
+      id: "gbm_idle",
+      display_name: "GBM (idle)",
+      description: "Disabled GBM strategy, not yet deployed.",
+      model_ref: "gbm",
+      target_ref: "next_bar_return",
+      universe: ["SPY"],
+      cadence: "daily",
+      broker: "alpaca_paper",
+      status: "idle",
+      allocation_pct: 0.0,
+      provenance: "",
+      provenance_summary: "(none)",
+    },
+  ],
 };
 
 export const CONDITIONS: ConditionsView = {
@@ -253,6 +289,7 @@ const ROUTES: Record<string, unknown> = {
   "strategy/arima.json": STRATEGY_DETAIL.arima,
   "strategy/signed.json": STRATEGY_DETAIL.signed,
   "strategies.json": STRATEGIES,
+  "portfolio.json": PORTFOLIO,
   "conditions.json": CONDITIONS,
   "data_status.json": DATA_STATUS,
   "market.json": MARKET,

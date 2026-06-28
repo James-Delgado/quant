@@ -527,6 +527,32 @@ tbody tr.clk:hover { background: var(--slate-2); }
 .rost .rt { text-align: right; flex: none; font-family: var(--mono); }
 .rost .rt .v { font-size: 14px; }
 
+/* Strategy Portfolio (E-STRATEGIES-PANEL) — deployment registry cards */
+.pf-list { display: flex; flex-direction: column; gap: 12px; }
+.pf-card { padding: 16px 18px; }
+.pf-desc {
+  color: var(--steel);
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 6px 0 14px;
+  max-width: 80ch;
+}
+.pf-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px 22px;
+}
+.pf-kv { display: flex; flex-direction: column; gap: 3px; }
+.pf-k {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.pf-v { font-size: 12.5px; color: var(--bone); }
+.pf-tags { display: inline-flex; flex-wrap: wrap; gap: 5px; }
+
 /* Catalog distribution mini (used by the M4 catalog panel; class lives here
    with the rest of the instrument system) */
 .dist rect { fill: var(--series); opacity: 0.65; }

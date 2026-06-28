@@ -74,6 +74,10 @@ class ConsoleSources:
     strategy_roots: tuple[Path, ...]
     repo_url: str = DEFAULT_REPO_URL
     feeds: tuple[FeedSpec, ...] = DEFAULT_FEEDS
+    # The C6 strategy registry the Portfolio panel reads. ``None`` falls back to
+    # the committed default (``strategy_registry.DEFAULT_REGISTRY_PATH``) so tests
+    # can point it at a synthetic registry without wiring the real artifact.
+    registry_path: Path | None = None
     latest_timestamp_fn: LatestTimestampFn | None = None
     market_value_fn: MarketValueFn | None = None
     feature_monitor_fn: FeatureMonitorFn | None = None
@@ -85,6 +89,7 @@ class ConsoleSources:
         # Imported lazily so importing the view-model/schema layer never pulls in
         # settings validation (which requires API credentials at import time).
         from quant.config import settings
+        from quant.execution.strategy_registry import DEFAULT_REGISTRY_PATH
         from quant.features.catalog import DEFAULT_CATALOG_PATH
         from quant.storage import catalog as storage_catalog
 
@@ -101,6 +106,7 @@ class ConsoleSources:
             ledger_path=data_root / "ledger.yaml",
             catalog_path=Path(DEFAULT_CATALOG_PATH),
             strategy_roots=(data_root / "phase4a",),
+            registry_path=Path(DEFAULT_REGISTRY_PATH),
             latest_timestamp_fn=_latest,
             market_value_fn=_market,
             feature_monitor_fn=None,  # live lake monitor wired in a follow-up

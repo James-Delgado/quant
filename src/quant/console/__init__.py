@@ -2,7 +2,8 @@
 
 A pure-Python read layer over the platform's *existing* artifacts — per-arm
 backtest checkpoints (``metadata.json`` + ``oos_returns.parquet``),
-``data/ledger.yaml``, ``features/catalog.yaml``, and the DuckDB/parquet lake.
+``data/ledger.yaml``, ``features/catalog.yaml``, the C6 strategy registry
+(``execution/strategy_registry.yaml``), and the DuckDB/parquet lake.
 Every reader returns a frozen view-model dataclass (see :mod:`quant.console.viewmodels`)
 and an idempotent :mod:`quant.console.export` step serialises the view-models to
 ``src/quant/console/export/*.json`` for the static React frontend (E1-M2+).

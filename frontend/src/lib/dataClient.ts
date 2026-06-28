@@ -12,6 +12,7 @@ import type {
   DataStatusView,
   LedgerView,
   MarketSnapshot,
+  PortfolioView,
   ProvenanceView,
   StrategyCard,
   StrategyDetail,
@@ -40,6 +41,8 @@ async function getJSON<T>(file: string, signal?: AbortSignal): Promise<T> {
 export const dataClient = {
   strategies: (signal?: AbortSignal) =>
     getJSON<StrategyCard[]>("strategies.json", signal),
+  portfolio: (signal?: AbortSignal) =>
+    getJSON<PortfolioView>("portfolio.json", signal),
   strategy: (id: string, signal?: AbortSignal) =>
     getJSON<StrategyDetail>(`strategy/${id}.json`, signal),
   conditions: (signal?: AbortSignal) =>

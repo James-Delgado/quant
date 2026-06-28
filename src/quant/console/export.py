@@ -53,6 +53,7 @@ def build_export(sources: ConsoleSources | None = None) -> dict[str, Any]:
     strategies = readers.load_strategies(sources)
     export: dict[str, Any] = {
         "strategies.json": _sanitize(strategies),
+        "portfolio.json": _sanitize(readers.load_portfolio(sources)),
         "conditions.json": _sanitize(readers.load_conditions(sources)),
         "catalog.json": _sanitize(readers.load_catalog(sources)),
         "ledger.json": _sanitize(readers.load_ledger(sources)),

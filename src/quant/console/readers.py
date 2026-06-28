@@ -213,6 +213,55 @@ def load_strategies(sources: ConsoleSources | None = None) -> list[vm.StrategyCa
     return cards
 
 
+# ── 1b. Strategy portfolio (C6 registry) ─────────────────────────────────────
+
+
+def load_portfolio(sources: ConsoleSources | None = None) -> vm.PortfolioView:
+    """The deployment portfolio — enabled (in-use) + idle strategies from C6.
+
+    Reads the C6 strategy registry and reuses its serializable view-model
+    (:func:`quant.execution.strategy_registry.strategy_view_models`) so the
+    equal-weight allocation and provenance-summary logic live in exactly one
+    place (DRY; METHODOLOGY §4 — consume the contract, don't re-derive it). This
+    reader only re-shapes those dicts into frozen DTOs for the schema-checked
+    export. It carries **no live P&L** — realized performance is E3.
+    """
+    sources = sources or ConsoleSources.default()
+    from quant.execution.strategy_registry import (
+        DEFAULT_REGISTRY_PATH,
+        load_registry,
+        strategy_view_models,
+    )
+
+    registry_path = sources.registry_path or DEFAULT_REGISTRY_PATH
+    registry = load_registry(registry_path)
+    views = strategy_view_models(registry)
+
+    strategies = [
+        vm.PortfolioStrategy(
+            id=v["id"],
+            display_name=v["display_name"],
+            description=v["description"],
+            model_ref=v["model_ref"],
+            target_ref=v["target_ref"],
+            universe=list(v["universe"]),
+            cadence=v["cadence"],
+            broker=v["broker"],
+            status=v["status"],
+            allocation_pct=float(v["allocation_pct"]),
+            provenance=v["provenance"],
+            provenance_summary=v["provenance_summary"],
+        )
+        for v in views
+    ]
+    n_enabled = sum(1 for s in strategies if s.status == "enabled")
+    return vm.PortfolioView(
+        strategies=strategies,
+        n_enabled=n_enabled,
+        n_idle=len(strategies) - n_enabled,
+    )
+
+
 # ── 2. Strategy detail ───────────────────────────────────────────────────────
 
 
