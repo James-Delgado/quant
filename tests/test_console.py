@@ -454,3 +454,218 @@ def test_default_sources_constructs():
     assert src.commit_url(None) is None
     assert src.now().tzinfo is not None
     assert src.strategy_roots[0].name == "phase4a"
+
+
+# ── feedback: capture payload + issue construction (E1-M6) ───────────────────
+
+import types  # noqa: E402
+from urllib.parse import parse_qs, urlparse  # noqa: E402
+
+from quant.console import feedback  # noqa: E402
+
+
+def _report(**overrides) -> feedback.FeedbackReport:
+    base = dict(
+        title="Sparkline renders off-by-one",
+        type="bug",
+        severity="high",
+        description="The Overview sparkline starts a day late.",
+        panel="Overview",
+        build_sha="abc1234",
+        timestamp="2026-06-28T18:30:00Z",
+        app_version="0.0.0",
+    )
+    base.update(overrides)
+    return feedback.FeedbackReport(**base)
+
+
+def test_feedback_report_validates_enums():
+    with pytest.raises(ValueError, match="title must not be empty"):
+        _report(title="   ")
+    with pytest.raises(ValueError, match="type"):
+        _report(type="feature")
+    with pytest.raises(ValueError, match="severity"):
+        _report(severity="critical")
+
+
+def test_issue_title_trimmed():
+    assert feedback.issue_title(_report(title="  spacey  ")) == "spacey"
+
+
+def test_issue_body_carries_payload_and_context():
+    body = feedback.issue_body(_report())
+    # user fields
+    assert "bug" in body and "high" in body
+    assert "sparkline starts a day late" in body
+    # auto-captured context
+    assert "Panel: Overview" in body
+    assert "Build: abc1234" in body
+    assert "App version: 0.0.0" in body
+    assert "Reported: 2026-06-28T18:30:00Z" in body
+
+
+def test_issue_url_is_prefilled_and_labeled():
+    url = feedback.issue_url(_report())
+    parsed = urlparse(url)
+    assert parsed.path.endswith("/issues/new")
+    qs = parse_qs(parsed.query)
+    assert qs["labels"] == [feedback.FEEDBACK_LABEL]
+    assert qs["title"] == ["Sparkline renders off-by-one"]
+    assert "Panel: Overview" in qs["body"][0]
+
+
+def test_issue_url_respects_repo_override():
+    url = feedback.issue_url(_report(), repo_url="https://github.com/acme/widgets")
+    assert url.startswith("https://github.com/acme/widgets/issues/new?")
+
+
+# ── feedback: GitHub read (injectable, degrades without gh) ───────────────────
+
+
+def test_fetch_issue_via_gh_raises_when_gh_missing(monkeypatch):
+    monkeypatch.setattr(feedback.shutil, "which", lambda _: None)
+    with pytest.raises(RuntimeError, match="gh.*not found"):
+        feedback.fetch_issue_via_gh(7)
+
+
+def test_fetch_issue_via_gh_parses_json(monkeypatch):
+    monkeypatch.setattr(feedback.shutil, "which", lambda _: "/usr/bin/gh")
+    payload = {"number": 7, "title": "t", "body": "b", "url": "u", "state": "OPEN"}
+
+    def fake_runner(cmd, capture_output, text):
+        assert cmd[:3] == ["gh", "issue", "view"]
+        return types.SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
+
+    out = feedback.fetch_issue_via_gh(7, runner=fake_runner)
+    assert out["number"] == 7
+
+
+def test_fetch_issue_via_gh_raises_on_nonzero(monkeypatch):
+    monkeypatch.setattr(feedback.shutil, "which", lambda _: "/usr/bin/gh")
+
+    def fail_runner(cmd, capture_output, text):
+        return types.SimpleNamespace(returncode=1, stdout="", stderr="not authenticated")
+
+    with pytest.raises(RuntimeError, match="not authenticated"):
+        feedback.fetch_issue_via_gh(7, runner=fail_runner)
+
+
+# ── feedback: issue → task transform + YAML append ───────────────────────────
+
+_SEED_PRIORITIES = """\
+# Living priorities — a header comment that a YAML round-trip would destroy.
+version: 1
+last_updated: 2026-06-01
+
+schema:
+  task_status: [ready, blocked, in_progress, done, skipped]
+  complexity: [small, medium, large]
+
+tasks:
+
+  - id: SEED-1
+    rank: 7
+    title: "seed task"
+    project: E
+    sub_project: E1
+    status: done
+    completed_at: 2026-06-01
+    depends_on: []
+    blocks: []
+    est_complexity: small
+"""
+
+_FAKE_ISSUE = {
+    "number": 42,
+    "title": 'Sparkline off-by-one on "Overview"',
+    "body": "Type: bug\nThe sparkline starts a day late.",
+    "url": "https://github.com/James-Delgado/quant/issues/42",
+    "state": "OPEN",
+}
+
+
+def test_build_task_record_shape():
+    task = feedback.build_task_record(_FAKE_ISSUE, rank=8)
+    assert task.id == "FEEDBACK-42"
+    assert task.rank == 8
+    assert task.status == "ready"
+    assert task.issue_url.endswith("/issues/42")
+
+
+def test_build_task_record_url_fallback():
+    task = feedback.build_task_record({"number": 5, "title": "t"}, rank=1)
+    assert task.id == "FEEDBACK-5"
+    assert task.issue_url.endswith("/issues/5")  # constructed when url absent
+
+
+def test_format_task_block_parses_as_yaml():
+    task = feedback.build_task_record(_FAKE_ISSUE, rank=8)
+    block = feedback.format_task_block(task)
+    # The block must be a valid one-item tasks list on its own.
+    parsed = yaml.safe_load("tasks:\n" + block)["tasks"]
+    assert len(parsed) == 1
+    rec = parsed[0]
+    assert rec["id"] == "FEEDBACK-42"
+    assert rec["title"] == 'Sparkline off-by-one on "Overview"'  # quotes survive
+    assert rec["status"] == "ready"
+    assert rec["references"]["issue"].endswith("/issues/42")
+    assert "Promoted from feedback issue #42" in rec["notes"]
+
+
+def test_append_task_preserves_comments_and_bumps_last_updated(tmp_path):
+    path = tmp_path / "PRIORITIES.yaml"
+    path.write_text(_SEED_PRIORITIES)
+    task = feedback.build_task_record(_FAKE_ISSUE, rank=8)
+    feedback.append_task_to_priorities(path, feedback.format_task_block(task), today="2026-06-28")
+    text = path.read_text()
+    assert "header comment that a YAML round-trip would destroy" in text  # preserved
+    assert "last_updated: 2026-06-28" in text  # bumped
+    data = yaml.safe_load(text)
+    ids = [t["id"] for t in data["tasks"]]
+    assert ids == ["SEED-1", "FEEDBACK-42"]
+
+
+def test_promote_end_to_end(tmp_path):
+    path = tmp_path / "PRIORITIES.yaml"
+    path.write_text(_SEED_PRIORITIES)
+    task = feedback.promote(
+        42,
+        priorities_path=path,
+        issue_fetcher=lambda n: _FAKE_ISSUE,
+        today="2026-06-28",
+    )
+    assert task.id == "FEEDBACK-42"
+    assert task.rank == 8  # max existing rank (7) + 1
+    data = yaml.safe_load(path.read_text())
+    assert data["tasks"][-1]["id"] == "FEEDBACK-42"
+
+
+def test_promote_idempotency_guard(tmp_path):
+    path = tmp_path / "PRIORITIES.yaml"
+    path.write_text(_SEED_PRIORITIES)
+    fetch = lambda n: _FAKE_ISSUE  # noqa: E731
+    feedback.promote(42, priorities_path=path, issue_fetcher=fetch, today="2026-06-28")
+    with pytest.raises(ValueError, match="already exists"):
+        feedback.promote(42, priorities_path=path, issue_fetcher=fetch, today="2026-06-28")
+
+
+def test_promoted_task_passes_priorities_drift_checks(tmp_path):
+    """The appended task must keep the file valid under tests/test_priorities.py."""
+    import test_priorities as tp
+
+    path = tmp_path / "PRIORITIES.yaml"
+    path.write_text(_SEED_PRIORITIES)
+    feedback.promote(42, priorities_path=path, issue_fetcher=lambda n: _FAKE_ISSUE)
+    tp.validate_priorities(tp.load_priorities(path))
+
+
+def test_cli_feedback_promote(monkeypatch, tmp_path, capsys):
+    from quant.console import __main__ as cli
+
+    path = tmp_path / "PRIORITIES.yaml"
+    path.write_text(_SEED_PRIORITIES)
+    monkeypatch.setattr(feedback, "fetch_issue_via_gh", lambda n: _FAKE_ISSUE)
+    rc = cli.main(["feedback", "promote", "42", "--priorities", str(path)])
+    assert rc == 0
+    assert "FEEDBACK-42" in capsys.readouterr().out
+    assert yaml.safe_load(path.read_text())["tasks"][-1]["id"] == "FEEDBACK-42"
