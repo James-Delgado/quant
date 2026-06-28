@@ -131,17 +131,17 @@ export const PORTFOLIO: PortfolioView = {
 export const CONDITIONS: ConditionsView = {
   axes: [
     { name: "volatility", conditions: ["low_vol", "mid_vol", "high_vol"] },
-    { name: "trend", conditions: ["uptrend", "downtrend"] },
+    { name: "rates", conditions: ["rates_falling", "rates_steady", "rates_rising"] },
   ],
   by_condition: [
     { axis: "volatility", condition: "low_vol", sharpe: -1.23, n_bars: 1792 },
     { axis: "volatility", condition: "high_vol", sharpe: 0.36, n_bars: 1792 },
-    { axis: "trend", condition: "uptrend", sharpe: 1.14, n_bars: 2795 },
-    { axis: "trend", condition: "downtrend", sharpe: -1.63, n_bars: 2400 },
+    { axis: "rates", condition: "rates_falling", sharpe: 1.14, n_bars: 2795 },
+    { axis: "rates", condition: "rates_rising", sharpe: -1.63, n_bars: 2400 },
   ],
   heatmap: {
     strategies: ["arima", "signed"],
-    conditions: ["low_vol", "high_vol", "uptrend", "downtrend"],
+    conditions: ["low_vol", "high_vol", "rates_falling", "rates_rising"],
     values: [
       [1.45, 0.15, 1.64, -1.01],
       [-0.96, -0.24, 1.72, -1.33],

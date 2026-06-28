@@ -134,7 +134,7 @@ class PortfolioView:
 class ConditionAxis:
     """A live-computable attribution axis and its ordered condition labels."""
 
-    name: str  # "volatility" | "trend"
+    name: str  # market-level axis, e.g. "volatility" | "rates"
     conditions: list[str]
 
 

@@ -13,7 +13,7 @@ describe("Conditions panel", () => {
     // The de-underscored condition labels appear as SVG bar axis ticks.
     const chart = container.querySelector(".chart") as SVGElement;
     expect(within(chart as unknown as HTMLElement).getByText("low-vol")).toBeInTheDocument();
-    expect(within(chart as unknown as HTMLElement).getByText("uptrend")).toBeInTheDocument();
+    expect(within(chart as unknown as HTMLElement).getByText("rates-falling")).toBeInTheDocument();
   });
 
   it("renders the strategy × condition heatmap", async () => {
