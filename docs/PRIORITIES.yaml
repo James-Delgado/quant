@@ -655,8 +655,9 @@ tasks:
     title: "C2-M2: ARIMA(1,0,0) daily signal feeds LEAN paper account"
     project: C
     sub_project: C2
-    status: in_progress
+    status: done
     started_at: 2026-06-28T07:30:00Z
+    completed_at: 2026-06-28
     depends_on: [C2-M1]
     blocks: [C2-M3, C3-PRD, C4-PRD, E3-M1]
     deliverable:
@@ -684,7 +685,7 @@ tasks:
     title: "C2-M3: Backtest-vs-paper reconciliation harness (>1% delta = investigate)"
     project: C
     sub_project: C2
-    status: blocked
+    status: ready
     depends_on: [C2-M2]
     blocks: []
     deliverable:
@@ -701,7 +702,7 @@ tasks:
     title: "Draft C3 (position sizing + risk management) PRD"
     project: C
     sub_project: C3
-    status: blocked
+    status: ready
     depends_on: [C2-M2]
     blocks: [E3-M1]
     deliverable:
@@ -715,7 +716,7 @@ tasks:
     title: "Draft C4 (confidence calibration) PRD"
     project: C
     sub_project: C4
-    status: blocked
+    status: ready
     depends_on: [C2-M2]
     blocks: []
     deliverable:
@@ -1335,6 +1336,70 @@ tasks:
       the A-METH-*-SYNC precedent. Intentionally NOT added to C-CLOSE.depends_on —
       doc-hardening, like the C1-M*-* follow-ups, must not deadlock closeout.
 
+  - id: C2-M2-SIZING-PARITY
+    rank: 67
+    title: "Match the bridge's placeholder sizing to the backtest simulator's cash-fraction sizing (G2 prerequisite)"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M2]
+    blocks: [C-CLOSE]
+    deliverable:
+      file: src/quant/execution/lean_bridge.py
+    references:
+      primary: .claude/prds/c2-lean-paper.prd.md
+      simulator: src/quant/backtest/simulator.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M2 post-task review (commit of
+      src/quant/execution/lean_bridge.py). C2-M2's placeholder trades a FIXED 1
+      share (PLACEHOLDER_QTY); the Phase 1 simulator (backtest/simulator.py) sizes
+      a position as `int(cash / entry_fill)` capped by liquidity — i.e. deploys
+      ~all available capital, not a fixed share. G1 (direction/sign parity) is
+      sizing-independent, so this does NOT affect C2-M2. But C2-M3's G2
+      (backtest⇔paper per-period total-return reconciliation, ≤1%) CANNOT hold
+      until the paper bridge's sizing matches the simulator's cash-fraction rule
+      (or the PRD's "fixed notional" is pinned to the simulator's full-notional
+      deployment). M3 must resolve this — either match the bridge sizing to the
+      simulator before measuring G2, or treat the sizing difference as a NAMED
+      residual component in the G2 decomposition (METHODOLOGY §9, no unexplained
+      gap). Sizing logic proper (vol-targeting/caps) remains C3; this is only the
+      placeholder-vs-simulator parity needed for an honest G2. Added to
+      C-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary (the C deployment
+      substrate's G2 verdict depends on it). Non-gating for C2-M2.
+
+  - id: C2-M2-G1-HARNESS-EXACT
+    rank: 68
+    title: "Strengthen G1 to exercise the actual harness signal-derivation path (not a reimplementation)"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M2]
+    blocks: [C-CLOSE]
+    deliverable:
+      file: tests/test_lean_bridge.py
+    references:
+      primary: src/quant/backtest/harness.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M2 post-task review (DECLARED DEVIATION, METHODOLOGY
+      §9). The G1 gate compares `derive_target_position` against
+      `backtest_path_target_position`, but the latter REIMPLEMENTS the backtest's
+      `np.sign(raw_pred).astype(int)` step (backtest/harness.py:~359) rather than
+      calling the running harness code. So G1 proves two independently-coded
+      mappings agree, not that the bridge agrees with the EXACT harness path — a
+      reimplementation could drift from the harness without G1 catching it.
+      Close the gap by feeding identical forecasts through the actual harness
+      per-symbol signal-derivation (e.g. a tiny fixture model whose predict()
+      returns pinned forecasts, run through run_portfolio_backtest, asserting the
+      derived signals equal the bridge's target positions), so G1 reconciles
+      against the real engine. Mirrors B2-M2-G2-NB08 ("exact reproduction" of the
+      published statistic vs a proxy). Non-gating for C2-M2 (the mappings are
+      verified equal on 500+ finite forecasts + 125 real-data pairs); added to
+      C-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
   - id: B-CLOSE
@@ -1381,7 +1446,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C3-PRD, C4-PRD]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
