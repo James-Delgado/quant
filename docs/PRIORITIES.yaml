@@ -767,7 +767,8 @@ tasks:
     title: "C6-M1: Strategy registry schema + loader + drift test"
     project: C
     sub_project: C6
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T16:57:08Z
     depends_on: [C6-PRD]
     blocks: [C6-M2, C3-PRD, C4-PRD, E-STRATEGIES-PANEL]
     deliverable:
