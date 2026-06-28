@@ -626,7 +626,8 @@ tasks:
     title: "C2-M1: LEAN local installed; hello-world algorithm runs"
     project: C
     sub_project: C2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T05:00:25Z
     depends_on: [C2-PRD]
     blocks: [C2-M2]
     deliverable:
