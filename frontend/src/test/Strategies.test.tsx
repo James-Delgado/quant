@@ -71,4 +71,19 @@ describe("Strategies panel", () => {
       1,
     );
   });
+
+  it("shows an honest empty-state when the export has no strategies", async () => {
+    // Fresh-clone export: strategies.json is [] (no checkpoints) → no roster,
+    // no detail. The panel must say so, not render a blank frame (METHODOLOGY §9).
+    stubExportFetch({ "strategies.json": [] });
+    renderStrategies("/strategies");
+    expect(
+      await screen.findByText(/no strategies exported/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/python -m quant\.console export/),
+    ).toBeInTheDocument();
+    // No roster rows are rendered.
+    expect(document.querySelectorAll(".rost").length).toBe(0);
+  });
 });

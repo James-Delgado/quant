@@ -389,15 +389,22 @@ const ROUTES: Record<string, unknown> = {
   "provenance/signed.json": PROVENANCE.signed,
 };
 
-/** Install a fetch stub that resolves each export file from the fixtures. */
-export function stubExportFetch() {
+/**
+ * Install a fetch stub that resolves each export file from the fixtures.
+ *
+ * `overrides` shadow individual routes — e.g. `{ "strategies.json": [] }`
+ * simulates a fresh-clone export with no strategy checkpoints, so panels can be
+ * tested against an empty-but-valid roster.
+ */
+export function stubExportFetch(overrides: Record<string, unknown> = {}) {
+  const routes: Record<string, unknown> = { ...ROUTES, ...overrides };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: unknown) => {
       const url = String(input);
-      const key = Object.keys(ROUTES).find((k) => url.includes(k));
+      const key = Object.keys(routes).find((k) => url.includes(k));
       if (!key) return { ok: false, status: 404, json: async () => null };
-      return { ok: true, status: 200, json: async () => ROUTES[key] };
+      return { ok: true, status: 200, json: async () => routes[key] };
     }),
   );
 }

@@ -1,7 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { dataClient } from "@/lib/dataClient";
 import { useAsyncData } from "@/hooks/useAsyncData";
-import { ErrorState, Loading } from "@/components/ui/StatePanel";
+import { EmptyState, ErrorState, Loading } from "@/components/ui/StatePanel";
 import { InfoTip } from "@/components/ui/InfoTip";
 import type { ProvenanceView, StrategyCard } from "@/types/viewmodels";
 
@@ -146,7 +146,15 @@ export function Provenance() {
       </div>
       {roster.status === "loading" && <Loading label="Loading runs…" />}
       {roster.status === "error" && <ErrorState error={roster.error} />}
-      {roster.status === "ready" && (
+      {roster.status === "ready" && rows.length === 0 && (
+        <EmptyState label="no runs exported">
+          This export contains no runs yet — provenance populates from strategy
+          checkpoints. Generate the checkpoints, then run{" "}
+          <span className="mono">python -m quant.console export</span> and
+          reload.
+        </EmptyState>
+      )}
+      {roster.status === "ready" && rows.length > 0 && (
         <div className="roster">
           {rows.map((r) => (
             <div

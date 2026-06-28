@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-M2-FE-LINT done
+last_updated: 2026-06-28  # E1-M2-EXPORT-DETAIL done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2516,8 +2516,9 @@ tasks:
     title: "E1-M2 follow-up: ensure per-strategy + provenance export fan-out populates for M3/M4 panels"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1, E1-M2]
     blocks: [E1-CLOSE]
     deliverable:
@@ -2979,3 +2980,38 @@ tasks:
       honestly). Copy-export.mjs already globs *.json so the manifest is copied
       into the SPA public dir with no script change. Added to E1-CLOSE.depends_on
       per AGENT_OPERATION Step 7 corollary (E1-scoped follow-up). Non-gating polish.
+
+  - id: E1-EXPORT-FANOUT-CHECK
+    rank: 117
+    title: "E1-M2-EXPORT-DETAIL follow-up (optional): CLI --check mode that exits non-zero on incomplete fan-out"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M2-EXPORT-DETAIL]
+    blocks: []
+    deliverable:
+      file: src/quant/console/__main__.py
+      tests: tests/test_console.py
+    references:
+      primary: src/quant/console/export.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M2-EXPORT-DETAIL post-task review (commit adding
+      export.fanout_coverage + the write_export warning). E1-M2-EXPORT-DETAIL made
+      an empty/partial detail+provenance fan-out LOUD (warning log + CLI summary +
+      honest UI empty-state) but does NOT hard-fail: `python -m quant.console
+      export` still exits 0 on a checkpoint-less run. Add an opt-in `--check` (or
+      `--require-fanout`) flag that returns a non-zero exit when
+      fanout_coverage(build_export(sources)).complete is False, so CI or the
+      E1-CLOSE build+render step can GATE on a populated fan-out rather than
+      eyeballing the printed summary. Mirror the existing fanout_coverage tests.
+
+      DELIBERATELY NOT added to E1-CLOSE.depends_on (departure from the
+      AGENT_OPERATION Step 7 corollary, declared per METHODOLOGY §9): this is an
+      optional enforcement enhancement, not pending project work. E1-M2-EXPORT-
+      DETAIL already delivers reproducible data-prep docs (frontend/README.md),
+      the warning, and the CLI coverage summary — closeout can verify the fan-out
+      from that summary without this flag. Gating closeout on gold-plating would
+      needlessly block it. Re-add to E1-CLOSE.depends_on if a future decision makes
+      an automated fan-out gate a closeout requirement.
