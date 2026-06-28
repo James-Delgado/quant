@@ -1438,8 +1438,9 @@ tasks:
     title: "E1-M3: Monitor panels — Overview, Strategies (roster->detail), Conditions"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T19:05:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M2]
     blocks: [E1-M5, E1-CLOSE]
     deliverable:
@@ -1460,6 +1461,33 @@ tasks:
       acceptable — DECIDE THE CHARTING LIB HERE per DECISIONS.md "still open")
       fed neutral chart-ready series from the service layer. Acceptance: render
       from export/*.json at mockup parity; one consistent instrument style.
+
+      CHARTING-LIBRARY DECISION (the DECISIONS.md "still open" item, settled
+      here): chose BESPOKE SVG instrument primitives (frontend/src/components/
+      charts/* + frontend/src/lib/chartGeometry.ts), NOT Plotly/ECharts.
+      Rationale: (a) the frozen mockup IS hand-authored SVG in a specific
+      instrument language (hairline grids, mono ticks, stress shading,
+      small-multiples) that a heavyweight chart lib would fight; (b) Plotly
+      (~1MB+ gz) / ECharts (~150kb+ gz) blow the microsite-class bundle budget
+      for what are line/area/bar/histogram/sparkline primitives — the shipped
+      build is 62kB gz JS / 3.9kB gz CSS; (c) the service layer already emits
+      NEUTRAL chart-ready series, so the choice stays fully reversible — a later
+      swap to Plotly/ECharts is presentation-only (nothing upstream changes).
+
+      DELIVERED (commit on branch worktree-e1-m1-console): three Monitor pages
+      (Overview/Strategies/Conditions) replacing the M2 placeholders, fed by the
+      existing static data client; bespoke SVG chart primitives (Sparkline,
+      LineChart w/ stress bands + zero axis + area fill, Histogram, ConditionBars,
+      Heatmap); format + chartGeometry helpers; a useAsyncData hook with honest
+      loading/error states; the instrument CSS classes M2 omitted, ported verbatim
+      from console.css. Strategies is roster->detail with ?pick= URL-state +
+      ARIMA-control overlay. Verified: npm run build green; 37 Vitest tests green
+      (15 prior + 22 new); /browse parity at 320/768/1024/1440; 0 console errors;
+      ruff clean (no Python changed). HONEST GAPS surfaced in-UI (METHODOLOGY §9),
+      NOT faked: Overview hero renders the candidate equity only (no SPY overlay —
+      the export has no benchmark series; see E1-M3-OVERVIEW-BENCHMARK) with a
+      visible note; Conditions renders the vol+trend axes the export contains
+      (rates axis arrives with E1-M1-CONDITIONS-MARKET-AXIS); ⓘ tooltips are E1-M5.
 
   - id: E1-M4
     rank: 49
@@ -1540,7 +1568,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -2036,3 +2064,34 @@ tasks:
       run_phase4a_arms.py) or otherwise guarantee the detail/provenance exports
       populate — and document the data-prep step so closeout is reproducible.
       Blocks E1-CLOSE.
+
+  - id: E1-M3-OVERVIEW-BENCHMARK
+    rank: 106
+    title: "E1-M3 follow-up: benchmark (SPY / buy-and-hold) series in the export for the Overview hero overlay"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1, E1-M3]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: src/quant/console/readers.py
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: small
+    notes: |
+      Discovered in E1-M3. PRD §5 specs the Overview hero as a "portfolio hero
+      chart vs benchmark (stress-shaded)" and the mockup overlays an SPY line, but
+      the M1 export emits no benchmark series — so the M3 hero renders the
+      deployable-candidate equity ONLY, with a visible in-UI note that the
+      benchmark overlay is not fabricated (METHODOLOGY §9, declared deviation).
+      Close the gap: add a benchmark equity series to the service layer (the
+      repo's BuyAndHoldBaseline / an SPY buy-and-hold cumulative over the same OOS
+      span) as a NEUTRAL chart-ready series on strategies.json or a dedicated
+      overview payload, and overlay it as a second `ln-bench` line in
+      frontend/src/pages/Overview.tsx (the LineChart already supports multi-series
+      + dashed bench styling). Keep the stress-band shading. Blocks E1-CLOSE so
+      closeout certifies the intended hero (vs-benchmark), not the candidate-only
+      proxy. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
