@@ -2610,7 +2610,8 @@ tasks:
     title: "Project E: Overview cross-link / summary tile to the Strategy Portfolio panel"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T18:32:06Z
     depends_on: [E-STRATEGIES-PANEL]
     blocks: []
     deliverable:
