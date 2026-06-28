@@ -795,8 +795,9 @@ tasks:
     title: "C6-M2: Daily cron executor (trade_daily.py) over the enabled registry"
     project: C
     sub_project: C6
-    status: in_progress
+    status: done
     started_at: 2026-06-28T19:05:00Z
+    completed_at: 2026-06-28
     depends_on: [C6-M1, C1-M3, C2-M2]
     blocks: []
     deliverable:
@@ -1532,6 +1533,68 @@ tasks:
       published statistic vs a proxy). Non-gating for C2-M2 (the mappings are
       verified equal on 500+ finite forecasts + 125 real-data pairs); added to
       C-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  # ------ C6-M2 follow-ups (discovered during the daily-executor build) ------
+
+  - id: C6-M2-MODEL-DISPATCH
+    rank: 78
+    title: "Generalize trade_daily._strategy_signal beyond the ARIMA placeholder"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-M2]
+    blocks: []
+    deliverable:
+      file: scripts/trade_daily.py
+      tests: tests/test_trade_daily.py
+    references:
+      primary: .claude/prds/c6-strategy-registry.prd.md
+      model_registry: src/quant/execution/strategy_registry.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-M2 (commit of scripts/trade_daily.py). The cycle's
+      signal step (_strategy_signal) dispatches ONLY on model_ref == "arima_baseline"
+      (it routes to lean_bridge.daily_signal, which fits ARIMA on the label series);
+      any other model_ref raises NotImplementedError by design (the documented C6
+      extension point, METHODOLOGY §9 — no silent fallback). A second DEPLOYABLE
+      strategy (a B-model that clears its gate) needs a real signal path here:
+      resolve_model_class(spec.model_ref) → build the feature row
+      (lean_bridge.build_feature_row, the reader→features seam) → score → sign. This
+      is future deployment work, triggered only when a gated B-model is registered;
+      it is intentionally NON-GATING and NOT added to C-CLOSE.depends_on (it would
+      deadlock the closeout on indefinitely-deferred work — mirrors the B3/B4 and
+      C6-DD exclusion precedents). Low priority.
+
+  - id: C6-M2-LIVE-ACCRUAL
+    rank: 79
+    title: "Live ≥5-session paper-loop accrual for trade_daily (G3 runbook)"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-M2]
+    blocks: []
+    deliverable:
+      runbook: scripts/trade_daily.py
+      evidence: data/c6/position_state.json
+    references:
+      primary: .claude/prds/c6-strategy-registry.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-M2 (commit of scripts/trade_daily.py) — a DECLARED §9
+      deviation. The C6 G3 gate is "≥5 consecutive clean daily cycles with state
+      round-trip + non-zero exit on failure". The GATEABLE half (the loop runs
+      end-to-end with state that round-trips across cycles, and aborts non-zero on a
+      stale feed) is unit-tested deterministically through a fake bridge
+      (tests/test_trade_daily.py::test_run_trading_loop_state_round_trips_five_cycles
+      and ::test_run_trading_cycle_aborts_on_stale_feed). The LIVE ≥5-session accrual
+      against the real Alpaca paper account spans five real market days and cannot run
+      in one session; run it via the cron runbook in the trade_daily.py module
+      docstring (~12:30 UTC weekdays, after the Tiingo T+1 bar) and record the
+      result. Mirrors C2-M3's live ≥5-cycle accrual (the lean-setup.md runbook).
+      Operational; NON-GATING and intentionally NOT added to C-CLOSE.depends_on
+      (it spans real days — same treatment as C2-M3's live accrual). Low priority.
 
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
