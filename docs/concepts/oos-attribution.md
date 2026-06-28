@@ -213,7 +213,7 @@ test** (≥ 10,000 random relabelings of one ranking) of the Spearman ρ against
 
 | # | Claim | Measured on | Statistic | Materiality (pinned) | Significance |
 |---|---|---|---|---|---|
-| **G1** | OOS permutation importance agrees with per-fold ablation | M6 25-column feature set, 5×8 slice (matches nb08) | Spearman ρ between the two rankings | **ρ ≥ 0.50** | permutation-test **p < 0.05** |
+| **G1** | OOS permutation importance agrees with per-fold ablation | M6 25-column feature set (the model *input* set — a subset of the 27-row catalog; see §"The attributed set"), 5×8 slice (matches nb08) | Spearman ρ between the two rankings | **ρ ≥ 0.50** | permutation-test **p < 0.05** |
 | **G2** | The systematized ablation reproduces M3 (port-correctness) | the 7 nb08 candidate features | Spearman ρ vs nb08's published lifts | **ρ ≥ 0.90** | — (reproducibility) |
 | **G3** | The IS contrast still holds (sanity floor) | same 7 features | Spearman ρ between SHAP (IS) and ablation (OOS) | reported, expected **≤ 0.1** | — |
 
@@ -244,6 +244,41 @@ depend on `A-DSR-GATE`; the ledger still records B2's runs with `n_comparisons =
 
 ---
 
+## The attributed set: 25-column M6 model inputs vs the 27-row catalog
+
+The attribution surface is the **M6 model *input* set (25 columns)**, which is a
+**subset** of the **27-row feature catalog** (`src/quant/features/catalog.yaml`).
+These are two different objects and the gap is not an error:
+
+- The **catalog (27 rows)** registers every column *produced* by
+  `build_features()` + `add_cross_sectional_features()` — its drift contract is
+  "every produced column is registered", regardless of whether any model
+  consumes it (`13 price + 3 macro + 1 macro_derived + 4 regime + 3
+  cross_sectional + 3 sentiment`).
+- The **M6 model input set (25 columns)** is the frozen feature matrix the final
+  Phase-4A arms actually trained on, pinned verbatim (and order-sensitive for the
+  config hash) in `docs/PHASE_4A_REPORT.md` §"Final feature set". This is the
+  `X` that `attribution.py` permutes and ablates — the only set on which an OOS
+  attribution score is *defined*.
+
+The 27 − 25 = **2-column gap is exactly two cross-sectional ranks** registered in
+the catalog but never fed to the M6 model: **`xs_rank_ret_21d`** and
+**`xs_rank_ret_252d`**. The M6 set keeps only the third rank,
+**`xs_rank_vol_21d`** (the cross-sectional feature that qualified in the M3
+add-one ablation). All 3 sentiment columns (`sentiment_score`, `doc_count`,
+`has_coverage`) *are* in the 25-column set — they are not the source of the gap.
+(Unrelated: `notebooks/10_b1_target_ablation.ipynb` excludes the 3 sentiment
+columns from a *different* base set for the B1 ablation; that is a B1 design
+choice, not this reconciliation.)
+
+This split maps cleanly onto how `attribution_status` is populated (next section):
+the 25 model-input columns can receive both signals; the 2 non-input ranks can
+only receive an ablation lift (add-one ablation can test a candidate that is not
+in the base model; OOS permutation cannot — it permutes columns that already feed
+the fitted model).
+
+---
+
 ## Catalog integration plan
 
 B2-M3 adds an `attribution_status` field to `FeatureRecord`
@@ -266,6 +301,23 @@ seen. Because the default is `none`, existing catalog entries need no edit to
 remain valid; the drift test in `tests/test_catalog.py` is **extended, not
 rewritten**, and asserts the new field's contract in both directions
 (`set(produced) == set(catalog)`, naming offenders either way — METHODOLOGY §6).
+
+### Realized population (B2-M3 shipped)
+
+B2-M3 populated `attribution_status` across all 27 catalog rows along the exact
+25-vs-27 seam above, sourced from the B2-M2 slice checkpoint (`data/b2/slice/`)
+via `attribution.classify_attribution_status`:
+
+| Value | Count | Which columns |
+|---|---|---|
+| `both` | **25** | the M6 model-input set — both OOS permutation and per-fold ablation computed and consistent |
+| `ablation_only` | **2** | `xs_rank_ret_21d`, `xs_rank_ret_252d` — the catalog-only cross-sectional ranks; an add-one ablation lift exists, but they are not model inputs so no OOS permutation score is defined |
+| `none` | 0 | — every registered feature received at least one OOS signal |
+
+So the **25 `both` rows are precisely the 25-column M6 attributed set**, and the
+2 `ablation_only` rows are precisely the 2-column catalog/model gap. The
+`27 = 25 + 2` identity is therefore visible directly in the catalog and is
+guarded by the bidirectional `tests/test_catalog.py` drift test.
 
 **This milestone is Phase-5 Trigger 2.** The `attribution.py` API and the catalog
 `attribution_status` field are the contracts the Phase-5 continuous-research

@@ -1315,8 +1315,9 @@ tasks:
     title: "Reconcile the attributed feature set: 25-col M6 model set vs 27-col catalog"
     project: B
     sub_project: B2
-    status: in_progress
+    status: done
     started_at: 2026-06-28T21:30:00Z
+    completed_at: 2026-06-28
     depends_on: [B2-M1]
     blocks: [B-CLOSE]
     deliverable:
@@ -1721,7 +1722,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B3-PRD, B3-M1, B3-M2, B3-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-DD-VOLIMPLIED-PANEL-PARITY, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B3-PRD, B3-M1, B3-M2, B3-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-DD-VOLIMPLIED-PANEL-PARITY, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08, B2-ATTR-SET-DRIFT-TEST]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb
@@ -2565,3 +2566,35 @@ tasks:
       unchanged. Parked at rank 85 in the queued-B band; bump if B-CLOSE needs
       slice↔panel parity. Added to B-CLOSE.depends_on per AGENT_OPERATION Step 7
       corollary.
+
+  - id: B2-ATTR-SET-DRIFT-TEST
+    rank: 86
+    title: "Drift test: attribution_status==both set == the M6 25-column model input set"
+    project: B
+    sub_project: B2
+    status: ready
+    depends_on: [B2-M3, B2-DOC-COLCOUNT]
+    blocks: [B-CLOSE]
+    deliverable:
+      tests: tests/test_catalog.py
+    references:
+      primary: docs/concepts/oos-attribution.md
+      methodology: docs/METHODOLOGY.md
+      m6_set: docs/PHASE_4A_REPORT.md
+    est_complexity: small
+    notes: |
+      Discovered during B2-DOC-COLCOUNT post-task review (commit of
+      docs/concepts/oos-attribution.md §"The attributed set"). That task documented
+      the 27 = 25 + 2 identity (25 catalog rows attribution_status=both == the M6
+      model-input set; 2 cross-sectional ranks xs_rank_ret_21d/xs_rank_ret_252d =
+      ablation_only), but nothing machine-enforces it: the M6 25-column input set
+      lives only in docs/PHASE_4A_REPORT.md §"Final feature set" prose and the arms
+      config, not as a Python constant, so the catalog's own 27-row drift test cannot
+      see the 25-vs-27 seam. Add an assertion (extend tests/test_catalog.py, do not
+      rewrite) that {name : attribution_status == 'both'} equals the canonical M6
+      25-col input set, with the 2 non-input ranks asserted ablation_only — pinning
+      the documented reconciliation in code (METHODOLOGY §6). Requires a single
+      source of truth for the M6 25-col list (a frozen constant or a parse of the
+      report); choose the lighter option. LOW PRIORITY / non-gating hardening — the
+      reconciliation is already correct and documented; this guards against silent
+      future drift. Parked at rank 86 in the queued band.
