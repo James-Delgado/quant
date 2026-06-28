@@ -2341,7 +2341,8 @@ tasks:
     title: "E1-M1 follow-up: resolvable Trial Registry commit links for content-hash runs"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T22:07:40Z
     depends_on: [E1-M1]
     blocks: []
     deliverable:
