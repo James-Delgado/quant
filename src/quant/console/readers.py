@@ -606,6 +606,10 @@ def load_provenance(
         test_window=wf.get("test_window"),
         step=wf.get("step"),
         embargo=wf.get("embargo"),
+        # Search budget lives in model_params (n_splits = inner CV folds). Absent
+        # for models with no hyperparameter search (ARIMA) → None, omitted in UI.
+        n_iter=model_params.get("n_iter"),
+        inner_folds=model_params.get("n_splits"),
         initial_capital=sim.get("initial_capital"),
         commission_per_share=sim.get("commission_per_share"),
         slippage_bps=sim.get("slippage_bps"),

@@ -64,6 +64,7 @@ def _write_checkpoint(
     git_sha: str = _GIT_SHA_A,
     smoke: bool = False,
     sharpe: float = 0.4,
+    model_params: dict | None = None,
 ) -> None:
     arm_dir = root / "phase4a" / arm
     arm_dir.mkdir(parents=True, exist_ok=True)
@@ -94,7 +95,8 @@ def _write_checkpoint(
                 "commission_per_share": 0.005,
                 "slippage_bps": 5.0,
             },
-            "model_params": {"type": "ARIMABaseline", "order": [1, 0, 0]},
+            "model_params": model_params
+            or {"type": "ARIMABaseline", "order": [1, 0, 0]},
         },
     }
     (arm_dir / "metadata.json").write_text(json.dumps(meta))
@@ -223,7 +225,22 @@ def sources(tmp_path: Path) -> ConsoleSources:
     data_root = tmp_path / "data"
     data_root.mkdir()
     _write_checkpoint(data_root, "arima", seed=1, config_hash=_GIT_SHA_A, sharpe=0.42)
-    _write_checkpoint(data_root, "signed", seed=2, config_hash=_CONTENT_HASH, sharpe=-0.33)
+    _write_checkpoint(
+        data_root,
+        "signed",
+        seed=2,
+        config_hash=_CONTENT_HASH,
+        sharpe=-0.33,
+        # GBM arm: carries a real hyperparameter-search budget (n_iter draws ×
+        # n_splits inner CV folds) so the provenance reader surfaces it.
+        model_params={
+            "type": "GBMModel",
+            "n_iter": 50,
+            "n_splits": 3,
+            "random_state": 0,
+            "label_horizon": 1,
+        },
+    )
     _write_checkpoint(
         data_root, "smoke_arima", seed=3, config_hash="d" * 40, smoke=True
     )  # excluded
@@ -500,11 +517,24 @@ def test_load_provenance(sources):
     assert prov is not None
     assert prov.config.model == "ARIMABaseline"
     assert prov.config.train_window == 504
+    # ARIMA has no hyperparameter search — the budget is omitted, not faked.
+    assert prov.config.n_iter is None
+    assert prov.config.inner_folds is None
     assert len(prov.leakage_controls) == 6
     assert all(c.status == "enforced" for c in prov.leakage_controls)
     assert len(prov.self_tests) == 2
     assert "FRED macro series (publication-lag corrected)" in prov.lineage
     assert "SEC EDGAR + RSS → FinBERT sentiment" in prov.lineage
+
+
+def test_load_provenance_surfaces_gbm_search_budget(sources):
+    # The GBM arm carries a real RandomizedSearchCV budget in model_params
+    # (n_iter draws × n_splits inner folds) → exposed as n_iter / inner_folds.
+    prov = readers.load_provenance("signed", sources)
+    assert prov is not None
+    assert prov.config.model == "GBMModel"
+    assert prov.config.n_iter == 50
+    assert prov.config.inner_folds == 3
 
 
 def test_load_provenance_unknown_returns_none(sources):

@@ -194,6 +194,11 @@ class RunConfigView:
     test_window: int | None
     step: int | None
     embargo: int | None
+    # Hyperparameter-search budget (RandomizedSearchCV inside each training
+    # window). Both ``None`` for models with no search (e.g. ARIMA); the GBM arms
+    # carry ``n_iter`` candidate draws × ``inner_folds`` inner CV splits.
+    n_iter: int | None
+    inner_folds: int | None
     initial_capital: float | None
     commission_per_share: float | None
     slippage_bps: float | None

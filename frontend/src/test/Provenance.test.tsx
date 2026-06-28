@@ -46,6 +46,25 @@ describe("Provenance panel", () => {
     expect(items[0].textContent).toContain("Alpaca daily OHLCV bars");
   });
 
+  it("omits the hyperparameter-search row for a model with no search (ARIMA)", async () => {
+    // Default selection is the first roster run (arima) — n_iter/inner_folds null.
+    renderPanel();
+    await screen.findByText("Run configuration");
+    expect(screen.queryByText("hyperparameter search")).not.toBeInTheDocument();
+  });
+
+  it("renders the hyperparameter-search budget for a GBM run", async () => {
+    render(
+      <MemoryRouter initialEntries={["/?run=signed"]}>
+        <Provenance />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByText("hyperparameter search"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("50 iters · 3 inner folds")).toBeInTheDocument();
+  });
+
   it("shows an honest empty-state when the export has no runs", async () => {
     // No strategy checkpoints → no runs roster, no provenance to inspect.
     stubExportFetch({ "strategies.json": [] });
