@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-M1-FEATURE-MONITOR done
+last_updated: 2026-06-28  # E1-M1-EXPORT-FRESHNESS-STAMP done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1896,7 +1896,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE, E1-CONDITIONS-TREND-AXIS]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE, E1-CONDITIONS-TREND-AXIS, E1-M2-TOPBAR-FRESHNESS]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -2415,10 +2415,11 @@ tasks:
     title: "E1-M1 follow-up: export freshness stamp for the UI (kept out of the idempotency surface)"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1]
-    blocks: []
+    blocks: [E1-M2-TOPBAR-FRESHNESS]
     deliverable:
       file: src/quant/console/export.py
       tests: tests/test_console.py
@@ -2899,3 +2900,33 @@ tasks:
       NON-GATING and deliberately NOT added to C-CLOSE.depends_on (mirrors the
       C2-M3-LIVE-REPLAY strengthening-beyond-scope precedent — closeout is not
       gated on optional hardening). Low priority.
+
+  - id: E1-M2-TOPBAR-FRESHNESS
+    rank: 115
+    title: "Wire the M2 Topbar to consume export/_manifest.json (generated_at + per-source mtimes)"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-EXPORT-FRESHNESS-STAMP]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: src/quant/console/export.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M1-EXPORT-FRESHNESS-STAMP (commit of
+      src/quant/console/export.py build_manifest/write_manifest). The export now
+      writes export/_manifest.json — a side artifact OUTSIDE the byte-idempotent
+      payload set — carrying generated_at (export-run time) and per-source artifact
+      mtimes ({source: friendly label, modified_at: ISO-8601 UTC | null}). The
+      E1-M2 Topbar currently shows "data exported <data_status.asof>" as an INTERIM
+      freshness proxy (flagged in this task's own note). Fetch _manifest.json and
+      swap the Topbar stamp to manifest.generated_at; optionally surface the
+      per-source mtimes (e.g. a tooltip "Trial Registry updated <modified_at>") so
+      a stale upstream artifact is visible. Honesty: render "unknown" for a null
+      modified_at, never a guessed time (the python layer already degrades
+      honestly). Copy-export.mjs already globs *.json so the manifest is copied
+      into the SPA public dir with no script change. Added to E1-CLOSE.depends_on
+      per AGENT_OPERATION Step 7 corollary (E1-scoped follow-up). Non-gating polish.
