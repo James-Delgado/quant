@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 # Default GitHub repository the Provenance / Trial Registry commit links resolve
@@ -28,6 +29,22 @@ DEFAULT_REPO_URL = "https://github.com/James-Delgado/quant"
 # Pinned per METHODOLOGY §1 — a daily cadence tolerates a long weekend + a
 # holiday before it is genuinely behind.
 FRESH_THRESHOLD_DAYS = 4.0
+
+# ── Feature-monitor tunables (pinned; METHODOLOGY §1) ────────────────────────
+# Histogram bins for the per-feature distribution mini the catalog panel renders.
+FEATURE_HIST_BINS = 20
+# Recent window (in distinct trading dates) compared against the earlier
+# baseline when judging distribution drift of a feature.
+FEATURE_DRIFT_RECENT_BARS = 252  # ≈ one trading year
+# A feature is "drifting" when the recent-vs-baseline standardized shift of its
+# per-date cross-sectional mean reaches this many baseline standard deviations.
+FEATURE_DRIFT_Z_THRESHOLD = 1.0
+# A feature is "stale" when its most recent non-null observation is more than
+# this many distinct trading dates behind the panel's last date.
+FEATURE_STALE_BARS = 21  # ≈ one trading month
+# Sentiment aggregation window for the monitor's feature build — matches the
+# Phase 3 / Phase 4A runner convention so the monitored columns equal production.
+FEATURE_SENTIMENT_LOOKBACK_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -119,7 +136,11 @@ class ConsoleSources:
             latest_timestamp_fn=_latest,
             market_value_fn=_market,
             market_series_fn=_market_series,
-            feature_monitor_fn=None,  # live lake monitor wired in a follow-up
+            # Lake-backed monitor (E1-M1-FEATURE-MONITOR). ``_load_feature_panel``
+            # is invoked lazily on the first ``load_catalog`` call and memoized, so
+            # constructing the sources stays cheap and a missing lake degrades to
+            # registry-only rows rather than failing the export.
+            feature_monitor_fn=build_feature_monitor(_load_feature_panel),
             now_fn=lambda: dt.datetime.now(dt.timezone.utc),
         )
 
@@ -175,6 +196,254 @@ def _fred_series(storage_catalog, series_id: str) -> pd.Series | None:
     )
     series = series[~series.index.duplicated(keep="last")].sort_index().dropna()
     return series if not series.empty else None
+
+
+# ── Feature monitor (lake-backed coverage / mu-sigma / distribution / drift) ──
+#
+# The Feature Catalog panel (PRD §5, DECISIONS §8) is a *monitoring* surface, not
+# just a registry: each registered feature shows coverage, mean/std, a
+# distribution mini, and a stable/drifting/stale verdict. The reader
+# (``readers.load_catalog``) consumes a per-feature ``dict`` via an injectable
+# ``feature_monitor_fn``; this section builds that monitor from the lake.
+#
+# Honesty (METHODOLOGY §9): an absent/empty lake, a failed build, or a feature
+# the panel does not produce all degrade to "unmonitored" (the reader renders
+# registry-only rows) — never to fabricated stats.
+
+
+def _feature_distribution(values: np.ndarray, bins: int) -> list[int] | None:
+    """Histogram counts over a feature's own value range (None when empty)."""
+    if values.size == 0:
+        return None
+    counts, _edges = np.histogram(values, bins=bins)
+    return [int(c) for c in counts]
+
+
+def _stability_verdict(
+    column: pd.Series,
+    *,
+    recent_bars: int,
+    drift_z_threshold: float,
+    stale_bars: int,
+) -> str:
+    """Classify a feature column as ``stable`` | ``drifting`` | ``stale``.
+
+    *stale*    — the column's most recent non-null observation is more than
+                 ``stale_bars`` distinct trading dates behind the panel's last
+                 date (the feature stopped updating), or it is entirely null.
+    *drifting* — the standardized shift of the feature's per-date cross-sectional
+                 mean over the last ``recent_bars`` dates versus the earlier
+                 baseline reaches ``drift_z_threshold`` baseline σ.
+    *stable*   — otherwise (including too little history to judge drift).
+
+    Point-in-time and direction-agnostic: only the recorded panel is used; no
+    future observation enters either window.
+    """
+    valid = column.dropna()
+    if valid.empty:
+        return "stale"
+
+    all_dates = pd.DatetimeIndex(column.index).normalize().unique().sort_values()
+    last_valid = pd.DatetimeIndex(valid.index).normalize().max()
+    if int((all_dates > last_valid).sum()) > stale_bars:
+        return "stale"
+
+    by_date = (
+        valid.groupby(pd.DatetimeIndex(valid.index).normalize()).mean().sort_index()
+    )
+    if len(by_date) <= recent_bars + 1:
+        return "stable"  # not enough baseline history to judge drift
+
+    baseline = by_date.iloc[:-recent_bars]
+    recent = by_date.iloc[-recent_bars:]
+    shift = abs(float(recent.mean()) - float(baseline.mean()))
+    base_std = float(baseline.std(ddof=1))
+    if not np.isfinite(base_std) or base_std == 0.0:
+        # Flat baseline: any real move off it is drift; no move is stable.
+        return "drifting" if shift > 0.0 else "stable"
+    return "drifting" if (shift / base_std) >= drift_z_threshold else "stable"
+
+
+def _compute_feature_stats(
+    panel: pd.DataFrame | None,
+    *,
+    hist_bins: int,
+    recent_bars: int,
+    drift_z_threshold: float,
+    stale_bars: int,
+) -> dict[str, dict]:
+    """Per-column monitoring stats for a pooled (date-indexed) feature panel.
+
+    ``panel`` rows are ``(symbol, date)`` observations stacked vertically with a
+    normalized tz-naive DatetimeIndex; columns are feature names. Returns
+    ``{feature: {coverage, mean, std, stability, distribution}}`` — exactly the
+    dict shape ``readers.load_catalog`` reads. An empty/absent panel yields ``{}``.
+    """
+    stats: dict[str, dict] = {}
+    if panel is None or panel.empty:
+        return stats
+    for col in panel.columns:
+        column = panel[col]
+        total = int(column.shape[0])
+        valid = column.dropna()
+        n_valid = int(valid.shape[0])
+        coverage = (n_valid / total) if total else 0.0
+        if n_valid == 0:
+            stats[str(col)] = {
+                "coverage": 0.0,
+                "mean": None,
+                "std": None,
+                "stability": "stale",
+                "distribution": None,
+            }
+            continue
+        arr = valid.to_numpy(dtype=float)
+        stats[str(col)] = {
+            "coverage": float(coverage),
+            "mean": float(np.mean(arr)),
+            "std": float(np.std(arr, ddof=1)) if n_valid > 1 else 0.0,
+            "stability": _stability_verdict(
+                column,
+                recent_bars=recent_bars,
+                drift_z_threshold=drift_z_threshold,
+                stale_bars=stale_bars,
+            ),
+            "distribution": _feature_distribution(arr, hist_bins),
+        }
+    return stats
+
+
+# A function returning a pooled, date-indexed feature panel (or None/empty).
+FeaturePanelFn = Callable[[], "pd.DataFrame | None"]
+
+
+def build_feature_monitor(
+    panel_fn: FeaturePanelFn | None,
+    *,
+    hist_bins: int = FEATURE_HIST_BINS,
+    recent_bars: int = FEATURE_DRIFT_RECENT_BARS,
+    drift_z_threshold: float = FEATURE_DRIFT_Z_THRESHOLD,
+    stale_bars: int = FEATURE_STALE_BARS,
+) -> "FeatureMonitorFn":
+    """Build a memoized feature monitor from a (lazy) feature-panel provider.
+
+    The returned ``monitor(name)`` computes every feature's stats once — on the
+    first call, by invoking ``panel_fn()`` and pooling the panel — then serves
+    cached lookups. ``None`` is returned for an unmonitored feature (not in the
+    panel) so the catalog reader renders a registry-only row. Any failure while
+    loading/building the panel is swallowed and leaves the monitor empty
+    (honest degrade — never fabricated stats, METHODOLOGY §9).
+    """
+    cache: dict[str, dict] = {}
+    state = {"loaded": False}
+
+    def monitor(name: str) -> dict | None:
+        if not state["loaded"]:
+            state["loaded"] = True
+            try:
+                panel = panel_fn() if panel_fn is not None else None
+                cache.update(
+                    _compute_feature_stats(
+                        panel,
+                        hist_bins=hist_bins,
+                        recent_bars=recent_bars,
+                        drift_z_threshold=drift_z_threshold,
+                        stale_bars=stale_bars,
+                    )
+                )
+            except Exception:
+                cache.clear()  # unmonitored, not faked
+        return cache.get(name)
+
+    return monitor
+
+
+def _load_prices_for_panel(storage_catalog, symbols: list[str]) -> dict[str, pd.DataFrame]:
+    """Adjusted OHLCV per symbol from the lake (mirrors the Phase 4A runner).
+
+    Returns ``{}`` on any failure / empty lake so the monitor degrades honestly.
+    """
+    if not symbols:
+        return {}
+    syms_sql = ", ".join("'" + s.replace("'", "''") + "'" for s in symbols)
+    try:
+        eq = storage_catalog.query(
+            f"SELECT symbol, timestamp, open, high, low, adjClose, volume "
+            f"FROM {storage_catalog.table('equity_eod_tiingo')} "
+            f"WHERE symbol IN ({syms_sql}) ORDER BY symbol, timestamp"
+        )
+    except Exception:
+        return {}
+    if eq.empty:
+        return {}
+    eq["timestamp"] = pd.to_datetime(eq["timestamp"])
+    eq = eq.set_index("timestamp")
+    prices: dict[str, pd.DataFrame] = {}
+    for sym in symbols:
+        sub = eq[eq["symbol"] == sym][["open", "high", "low", "adjClose", "volume"]].copy()
+        if sub.empty:
+            continue
+        prices[sym] = sub.rename(columns={"adjClose": "close"}).sort_index().dropna()
+    return prices
+
+
+def _panel_from_features(features_by_symbol: dict[str, pd.DataFrame]) -> pd.DataFrame | None:
+    """Stack per-symbol feature frames into one normalized-date-indexed panel.
+
+    Each frame's index is converted to tz-naive UTC then normalized to the
+    calendar date — the documented NY↔UTC alignment care (``project_lake_tz``
+    memory; mirrors ``run_b1_arms._to_naive_utc``) — so the pooled per-date drift
+    grouping lines up by date across symbols with no off-by-one.
+    """
+    frames: list[pd.DataFrame] = []
+    for _sym, fdf in features_by_symbol.items():
+        frame = fdf.copy()
+        idx = pd.DatetimeIndex(frame.index)
+        if idx.tz is not None:
+            idx = idx.tz_convert("UTC").tz_localize(None)
+        frame.index = idx.normalize()
+        frames.append(frame)
+    if not frames:
+        return None
+    return pd.concat(frames, axis=0).sort_index()
+
+
+def _load_feature_panel() -> pd.DataFrame | None:
+    """Production feature-panel provider: build the full universe from the lake.
+
+    Loads ``settings.equity_universe`` prices, builds the production feature
+    matrix (``build_features`` + the M3 cross-sectional survivor), and pools it.
+    Returns ``None`` when the lake has no usable bars so the monitor stays empty.
+    """
+    from quant.config import settings
+    from quant.features.cross_sectional import add_cross_sectional_features
+    from quant.features.engineering import FRED_PUBLICATION_LAGS, build_features
+    from quant.storage import catalog as storage_catalog
+    from quant.storage import lake
+
+    symbols = list(settings.equity_universe)
+    prices = _load_prices_for_panel(storage_catalog, symbols)
+    if not prices:
+        return None
+
+    try:
+        sentiment = lake.read_processed("sentiment_scored")
+    except Exception:
+        sentiment = None
+    sentiment_arg = sentiment if (sentiment is not None and not sentiment.empty) else None
+
+    features = build_features(
+        list(prices),
+        prices,
+        sentiment_df=sentiment_arg,
+        sentiment_lookback_days=FEATURE_SENTIMENT_LOOKBACK_DAYS,
+        fred_publication_lags=FRED_PUBLICATION_LAGS,
+    )
+    try:
+        features = add_cross_sectional_features(features, columns=("vol_21d",))
+    except Exception:
+        pass  # the xs-rank survivor is optional; monitor the base columns anyway
+    return _panel_from_features(features)
 
 
 # ── Low-level checkpoint readers ─────────────────────────────────────────────
