@@ -547,13 +547,15 @@ tasks:
     title: "C1-M2: Point-in-time today's-bar reader + build_features integration"
     project: C
     sub_project: C1
-    status: in_progress
+    status: done
     started_at: 2026-06-27T23:55:00Z
+    completed_at: 2026-06-28
     depends_on: [C1-M1]
     blocks: [C1-M3, C2-PRD]
     deliverable:
       file: src/quant/storage/realtime.py
       tests: tests/test_realtime.py
+      notebook: notebooks/13_c1_live_data.ipynb
     references:
       primary: .claude/prds/c1-live-data.prd.md
     est_complexity: medium
@@ -563,7 +565,7 @@ tasks:
     title: "C1-M3: Freshness monitor + alert (cron)"
     project: C
     sub_project: C1
-    status: blocked
+    status: ready
     depends_on: [C1-M2]
     blocks: []
     deliverable:
@@ -580,7 +582,7 @@ tasks:
     title: "Draft C2 (LEAN local + paper trading) PRD"
     project: C
     sub_project: C2
-    status: blocked
+    status: ready
     depends_on: [C1-PRD, C1-M2]
     blocks: [C2-M1, C2-M2, C2-M3]
     deliverable:
@@ -1128,6 +1130,65 @@ tasks:
       B2-FULLPANEL-AGREEMENT precedent this is intentionally NOT in
       C-CLOSE.depends_on so an unrun optional measurement cannot deadlock closeout.
       Low priority.
+
+  - id: C1-M2-ALPACA-FRESHNESS
+    rank: 43
+    title: "Reconcile same-day reader source: Tiingo (T+1) parity vs Alpaca (T-evening) freshness"
+    project: C
+    sub_project: C1
+    status: ready
+    depends_on: [C1-M2]
+    blocks: []
+    deliverable:
+      file: docs/concepts/data-freshness-slas.md
+    references:
+      primary: src/quant/storage/realtime.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C1-M2 (commit of src/quant/storage/realtime.py). The PIT
+      reader defaults to PRICE_DATASET = "equity_eod_tiingo" because that is the
+      dataset the backtest trains on, which makes the G2 train/serve-parity gate
+      STRUCTURAL (max_rel_diff = 0.0 on the real lake, nb13). But the C1-M1 SLA
+      table pins Tiingo availability at 12:00 UTC on T+1, while the freshest
+      same-day feed is Alpaca IEX at 23:00 UTC on T — so a genuine "trade on
+      today's bar the evening of T" run cannot use the parity-safe Tiingo source
+      yet (Tiingo's adjusted bar for T is not available until T+1). Switching the
+      reader to Alpaca for same-day-on-T would BREAK G2 (IEX raw close != Tiingo
+      adjClose), i.e. it is a train/serve-skew source, not a drop-in. Resolve the
+      deployment policy for C2: either (a) accept a T+1 decision cadence on the
+      parity-safe Tiingo source, or (b) introduce an explicit Alpaca same-day
+      path with its OWN parity gate against an Alpaca-trained model. Doc/finding
+      only; the committed reader is correct for the parity contract. CONDITIONAL
+      deployment finding — like B2-FULLPANEL-AGREEMENT it is intentionally NOT in
+      C-CLOSE.depends_on (it is a C2 policy decision, not a C1 deliverable). Low
+      priority.
+
+  - id: C1-M2-LEDGER-AUDIT
+    rank: 44
+    title: "Optional audit-only ledger entry (n_comparisons=0) for the nb13 C1-M2 verdict run"
+    project: C
+    sub_project: C1
+    status: ready
+    depends_on: [C1-M2]
+    blocks: []
+    deliverable:
+      notebook: notebooks/13_c1_live_data.ipynb
+    references:
+      primary: src/quant/ledger.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C1-M2 post-task review (commit of
+      notebooks/13_c1_live_data.ipynb). The C1 PRD "Ledger discipline" says a C1
+      milestone run that emits a verdict artifact "MAY record an audit-only ledger
+      entry (n_comparisons = 0)" per the A-LEDGER-RUNNERS pattern — bookkeeping,
+      not a deflation contribution (C1 makes no Sharpe claim). nb13 emits a
+      G1/G2 verdict but no ledger entry was wired. Add an optional
+      quant.ledger.append_ledger_entry call (n_comparisons=0, verdict from the
+      gate functions) so the C1-M2 gate run is recorded in data/ledger.yaml for
+      audit symmetry with the Phase 4A / B1 runner integrations. Optional per the
+      PRD ("may"); intentionally NOT in C-CLOSE.depends_on. Low priority.
 
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 

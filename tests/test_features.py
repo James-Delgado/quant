@@ -461,6 +461,31 @@ class TestBuildFeatures:
         result = build_features(["AAPL"], prices)
         assert result["AAPL"].index.equals(prices["AAPL"].index)
 
+    def test_asof_none_matches_full_history(self, monkeypatch):
+        """asof=None (default) must reproduce the full-history output bit-for-bit
+        (C1-M2 A/B-safe lever, mirroring fred_publication_lags=None)."""
+        prices = {"AAPL": _ohlcv(60)}
+        monkeypatch.setattr(
+            "quant.features.engineering._load_fred_wide",
+            lambda con: pd.DataFrame(),
+        )
+        full = build_features(["AAPL"], prices)["AAPL"]
+        explicit = build_features(["AAPL"], prices, asof=None)["AAPL"]
+        pd.testing.assert_frame_equal(full, explicit)
+
+    def test_asof_truncates_without_changing_retained_rows(self, monkeypatch):
+        """A truncated build's rows equal the full build's rows up to asof —
+        the structural G2 train/serve-parity guarantee (storage/realtime.py)."""
+        prices = {"AAPL": _ohlcv(60)}
+        monkeypatch.setattr(
+            "quant.features.engineering._load_fred_wide",
+            lambda con: pd.DataFrame(),
+        )
+        cutoff = prices["AAPL"].index[40]
+        full = build_features(["AAPL"], prices)["AAPL"].loc[:cutoff]
+        live = build_features(["AAPL"], prices, asof=cutoff)["AAPL"]
+        pd.testing.assert_frame_equal(full, live)
+
 
 class TestRegimeFeatures:
     REGIME_COLS = ("vix_regime", "curve_inverted", "vol_regime_ratio", "trend_regime")

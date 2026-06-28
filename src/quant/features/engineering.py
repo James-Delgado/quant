@@ -340,12 +340,28 @@ def _load_fred_wide(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     return wide
 
 
+def _truncate_prices_asof(prices: pd.DataFrame, asof: pd.Timestamp) -> pd.DataFrame:
+    """Drop bars with ``timestamp > asof`` from a price frame.
+
+    The index may be tz-aware (NY or UTC) or naive; *asof* is a tz-aware UTC
+    instant. A naive index is treated as UTC for the comparison (the lake's
+    storage convention). Comparison is by instant, so a NY-stamped index and a
+    UTC *asof* align correctly. The retained rows are byte-identical to the
+    untruncated frame — this is the train/serve-parity lever (every feature is
+    backward-looking, so dropping future bars cannot change a retained row).
+    """
+    idx = prices.index
+    cmp_idx = idx.tz_localize("UTC") if idx.tz is None else idx
+    return prices[cmp_idx <= asof]
+
+
 def build_features(
     symbols: list[str],
     prices_by_symbol: dict[str, pd.DataFrame],
     sentiment_df: pd.DataFrame | None = None,
     sentiment_lookback_days: int = 30,
     fred_publication_lags: Mapping[str, int] | None = FRED_PUBLICATION_LAGS,
+    asof: pd.Timestamp | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Build a point-in-time correct feature matrix for each symbol.
 
@@ -368,6 +384,17 @@ def build_features(
                              to the pinned FRED_PUBLICATION_LAGS. Pass None to
                              reproduce the legacy unlagged join (A/B control
                              arm; matches Phase 2.5/3 historical results).
+    asof:                    Optional tz-aware UTC instant. When set, each price
+                             frame is truncated to bars with timestamp <= asof
+                             *before* features are computed, so the output is the
+                             same-day feature matrix knowable at `asof` with no
+                             look-ahead (C1-M2 live-inference path). Default None
+                             keeps the full-history batch behaviour bit-for-bit
+                             (the same A/B-safe pattern as fred_publication_lags).
+                             Because every feature is backward-looking, a row
+                             retained under truncation equals the batch row for
+                             that date — this is the G2 train/serve-parity
+                             guarantee (see storage/realtime.py).
 
     Returns
     -------
@@ -387,9 +414,20 @@ def build_features(
     finally:
         con.close()
 
+    asof_ts: pd.Timestamp | None = None
+    if asof is not None:
+        asof_ts = pd.Timestamp(asof)
+        if asof_ts.tz is None:
+            asof_ts = asof_ts.tz_localize("UTC")
+        else:
+            asof_ts = asof_ts.tz_convert("UTC")
+
     result: dict[str, pd.DataFrame] = {}
     for sym in symbols:
-        price_feats = _compute_price_features(prices_by_symbol[sym])
+        prices = prices_by_symbol[sym]
+        if asof_ts is not None:
+            prices = _truncate_prices_asof(prices, asof_ts)
+        price_feats = _compute_price_features(prices)
         feat = (
             _attach_fred_features(price_feats, fred_wide, fred_publication_lags)
             if not fred_wide.empty
