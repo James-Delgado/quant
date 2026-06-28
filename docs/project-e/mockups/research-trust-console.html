@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Research Console</title>
+<!-- MOCKUP — Project E1. Design consensus + build brief. Real Phase 4A figures; market/feed/catalog stats illustrative. -->
+<link rel="stylesheet" href="console.css" />
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="nm"><span class="mk"></span> Research Console</div>
+      <div class="sub">Quant Platform</div>
+    </div>
+    <nav class="nav">
+      <div class="grp">Monitor</div>
+      <a data-v="overview" class="active"><span class="ic">▤</span> Overview</a>
+      <a data-v="strategies"><span class="ic">⇡</span> Strategies</a>
+      <a data-v="conditions"><span class="ic">◵</span> Conditions</a>
+      <a data-v="data"><span class="ic">◍</span> Data &amp; Market</a>
+      <div class="grp">Evidence</div>
+      <a data-v="provenance"><span class="ic">◈</span> Provenance</a>
+      <a data-v="catalog"><span class="ic">≣</span> Feature Catalog</a>
+      <a data-v="ledger"><span class="ic">▥</span> Trial Registry</a>
+      <div class="grp">Reference</div>
+      <a data-v="explain"><span class="ic">✶</span> Explanations</a>
+    </nav>
+    <button class="report-btn" id="reportBtn">＋ Report an issue</button>
+    <div class="ft">build 397f68a · 467 checks green</div>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <span class="ttl" id="ttl">Overview</span>
+      <span class="sp"></span>
+      <span class="dotlive"><i></i> live execution · not connected</span>
+      <span class="meta">updated 06:40 ET</span>
+    </header>
+    <div class="content"><div class="maxw">
+
+      <!-- ════════ OVERVIEW ════════ -->
+      <section class="view active" data-v="overview">
+        <div class="banner"><b>Research mode.</b> Live execution connects in a later phase — strategy performance below is from the walk-forward backtest. Live P&amp;L and intraday market data activate once the execution layer is online.</div>
+
+        <div class="grid hero">
+          <div class="panel">
+            <div class="phead"><span class="t">Portfolio performance</span><span class="s">ARIMA control · deployable candidate · vs SPY</span></div>
+            <div class="figrow" style="margin-bottom:14px">
+              <div class="fig"><span class="lab">Total return</span><span class="val gain">+41.8%</span><span class="sub">SPY +29.4%</span></div>
+              <div class="fig"><span class="lab">Sharpe<span class="info" data-tip="Risk-adjusted return: average return over its volatility, annualized. Higher is better — above ~1 is strong for a daily strategy.">i</span></span><span class="val">0.42</span><span class="sub">net of costs</span></div>
+              <div class="fig"><span class="lab">Max drawdown<span class="info" data-tip="The largest peak-to-trough drop in equity over the period. A measure of worst-case pain an allocator would have lived through.">i</span></span><span class="val loss">−18.2%</span></div>
+              <div class="fig"><span class="lab">OOS span</span><span class="val" style="font-size:16px">’04–’26</span><span class="sub">87 folds</span></div>
+            </div>
+            <svg class="chart" viewBox="0 0 640 200" height="200" role="img" aria-label="Cumulative return, portfolio vs benchmark">
+              <rect class="band-stress" x="378" y="0" width="56" height="200"/>
+              <line class="grid-l" x1="0" y1="50" x2="640" y2="50"/><line class="grid-l" x1="0" y1="100" x2="640" y2="100"/><line class="grid-l" x1="0" y1="150" x2="640" y2="150"/>
+              <path class="ln-bench" d="M0,176 L120,162 L240,144 L360,122 L400,170 L440,140 L520,110 L640,96"/>
+              <path class="ln-port" d="M0,176 L120,158 L240,134 L360,116 L400,150 L440,128 L520,98 L640,72"/>
+              <text x="384" y="14" fill="#f2715a">covid</text>
+              <text x="2" y="194">2004</text><text x="300" y="194">2015</text><text x="600" y="194">2026</text>
+            </svg>
+            <div class="legend"><span><i class="swatch" style="background:var(--series)"></i> ARIMA control</span><span><i class="swatch" style="background:var(--steel)"></i> SPY benchmark</span><span><i class="swatch band-stress" style="height:10px;width:14px"></i> stress window</span></div>
+          </div>
+
+          <div class="panel">
+            <div class="phead"><span class="t">Conditions now</span><span class="s">snapshot</span></div>
+            <ul class="lin">
+              <li><span class="k">Volatility</span><span class="v"><span class="pill ok">LOW · VIX 14.2</span></span></li>
+              <li><span class="k">Trend</span><span class="v"><span class="pill ok">UP</span></span></li>
+              <li><span class="k">Rates</span><span class="v"><span class="pill">STEADY · 10Y 4.31%</span></span></li>
+              <li><span class="k">Breadth<span class="info" data-tip="Share of the universe trading above its 200-day moving average — a gauge of how broad the uptrend is.">i</span></span><span class="v">71% &gt; MA200</span></li>
+              <li><span class="k">Yield curve<span class="info" data-tip="2s10s: the 10-year minus 2-year Treasury yield. Negative (inverted) has historically preceded recessions; positive here.">i</span></span><span class="v">2s10s +0.42</span></li>
+            </ul>
+            <div class="phead" style="margin-top:18px"><span class="t">Data status</span></div>
+            <ul class="lin">
+              <li><span class="k">Prices</span><span class="v"><span class="pill ok"><i></i> fresh · 06-26</span></span></li>
+              <li><span class="k">Macro (FRED)</span><span class="v"><span class="pill warn"><i></i> +1bd lag</span></span></li>
+              <li><span class="k">Filings</span><span class="v"><span class="pill ok"><i></i> fresh</span></span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sec">Strategies <span class="dim">— which are up, down, and why</span><span class="ln"></span></div>
+        <div class="panel flush">
+          <table>
+            <thead><tr><th>Strategy</th><th>Mode</th><th class="num">Sharpe</th><th class="num">Return</th><th>Trajectory</th><th>Primary driver</th></tr></thead>
+            <tbody>
+              <tr class="clk" data-go="strategies" data-pick="arima"><td>ARIMA(1,0,0) control</td><td><span class="tag">research</span></td><td class="num gain">+0.42</td><td class="num gain">+41.8%</td>
+                <td><svg width="64" height="18" viewBox="0 0 64 18"><path class="spark" stroke="var(--gain)" d="M0,15 L16,12 L32,9 L48,5 L64,3"/></svg></td>
+                <td class="small steel">Captures the long trend — AR(1) ≈ today's return</td></tr>
+              <tr class="clk" data-go="strategies" data-pick="gbm_signed"><td>GBM · signed returns</td><td><span class="tag">research</span></td><td class="num loss">−0.34</td><td class="num loss">−21.1%</td>
+                <td><svg width="64" height="18" viewBox="0 0 64 18"><path class="spark" stroke="var(--loss)" d="M0,5 L16,8 L32,7 L48,12 L64,15"/></svg></td>
+                <td class="small steel">Learns crisis mean-reversion; fights the trend in up-markets</td></tr>
+              <tr class="clk" data-go="strategies" data-pick="gbm_vol"><td>GBM · vol-scaled</td><td><span class="tag">research</span></td><td class="num loss">−0.34</td><td class="num loss">−21.4%</td>
+                <td><svg width="64" height="18" viewBox="0 0 64 18"><path class="spark" stroke="var(--loss)" d="M0,6 L16,8 L32,9 L48,11 L64,15"/></svg></td>
+                <td class="small steel">Vol-scaling preserves the trend-fighting sign</td></tr>
+              <tr class="clk" data-go="strategies" data-pick="gbm_tb"><td>GBM · triple-barrier</td><td><span class="tag">research</span></td><td class="num">+0.18</td><td class="num">+12.0%</td>
+                <td><svg width="64" height="18" viewBox="0 0 64 18"><path class="spark" stroke="var(--steel)" d="M0,10 L16,6 L32,11 L48,9 L64,8"/></svg></td>
+                <td class="small steel">Event target; only the pre-2010 era is positive</td></tr>
+              <tr class="clk" data-go="strategies" data-pick="b1"><td>B1 · target reframing</td><td><span class="tag">research</span></td><td class="num dim">—</td><td class="num dim">—</td><td class="dim small">running</td><td class="small dim">4 candidate targets in evaluation</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ════════ STRATEGIES ════════ -->
+      <section class="view" data-v="strategies">
+        <div class="h1">Strategies</div>
+        <div class="lead">Every research strategy under evaluation, each benchmarked against the ARIMA(1,0,0) control. New strategies — and live ones, once execution is online — append to this roster.</div>
+
+        <div class="sec">Roster<span class="ln"></span></div>
+        <div class="roster" id="roster">
+          <div class="rost" data-s="arima"><div><div class="nm">ARIMA(1,0,0) control</div><div class="ds">One-parameter autoregressive forecast; the benchmark every strategy must beat.</div></div><div class="rt"><div class="v gain">+0.42</div><span class="pill ok">candidate</span></div></div>
+          <div class="rost sel" data-s="gbm_signed"><div><div class="nm">GBM · signed returns</div><div class="ds">Gradient-boosted return forecaster on 25 features.</div></div><div class="rt"><div class="v loss">−0.34</div><span class="pill bad">underperforms</span></div></div>
+          <div class="rost" data-s="gbm_vol"><div><div class="nm">GBM · vol-scaled</div><div class="ds">Same model, target divided by point-in-time volatility.</div></div><div class="rt"><div class="v loss">−0.34</div><span class="pill bad">underperforms</span></div></div>
+          <div class="rost" data-s="gbm_tb"><div><div class="nm">GBM · triple-barrier</div><div class="ds">Classification target: which barrier (profit, stop, time) is hit first.</div></div><div class="rt"><div class="v">+0.18</div><span class="pill">mixed</span></div></div>
+          <div class="rost" data-s="b1"><div><div class="nm">B1 · target reframing</div><div class="ds">Four alternative prediction targets under evaluation.</div></div><div class="rt"><div class="v dim">—</div><span class="pill warn"><i></i> running</span></div></div>
+        </div>
+
+        <div class="sec">Detail — <span id="sName">GBM · signed returns</span><span class="ln"></span></div>
+        <p class="lead" id="sDesc" style="margin-top:0"></p>
+        <div class="figrow" id="sFigs" style="margin:18px 0 6px"></div>
+
+        <div class="grid c2" style="margin-top:14px">
+          <div class="panel"><div class="phead"><span class="t">Cumulative return</span><span class="s">vs ARIMA control</span></div>
+            <svg class="chart" viewBox="0 0 480 170" height="170"><line class="grid-l" x1="0" y1="42" x2="480" y2="42"/><line class="grid-l" x1="0" y1="85" x2="480" y2="85"/><line class="grid-l" x1="0" y1="128" x2="480" y2="128"/>
+              <path class="ln-bench" d="M0,150 L120,118 L240,150 L360,96 L480,70"/>
+              <path id="sEq" class="ln-port" stroke="var(--loss)" d="M0,150 L120,150 L240,160 L360,150 L480,158"/></svg>
+            <div class="legend"><span><i class="swatch" id="sSw" style="background:var(--loss)"></i> selected</span><span><i class="swatch" style="background:var(--steel)"></i> ARIMA</span></div>
+          </div>
+          <div class="panel"><div class="phead"><span class="t">Drawdown</span><span class="s">underwater</span></div>
+            <svg class="chart" viewBox="0 0 480 170" height="170"><line class="grid-l" x1="0" y1="6" x2="480" y2="6"/><line class="grid-l" x1="0" y1="60" x2="480" y2="60"/><line class="grid-l" x1="0" y1="114" x2="480" y2="114"/>
+              <path class="dd-area" d="M0,6 L80,30 L150,18 L230,52 L300,150 L350,96 L420,60 L480,40 L480,170 L0,170 Z"/></svg>
+            <div class="legend"><span class="dim">deepest in the covid stress window</span></div>
+          </div>
+          <div class="panel"><div class="phead"><span class="t">Rolling Sharpe</span><span class="s">252-bar</span></div>
+            <svg class="chart" viewBox="0 0 480 150" height="150"><line class="axis" x1="0" y1="75" x2="480" y2="75"/>
+              <path class="ln-port" stroke="var(--loss)" d="M0,70 L80,90 L160,60 L240,104 L320,120 L400,80 L480,96"/>
+              <text x="2" y="14">+1</text><text x="2" y="148">−1</text></svg>
+            <div class="legend"><span class="dim">mostly below zero — no persistent edge</span></div>
+          </div>
+          <div class="panel"><div class="phead"><span class="t">Daily return distribution</span><span class="s">left-skewed</span></div>
+            <svg class="chart" viewBox="0 0 480 150" height="150"><line class="axis" x1="240" y1="0" x2="240" y2="135"/>
+              <g fill="var(--loss)"><rect x="40" y="120" width="22" height="15"/><rect x="72" y="110" width="22" height="25"/><rect x="104" y="92" width="22" height="43"/><rect x="136" y="70" width="22" height="65"/><rect x="168" y="44" width="22" height="91"/></g>
+              <g fill="var(--gain)"><rect x="208" y="30" width="22" height="105"/><rect x="240" y="40" width="22" height="95"/><rect x="272" y="62" width="22" height="73"/><rect x="304" y="88" width="22" height="47"/><rect x="336" y="104" width="22" height="31"/><rect x="368" y="118" width="22" height="17"/></g>
+              <text x="232" y="148">0%</text></svg>
+          </div>
+        </div>
+
+        <div class="banner" id="sWhy" style="border-left-color:var(--series);margin:18px 0 0"></div>
+      </section>
+
+      <!-- ════════ CONDITIONS ════════ -->
+      <section class="view" data-v="conditions">
+        <div class="h1">Condition attribution</div>
+        <div class="lead">Where each strategy earns or bleeds, by market condition. Primary axis is live-computable conditions (volatility, trend, rates). Named historical episodes are kept separately as stress windows.</div>
+
+        <div class="grid c2" style="margin-top:20px">
+          <div class="panel"><div class="phead"><span class="t">Sharpe by condition</span><span class="s">control vs GBM</span></div>
+            <svg class="chart" viewBox="0 0 460 180" height="180"><line class="axis" x1="0" y1="90" x2="460" y2="90"/>
+              <g><rect class="bar-pos" x="20" y="44" width="26" height="46"/><rect class="bar-neg" x="50" y="90" width="26" height="20"/></g>
+              <g><rect class="bar-pos" x="130" y="30" width="26" height="60"/><rect class="bar-neg" x="160" y="90" width="26" height="58"/></g>
+              <g><rect class="bar-pos" x="240" y="70" width="26" height="20"/><rect class="bar-neg" x="270" y="90" width="26" height="40"/></g>
+              <g><rect class="bar-pos" x="350" y="60" width="26" height="30"/><rect class="bar-neg" x="380" y="90" width="26" height="48"/></g>
+              <text x="20" y="170">low-vol</text><text x="128" y="170">trend-up</text><text x="244" y="170">high-vol</text><text x="356" y="170">rates-up</text></svg>
+            <div class="legend"><span><i class="swatch" style="background:var(--gain)"></i> ARIMA</span><span><i class="swatch" style="background:var(--loss)"></i> GBM signed</span></div>
+          </div>
+          <div class="panel"><div class="phead"><span class="t">Strategy × condition</span><span class="s">Δ Sharpe vs control</span></div>
+            <table class="heat"><thead><tr><th></th><th>low-vol</th><th>trend-up</th><th>high-vol</th><th>rates-up</th></tr></thead><tbody>
+              <tr><td class="lbl">signed</td><td style="background:rgba(242,113,90,.15)">−.09</td><td style="background:rgba(242,113,90,.55)">−1.09</td><td style="background:rgba(242,113,90,.85)">−1.68</td><td style="background:rgba(242,113,90,.45)">−.85</td></tr>
+              <tr><td class="lbl">vol-scaled</td><td style="background:rgba(91,214,164,.2)">+.26</td><td style="background:rgba(242,113,90,.6)">−1.24</td><td style="background:rgba(242,113,90,.9)">−1.97</td><td style="background:rgba(242,113,90,.5)">−1.01</td></tr>
+              <tr><td class="lbl">tripbar</td><td style="background:rgba(91,214,164,.4)">+.68</td><td style="background:rgba(242,113,90,.6)">−1.27</td><td style="background:rgba(242,113,90,.75)">−1.54</td><td style="background:rgba(91,214,164,.12)">−.08</td></tr>
+            </tbody></table>
+          </div>
+        </div>
+
+        <div class="sec">Stress windows <span class="dim">— named historical episodes</span><span class="ln"></span></div>
+        <div class="panel flush"><table>
+          <thead><tr><th>Episode</th><th>Window</th><th class="num">ARIMA</th><th class="num">GBM signed</th><th class="num">SPY</th></tr></thead>
+          <tbody>
+            <tr><td>Global Financial Crisis</td><td class="num dim">’08-09</td><td class="num gain">+0.31</td><td class="num loss">−0.42</td><td class="num loss">−0.55</td></tr>
+            <tr><td>COVID crash</td><td class="num dim">’20</td><td class="num gain">+0.40</td><td class="num loss">−1.28</td><td class="num loss">−0.21</td></tr>
+            <tr><td>2022 rate selloff</td><td class="num dim">’22</td><td class="num gain">+0.41</td><td class="num loss">−0.44</td><td class="num loss">−0.18</td></tr>
+          </tbody></table></div>
+      </section>
+
+      <!-- ════════ PROVENANCE ════════ -->
+      <section class="view" data-v="provenance">
+        <div class="h1">Provenance</div>
+        <div class="lead">The exact inputs and controls behind a result — reproducible from the pinned configuration and commit.</div>
+        <div class="grid c2" style="margin-top:20px">
+          <div class="panel"><div class="phead"><span class="t">Run configuration</span><span class="s">GBM · signed</span></div>
+            <ul class="lin">
+              <li><span class="k">commit</span><span class="v"><a href="https://github.com/James-Delgado/quant/commit/397f68a" target="_blank" rel="noopener">397f68a ↗</a></span></li>
+              <li><span class="k">train / test / step</span><span class="v">504 / 63 / 63</span></li>
+              <li><span class="k">embargo<span class="info" data-tip="Bars dropped between train and test to stop adjacent, serially-correlated samples from leaking into the test window.">i</span></span><span class="v">3 bars</span></li>
+              <li><span class="k">label horizon</span><span class="v">1</span></li>
+              <li><span class="k">hyperparameter search</span><span class="v">50 iters · 3 inner folds</span></li>
+              <li><span class="k">costs</span><span class="v">0.5¢/sh · 5 bps</span></li>
+            </ul>
+          </div>
+          <div class="panel"><div class="phead"><span class="t">Leakage controls</span><span class="s">enforced this run</span></div>
+            <div class="ctrl"><span class="ck">✓</span> Purge — label-window overlap removed<span class="meta2">Channel A</span></div>
+            <div class="ctrl"><span class="ck">✓</span> Embargo — serial-correlation gap<span class="meta2">3 bars</span></div>
+            <div class="ctrl"><span class="ck">✓</span> Macro series lagged to publication date<span class="meta2">+1 bd</span></div>
+            <div class="ctrl"><span class="ck">✓</span> Hyperparameter search inside train window<span class="meta2">no peek</span></div>
+            <div class="ctrl"><span class="ck">✓</span> Sample-weighting parity verified<span class="meta2">audited</span></div>
+          </div>
+          <div class="panel"><div class="phead"><span class="t">Harness self-tests</span></div>
+            <div class="ctrl"><span class="ck">✓</span> No-skill strategy → ≈ 0 edge net of costs<span class="meta2">pass</span></div>
+            <div class="ctrl"><span class="ck">✓</span> Seeded leaky strategy → detected<span class="meta2">pass</span></div>
+          </div>
+          <div class="panel"><div class="phead"><span class="t">Data lineage</span></div>
+            <ul class="lin">
+              <li><span class="k">Prices</span><span class="v">Tiingo adj EOD</span></li>
+              <li><span class="k">Macro</span><span class="v">FRED · DGS10 DFF VIXCLS</span></li>
+              <li><span class="k">Filings</span><span class="v">SEC EDGAR 8-K/10-K/10-Q</span></li>
+              <li><span class="k">News</span><span class="v">RSS</span></li>
+              <li><span class="k">Sentiment</span><span class="v">FinBERT · point-in-time</span></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ════════ CATALOG ════════ -->
+      <section class="view" data-v="catalog">
+        <div class="h1">Feature Catalog</div>
+        <div class="lead">The registered feature set with live monitoring — summary statistics, coverage, and a drift check that compares each feature's recent window against its training distribution.</div>
+        <div class="figrow" style="margin:20px 0 6px">
+          <div class="fig"><span class="lab">Registered</span><span class="val">25</span></div>
+          <div class="fig"><span class="lab">Stable</span><span class="val gain">22</span></div>
+          <div class="fig"><span class="lab">Drifting<span class="info" data-tip="A feature whose recent distribution has shifted materially from the distribution the models were trained on. Worth review before trusting fresh predictions.">i</span></span><span class="val" style="color:var(--warnc)">2</span></div>
+          <div class="fig"><span class="lab">Stale</span><span class="val">0</span></div>
+          <div class="fig"><span class="lab">Coverage<span class="info" data-tip="Share of symbol-days where the feature has a non-null value over the panel.">i</span></span><span class="val">99.7%</span></div>
+        </div>
+        <div class="panel flush" style="margin-top:8px"><table>
+          <thead><tr><th>Feature</th><th>Group</th><th class="num">Coverage</th><th>Distribution</th><th class="num">μ / σ</th><th>Stability</th><th>OOS status</th></tr></thead>
+          <tbody>
+            <tr><td>ret_1d</td><td>price</td><td class="num">100%</td><td><svg class="dist" width="58" height="20" viewBox="0 0 58 20"><rect x="2" y="14" width="6" height="6"/><rect x="11" y="9" width="6" height="11"/><rect x="20" y="3" width="6" height="17"/><rect x="29" y="5" width="6" height="15"/><rect x="38" y="11" width="6" height="9"/><rect x="47" y="15" width="6" height="5"/></svg></td><td class="num">0.0004 / 0.012</td><td><span class="pill ok">stable</span></td><td><span class="tag">baseline</span></td></tr>
+            <tr><td>vol_21d</td><td>volatility</td><td class="num">100%</td><td><svg class="dist" width="58" height="20" viewBox="0 0 58 20"><rect x="2" y="6" width="6" height="14"/><rect x="11" y="3" width="6" height="17"/><rect x="20" y="7" width="6" height="13"/><rect x="29" y="11" width="6" height="9"/><rect x="38" y="14" width="6" height="6"/><rect x="47" y="16" width="6" height="4"/></svg></td><td class="num">0.011 / 0.006</td><td><span class="pill ok">stable</span></td><td><span class="tag">baseline</span></td></tr>
+            <tr><td>xs_rank_vol_21d</td><td>cross-section</td><td class="num">99.9%</td><td><svg class="dist" width="58" height="20" viewBox="0 0 58 20"><rect x="2" y="8" width="6" height="12"/><rect x="11" y="8" width="6" height="12"/><rect x="20" y="8" width="6" height="12"/><rect x="29" y="8" width="6" height="12"/><rect x="38" y="8" width="6" height="12"/><rect x="47" y="8" width="6" height="12"/></svg></td><td class="num">0.50 / 0.29</td><td><span class="pill ok">stable</span></td><td><span class="pill warn">edge · slice-only</span></td></tr>
+            <tr><td>trend_regime</td><td>regime</td><td class="num">100%</td><td><svg class="dist" width="58" height="20" viewBox="0 0 58 20"><rect x="6" y="6" width="14" height="14"/><rect x="38" y="3" width="14" height="17"/></svg></td><td class="num">0.58 / 0.49</td><td><span class="pill ok">stable</span></td><td><span class="pill warn">edge · slice-only</span></td></tr>
+            <tr><td>DFF (lagged)</td><td>macro</td><td class="num">100%</td><td><svg class="dist" width="58" height="20" viewBox="0 0 58 20"><rect x="2" y="4" width="6" height="16"/><rect x="11" y="6" width="6" height="14"/><rect x="20" y="9" width="6" height="11"/><rect x="29" y="7" width="6" height="13"/><rect x="38" y="5" width="6" height="15"/><rect x="47" y="10" width="6" height="10"/></svg></td><td class="num">1.83 / 1.91</td><td><span class="pill warn"><i></i> drifting</span></td><td><span class="pill bad">no edge</span></td></tr>
+            <tr><td>sentiment_score</td><td>text</td><td class="num">88%</td><td><svg class="dist" width="58" height="20" viewBox="0 0 58 20"><rect x="2" y="13" width="6" height="7"/><rect x="11" y="8" width="6" height="12"/><rect x="20" y="4" width="6" height="16"/><rect x="29" y="9" width="6" height="11"/><rect x="38" y="13" width="6" height="7"/><rect x="47" y="16" width="6" height="4"/></svg></td><td class="num">0.04 / 0.21</td><td><span class="pill warn"><i></i> watch · 88% cov</span></td><td><span class="pill bad">no edge</span></td></tr>
+          </tbody></table></div>
+        <p class="note">Distributions and coverage refresh nightly. Two features carry edge on slice evidence only — full-panel confirmation is open and flagged, not assumed.</p>
+      </section>
+
+      <!-- ════════ LEDGER ════════ -->
+      <section class="view" data-v="ledger">
+        <div class="h1">Trial Registry</div>
+        <div class="lead">Every pre-registered comparison and its verdict. The count drives the multiple-testing bar: the more strategies tried, the higher an out-of-sample Sharpe must clear to be believed.</div>
+        <div class="figrow" style="margin:20px 0 8px">
+          <div class="fig"><span class="lab">Trials to date</span><span class="val">73</span></div>
+          <div class="fig"><span class="lab">Luck bar<span class="info" data-tip="The best Sharpe you'd expect from pure chance given how many strategies have been tried. A real result must clear this, and it rises as the trial count grows.">i</span></span><span class="val ser">0.71</span><span class="sub">under no-skill null</span></div>
+          <div class="fig"><span class="lab">Best result</span><span class="val loss">0.18 &lt; 0.71</span><span class="sub">does not clear the bar</span></div>
+        </div>
+        <div class="panel flush" style="margin-top:8px"><table>
+          <thead><tr><th>Run</th><th>Project</th><th class="num">Comparisons</th><th>Verdict</th><th>Commit</th></tr></thead>
+          <tbody>
+            <tr><td>exit gate</td><td>4A</td><td class="num">1</td><td><span class="pill bad">no edge</span></td><td class="mono small"><a href="https://github.com/James-Delgado/quant/commit/f3b7533" target="_blank" rel="noopener">f3b7533 ↗</a></td></tr>
+            <tr><td>leakage A/B</td><td>4A</td><td class="num">8</td><td><span class="pill warn">leak fixed</span></td><td class="mono small"><a href="https://github.com/James-Delgado/quant/commit/2dede78" target="_blank" rel="noopener">2dede78 ↗</a></td></tr>
+            <tr><td>feature ablation</td><td>4A</td><td class="num">30</td><td><span class="pill bad">no edge</span></td><td class="mono small"><a href="https://github.com/James-Delgado/quant/commit/d83e5cf" target="_blank" rel="noopener">d83e5cf ↗</a></td></tr>
+            <tr><td>label ablation</td><td>4A</td><td class="num">12</td><td><span class="pill">inconclusive</span></td><td class="mono small"><a href="https://github.com/James-Delgado/quant/commit/893db9a" target="_blank" rel="noopener">893db9a ↗</a></td></tr>
+            <tr><td>target ablation</td><td>B1</td><td class="num">16</td><td><span class="pill warn"><i></i> running</span></td><td class="dim small">—</td></tr>
+          </tbody></table></div>
+      </section>
+
+      <!-- ════════ DATA & MARKET ════════ -->
+      <section class="view" data-v="data">
+        <div class="h1">Data &amp; Market</div>
+        <div class="lead">Feed health over the lake, and a snapshot of the market environment the strategies operate in. Live SLA monitoring and intraday quotes arrive with the execution layer.</div>
+        <div class="sec">Feeds<span class="ln"></span></div>
+        <div class="grid c4">
+          <div class="panel"><div class="phead"><span class="t">Prices · Tiingo</span><span class="pill ok"><i></i> ok</span></div><div class="mono small dim">last 2026-06-26 · 0 gaps</div></div>
+          <div class="panel"><div class="phead"><span class="t">Prices · Alpaca</span><span class="pill ok"><i></i> ok</span></div><div class="mono small dim">last 2026-06-26 · 0 gaps</div></div>
+          <div class="panel"><div class="phead"><span class="t">Macro · FRED</span><span class="pill warn"><i></i> lag</span></div><div class="mono small dim">DFF +1 bd · expected</div></div>
+          <div class="panel"><div class="phead"><span class="t">Filings · EDGAR</span><span class="pill ok"><i></i> ok</span></div><div class="mono small dim">last 2026-06-25</div></div>
+        </div>
+        <div class="sec">Market snapshot<span class="ln"></span></div>
+        <div class="grid c4">
+          <div class="panel fig"><span class="lab">VIX</span><span class="val">14.2</span><span class="sub gain">low-vol regime</span></div>
+          <div class="panel fig"><span class="lab">10Y yield</span><span class="val">4.31%</span><span class="sub steel">+3 bp</span></div>
+          <div class="panel fig"><span class="lab">Breadth &gt; MA200</span><span class="val">71%</span><span class="sub gain">broad</span></div>
+          <div class="panel fig"><span class="lab">2s10s</span><span class="val">+0.42</span><span class="sub steel">un-inverted</span></div>
+        </div>
+        <p class="note">33-symbol universe · union timeline 2003 → 2026 · point-in-time validated.</p>
+      </section>
+
+      <!-- ════════ EXPLANATIONS ════════ -->
+      <section class="view" data-v="explain">
+        <div class="h1">Explanations</div>
+        <div class="lead">Plain-language references for the methods behind the numbers — also surfaced as inline tips across the console.</div>
+        <div class="grid c3" style="margin-top:20px">
+          <div class="panel read"><h4>Purge &amp; embargo</h4><p>Two leakage defenses: purge removes training labels that overlap the test window; embargo adds a gap for residual serial correlation, sized from how quickly autocorrelation decays.</p><span class="more">read →</span></div>
+          <div class="panel read"><h4>The luck bar</h4><p>An out-of-sample Sharpe is only meaningful against the best you'd expect from the number of strategies tried. That bar rises with the count — it is why the trial registry is kept.</p><span class="more">read →</span></div>
+          <div class="panel read"><h4>Condition attribution</h4><p>Performance is read per market condition, not just on aggregate, so a single favorable era cannot carry a verdict.</p><span class="more">read →</span></div>
+          <div class="panel read"><h4>Sample weighting</h4><p>Overlapping forward-return labels are not independent; each is weighted by the unique portion of its window.</p><span class="more">read →</span></div>
+          <div class="panel read"><h4>Equal-loss test</h4><p>Compares two forecasts' accuracy directly. A decisive result means one model's errors are smaller across the board.</p><span class="more">read →</span></div>
+          <div class="panel read"><h4>In-sample vs out-of-sample</h4><p>What a model leans on in training does not predict what helps out-of-sample here — so only out-of-sample evidence drives feature decisions.</p><span class="more">read →</span></div>
+        </div>
+      </section>
+
+    </div></div>
+  </div>
+</div>
+
+<!-- Report modal + toast -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modalForm" role="dialog" aria-modal="true" aria-label="Report an issue">
+    <h3>Report an issue</h3>
+    <div class="ctx" id="rCtx">Context: — · build 397f68a</div>
+    <div class="field"><label>Title</label><input id="rTitle" type="text" placeholder="Short summary" /></div>
+    <div class="frow">
+      <div class="field"><label>Type</label><select id="rType"><option>bug</option><option>idea</option><option>data</option></select></div>
+      <div class="field"><label>Severity</label><select id="rSev"><option>low</option><option>med</option><option>high</option></select></div>
+    </div>
+    <div class="field"><label>Description</label><textarea placeholder="What happened, and what you expected"></textarea></div>
+    <div class="mact"><button class="btn" id="rCancel">Cancel</button><button class="btn primary" id="rSubmit">Submit</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  const titles={overview:"Overview",strategies:"Strategies",conditions:"Conditions",data:"Data & Market",provenance:"Provenance",catalog:"Feature Catalog",ledger:"Trial Registry",explain:"Explanations"};
+  function show(v){
+    document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active',s.dataset.v===v));
+    document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
+    document.getElementById('ttl').textContent=titles[v];
+    document.querySelector('.content').scrollTop=0;
+  }
+  document.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',()=>show(a.dataset.v)));
+
+  // Strategy roster ↔ detail
+  const STRAT={
+    arima:{n:"ARIMA(1,0,0) control",desc:"A one-parameter autoregressive forecast: tomorrow's return is a damped fraction of today's. On a market that compounds upward it behaves as a slow trend-follower, and it is the control every other strategy is measured against.",
+      figs:[["Sharpe","0.42","gain","SPY 0.31"],["Max drawdown","−18%","loss",""],["Hit rate","51.4%","",""],["Role","control","ser","reference"]],
+      eq:"M0,150 L120,116 L240,92 L360,68 L480,46",col:"var(--gain)",
+      why:["var(--gain)","<b>Why it leads.</b> It stays aligned with the long trend and only lightly mean-reverts — the right prior for this universe."]},
+    gbm_signed:{n:"GBM · signed returns",desc:"Gradient-boosted return forecaster on 25 features, refit each walk-forward window with the hyperparameter search held entirely inside the training data.",
+      figs:[["Sharpe","−0.34","loss","ARIMA +0.42"],["Δ vs control","−0.76","loss",""],["Hit rate","48.7%","",""],["Equal-loss test","DM 1.00","","control better"]],
+      eq:"M0,150 L120,150 L240,160 L360,150 L480,158",col:"var(--loss)",
+      why:["var(--loss)","<b>Why it underperforms.</b> It learns crisis mean-reversion from high-volatility bars and applies it everywhere, fighting the trend — worst in the covid window (−1.68 vs control)."]},
+    gbm_vol:{n:"GBM · vol-scaled",desc:"The same gradient-boosted model with the target divided by point-in-time volatility, so calm and turbulent periods contribute on a comparable scale.",
+      figs:[["Sharpe","−0.34","loss","ARIMA +0.42"],["Δ vs control","−0.76","loss",""],["Hit rate","48.9%","",""],["Equal-loss test","DM 1.00","","control better"]],
+      eq:"M0,150 L120,152 L240,158 L360,152 L480,160",col:"var(--loss)",
+      why:["var(--loss)","<b>Why it underperforms.</b> Vol-scaling reshapes the loss surface but not the sign of the signal — the trend-fighting bias survives intact."]},
+    gbm_tb:{n:"GBM · triple-barrier",desc:"A classification target: for each entry, which barrier is hit first — profit-take, stop-loss, or the time limit. Changes the question from “how much” to “which outcome.”",
+      figs:[["Sharpe","+0.18","","ARIMA +0.42"],["Δ vs control","−0.25","loss",""],["Hit rate","52.1%","",""],["Best era","pre-2010","ser",""]],
+      eq:"M0,150 L120,138 L240,150 L360,140 L480,134",col:"var(--steel)",
+      why:["var(--series)","<b>Mixed.</b> The event target changes the signal and earns in the pre-2010 era, but loses every recent qualifying condition — not a durable edge."]},
+    b1:{n:"B1 · target reframing",desc:"An open study testing four alternative prediction targets — multi-day direction, drawdown classification, volatility, and cumulative direction — to see whether a different objective is more learnable than next-bar return.",
+      figs:[["Status","running","ser",""],["Targets","4","",""],["Stage","slice ablation","",""],["Verdict","pending","dim",""]],
+      eq:"M0,124 L120,121 L240,123 L360,120 L480,122",col:"var(--steel)",
+      why:["var(--steel)","<b>In progress.</b> Verdict pending the slice ablation — no performance claim yet."]}
+  };
+  function renderStrat(k){
+    const s=STRAT[k]; if(!s) return;
+    document.getElementById('sName').textContent=s.n;
+    document.getElementById('sDesc').textContent=s.desc;
+    document.getElementById('sFigs').innerHTML=s.figs.map(f=>'<div class="fig"><span class="lab">'+f[0]+'</span><span class="val '+f[2]+'">'+f[1]+'</span><span class="sub">'+(f[3]||'')+'</span></div>').join('');
+    const eq=document.getElementById('sEq'); eq.setAttribute('d',s.eq); eq.setAttribute('stroke',s.col);
+    document.getElementById('sSw').style.background=s.col;
+    const w=document.getElementById('sWhy'); w.style.borderLeftColor=s.why[0]; w.innerHTML=s.why[1];
+    document.querySelectorAll('.rost').forEach(r=>r.classList.toggle('sel',r.dataset.s===k));
+  }
+  document.querySelectorAll('.rost').forEach(r=>r.addEventListener('click',()=>renderStrat(r.dataset.s)));
+  document.querySelectorAll('[data-go]').forEach(el=>el.addEventListener('click',()=>{show(el.dataset.go); if(el.dataset.pick) renderStrat(el.dataset.pick);}));
+  renderStrat('gbm_signed');
+
+  // Issue reporting — UI is the button + modal only. Reports route to the
+  // engineer/agent-visible tracker (GitHub issues → promotable to PRIORITIES tasks),
+  // never to a user-facing panel.
+  const modalBg=document.getElementById('modalBg');
+  function openReport(){
+    const cv=document.querySelector('.nav a.active');
+    document.getElementById('rCtx').textContent='Context: '+(cv?titles[cv.dataset.v]:'—')+' · build 397f68a';
+    modalBg.classList.add('open');
+  }
+  function closeReport(){modalBg.classList.remove('open');}
+  document.getElementById('reportBtn').addEventListener('click',openReport);
+  document.getElementById('rCancel').addEventListener('click',closeReport);
+  modalBg.addEventListener('click',e=>{if(e.target===modalBg)closeReport();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeReport();});
+  function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3600);}
+  document.getElementById('rSubmit').addEventListener('click',()=>{
+    closeReport();
+    document.getElementById('rTitle').value=''; document.querySelector('#modalForm textarea').value='';
+    toast('Report submitted — routed to the issue tracker.');
+  });
+
+  // Info tooltips: hover (CSS) + click-to-pin (touch / sticky)
+  document.querySelectorAll('.info').forEach(el=>el.addEventListener('click',e=>{
+    e.stopPropagation(); const open=el.classList.contains('open');
+    document.querySelectorAll('.info.open').forEach(x=>x.classList.remove('open'));
+    if(!open) el.classList.add('open');
+  }));
+  document.addEventListener('click',()=>document.querySelectorAll('.info.open').forEach(x=>x.classList.remove('open')));
+</script>
+</body>
+</html>
