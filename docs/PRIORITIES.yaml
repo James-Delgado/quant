@@ -685,7 +685,8 @@ tasks:
     title: "C2-M3: Backtest-vs-paper reconciliation harness (>1% delta = investigate)"
     project: C
     sub_project: C2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T16:30:00Z
     depends_on: [C2-M2]
     blocks: []
     deliverable:
