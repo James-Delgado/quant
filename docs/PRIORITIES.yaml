@@ -1254,7 +1254,8 @@ tasks:
     title: "Formalize the T1 drawdown 'vol-implied DD probability' baseline (currently an EWMA-vol-rank proxy)"
     project: B
     sub_project: B1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T22:10:00Z
     depends_on: [B1-M2]
     blocks: [B-CLOSE]
     deliverable:
