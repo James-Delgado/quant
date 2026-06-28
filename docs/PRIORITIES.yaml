@@ -1100,8 +1100,9 @@ tasks:
     title: "Extend tests/test_priorities.py: timestamp presence + ordering (started_at on in_progress/done; completed_at >= started_at)"
     project: A
     sub_project: methodology-upgrade
-    status: in_progress
+    status: done
     started_at: 2026-06-28T21:30:00Z
+    completed_at: 2026-06-28
     depends_on: [A-PRIORITIES-TEST]
     blocks: [A-CLOSE]
     deliverable:
