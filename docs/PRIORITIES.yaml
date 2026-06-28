@@ -1254,8 +1254,9 @@ tasks:
     title: "Formalize the T1 drawdown 'vol-implied DD probability' baseline (currently an EWMA-vol-rank proxy)"
     project: B
     sub_project: B1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T22:10:00Z
+    completed_at: 2026-06-28
     depends_on: [B1-M2]
     blocks: [B-CLOSE]
     deliverable:
@@ -1717,7 +1718,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B3-PRD, B3-M1, B3-M2, B3-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B3-PRD, B3-M1, B3-M2, B3-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-DD-VOLIMPLIED-PANEL-PARITY, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb
@@ -2520,3 +2521,44 @@ tasks:
       ratified in B1 or B2)", so this is a faithful sync, not a rule change — do
       NOT touch any numbered rule (§1–§21). Mirrors A-DSR-DOC-SYNC /
       A-METH-*-SYNC. Non-gating; low priority.
+
+  - id: B1-DD-VOLIMPLIED-PANEL-PARITY
+    rank: 85
+    title: "Promote dd_prob_from_logvol to a tested src helper + apply to run_b1_arms.py (slice↔panel T1 baseline parity)"
+    project: B
+    sub_project: B1
+    status: ready
+    depends_on: [B1-DD-VOLIMPLIED-BASELINE]
+    blocks: [B-CLOSE]
+    deliverable:
+      file: scripts/run_b1_arms.py
+      src: src/quant/backtest/target_eval.py
+      tests: tests/test_target_eval.py
+    references:
+      primary: notebooks/10_b1_target_ablation.ipynb
+      methodology: docs/METHODOLOGY.md
+      runner_pattern: scripts/run_b1_arms.py
+    est_complexity: medium
+    notes: |
+      Discovered during B1-DD-VOLIMPLIED-BASELINE (commit of
+      notebooks/10_b1_target_ablation.ipynb). That task formalized the T1 baseline to
+      the PRD's ARIMA-vol-implied DD probability in the SLICE notebook only (its
+      pinned deliverable), defining dd_prob_from_logvol as a notebook-local helper.
+      Two residual gaps:
+        (a) the parametric DD-probability map lives in the notebook, untested —
+            promote it to src/quant (target_eval.py or features/targets.py) with unit
+            tests (range [0,1], monotone in vol, AUC-equivalence to the vol ranking,
+            NaN passthrough), METHODOLOGY §15.
+        (b) the full-panel runner run_b1_arms.py still uses the raw EWMA-vol
+            `vol_proxy` (~lines 546-552) for T1, so slice and panel now use different
+            T1 baselines. Apply the same best-of {climatology, ARIMA-vol-implied DD
+            prob, EWMA-vol DD prob} there and re-run the drawdown_21d arm under a NEW
+            ledger entry (the panel run counts toward the deflation N, unlike the
+            provisional slice which deliberately does not log).
+      LOW VALUE / LOW PRIORITY: the B1 verdict is final and a stronger baseline only
+      widens the clean T1 negative (B1_REPORT.md §147-150) — it cannot flip an
+      already-failed gate; the slice run confirmed ARIMA-vol AUC (0.498/0.596) lands
+      below the EWMA proxy (0.712/0.653), so best-of keeps EWMA and the verdict is
+      unchanged. Parked at rank 85 in the queued-B band; bump if B-CLOSE needs
+      slice↔panel parity. Added to B-CLOSE.depends_on per AGENT_OPERATION Step 7
+      corollary.
