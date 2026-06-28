@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -294,3 +295,105 @@ class TestSmokeDrawdown:
         assert meta["label_horizon"] == 21
         # base rate is a probability in [0, 1].
         assert 0.0 <= float(meta["drawdown_base_rate"]) <= 1.0
+
+
+# ─── tz-alignment regression (B1-M3-TZTEST) ──────────────────────────────────
+
+
+class TestTzAlignment:
+    """NY price index vs UTC feature index must align by INSTANT, not wall-clock.
+
+    Regression for the B1-M3 first-launch bug (docs/B1_REPORT.md §5): the lake's
+    price index is ``America/New_York`` (close ~20:00) while ``build_features``
+    returns its index in UTC — the *same instants* in two tz representations
+    (e.g. ``2021-01-04 20:00 EST`` ≡ ``2021-01-05 01:00 UTC``). A ``tz_localize(None)``
+    strip (drop tz WITHOUT converting) shifts the price/label index by the UTC
+    offset, so ``_aligned_target_panel`` found zero overlapping bars and dropped all
+    33 symbols. ``_to_naive_utc`` (tz_convert→strip) is the fix.
+
+    The ``--smoke`` panel is tz-NAIVE, so the smoke tests above exercise
+    ``_to_naive_utc`` only as a no-op and could not catch this. These tests feed
+    tz-AWARE frames through the alignment path and assert the contract directly,
+    including a negative control showing the old buggy strip empties the panel.
+    """
+
+    @staticmethod
+    def _ny_utc_pair(periods: int) -> tuple[pd.DatetimeIndex, pd.DatetimeIndex]:
+        """Same instants in two tz representations: NY (lake) and UTC (features)."""
+        ny = pd.date_range(
+            "2021-01-04 20:00", periods=periods, freq="B", tz="America/New_York"
+        )
+        return ny, ny.tz_convert("UTC")
+
+    def _frames(
+        self, periods: int
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DatetimeIndex, pd.DatetimeIndex]:
+        """Build a NY-indexed price frame and a UTC-indexed feature frame (same instants)."""
+        ny, utc = self._ny_utc_pair(periods)
+        rng = np.random.default_rng(7)
+        close = 100.0 * np.cumprod(1 + rng.normal(0.0003, 0.012, periods))
+        price_ny = pd.DataFrame({"close": close}, index=ny)
+        feat_utc = pd.DataFrame(
+            rng.standard_normal((periods, len(runner.FINAL_FEATURE_COLUMNS))),
+            index=utc,
+            columns=list(runner.FINAL_FEATURE_COLUMNS),
+        )
+        return price_ny, feat_utc, ny, utc
+
+    def test_to_naive_utc_preserves_instant_not_wallclock(self) -> None:
+        ny, utc = self._ny_utc_pair(periods=5)
+        from_ny = runner._to_naive_utc(ny)
+        from_utc = runner._to_naive_utc(utc)
+        # Both tz representations of the same instants collapse to ONE naive index.
+        assert from_ny.equals(from_utc)
+        assert from_ny.tz is None
+        # The retained value is the UTC wall-clock (20:00 EST → 01:00 UTC next day),
+        # NOT the NY wall-clock 20:00 a naive strip would have kept.
+        assert from_ny[0] == pd.Timestamp("2021-01-05 01:00:00")
+
+    def test_to_naive_utc_noop_on_naive_index(self) -> None:
+        # The smoke panel path: a tz-naive index passes through unchanged.
+        naive = pd.date_range("2021-01-04", periods=5, freq="B")
+        out = runner._to_naive_utc(naive)
+        assert out.tz is None
+        assert out.equals(pd.DatetimeIndex(naive))
+
+    def test_normalization_makes_feature_and_price_indices_equal(self) -> None:
+        # The core contract: UTC-feature and NY-price indices, once normalized,
+        # are EQUAL because they are the same instants (this is what _build_full_panel
+        # relies on before handing the panel to _aligned_target_panel).
+        _, _, ny, utc = self._frames(periods=20)
+        assert runner._to_naive_utc(utc).equals(runner._to_naive_utc(ny))
+
+    def test_aligned_panel_nonempty_after_tz_normalization(self) -> None:
+        price_ny, feat_utc, _, _ = self._frames(periods=400)
+        # Normalize exactly as _build_full_panel does (both indices → naive UTC).
+        feat = feat_utc.copy()
+        feat.index = runner._to_naive_utc(feat.index)
+        px = price_ny.copy()
+        px.index = runner._to_naive_utc(px.index)
+
+        feats, labels, prices, horizon = runner._aligned_target_panel(
+            "directional_5d", {"AAA": feat}, {"AAA": px}
+        )
+        assert "AAA" in feats
+        assert len(feats["AAA"]) > 0
+        # Feature and label indices align (the contract collect_oos_predictions needs).
+        assert feats["AAA"].index.equals(labels["AAA"].index)
+        assert prices["AAA"].index.equals(feats["AAA"].index)
+        assert horizon == 5
+
+    def test_buggy_naive_strip_empties_the_panel(self) -> None:
+        # Negative control: the OLD bug (tz_localize(None) WITHOUT converting) leaves
+        # NY wall-clock 20:00 vs UTC wall-clock 01:00 — zero overlap — so every symbol
+        # is dropped. This is exactly the all-33-symbols-dropped launch failure, and it
+        # proves the test above actually catches the regression rather than passing
+        # vacuously.
+        price_ny, feat_utc, _, _ = self._frames(periods=400)
+        feat = feat_utc.copy()
+        feat.index = feat.index.tz_localize(None)
+        px = price_ny.copy()
+        px.index = px.index.tz_localize(None)
+
+        with pytest.raises(RuntimeError, match="no symbols survived alignment"):
+            runner._aligned_target_panel("directional_5d", {"AAA": feat}, {"AAA": px})
