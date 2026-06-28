@@ -286,6 +286,20 @@ become rules 15+ when answered.
 - **OOS attribution method.** Permutation importance computed OOS,
   per-fold ablation as canonical, or conformal feature relevance? Pick
   in Project B2.
+  *Resolved in the B2 PRD (2026-06-28):* the B2 PRD
+  ([`../.claude/prds/b2-oos-attribution.prd.md`](../.claude/prds/b2-oos-attribution.prd.md))
+  makes the pick — **per-fold ablation is the canonical OOS signal**
+  (`backtest/ablation.py::run_feature_ablation`, the reference by
+  construction) and **OOS permutation importance** (test-fold permutation
+  reusing per-fold fitted models) is validated against it at **Spearman
+  ρ ≥ 0.50** with the rank-correlation distinguishable from the ρ = 0 null
+  at **permutation-test p < 0.05** (gate G1 in the PRD's "Success Metrics";
+  the explicit inverse of the broken IS signal ρ = −0.074). **Conformal
+  feature relevance is deferred** as a conditional third method. The method
+  ships in code at B2-M2 (`src/quant/backtest/attribution.py`) and lands in
+  the feature catalog at B2-M3 via the `attribution_status` field
+  (`{none, ablation_only, oos_permutation, both, agreed}`) — Phase-5
+  Trigger 2 (Project D).
 - **Trial-count ledger schema.** Sketched below; needs to be finalized
   and put under a drift test.
 - **Materiality thresholds for non-Sharpe targets.** Classification
