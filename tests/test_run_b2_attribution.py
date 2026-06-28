@@ -15,6 +15,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import pandas as pd
+import pytest
+
 
 def _load_script(name: str, filename: str) -> Any:
     """Load a ``scripts/<filename>`` module by path (scripts/ is not a package)."""
@@ -99,3 +103,73 @@ class TestLedgerDiscipline:
         # B2 PRD: the single validated method (OOS permutation); ablation is the
         # reference, not a tested claim → minimal contribution to the deflation N.
         assert runner.N_COMPARISONS == 1
+
+
+class TestNb08ReproductionConfig:
+    """B2-M2-G2-NB08 — the G2 reference must be nb08's exact published recipe."""
+
+    def test_nb08_addone_seed_is_seven(self):
+        # nb08 §3 published its add-one lifts at random_state=7; the G2 reference
+        # arm pins THAT seed (not the runner's seed-0 G1/LOO convention).
+        assert runner.NB08_GBM_RANDOM_STATE == 7
+        assert runner.NB08_GBM_RANDOM_STATE != runner.GBM_RANDOM_STATE
+
+    def test_run_config_records_g2_best_regime_reference(self):
+        cfg = runner._build_run_config(False)
+        g2 = cfg["g2_reference"]
+        assert g2["statistic"] == "best_regime_addone_lift"
+        assert g2["gbm_random_state"] == runner.NB08_GBM_RANDOM_STATE
+        assert g2["regime_detector"] == "DateRangeDetector"
+
+    def test_smoke_g2_reference_uses_smoke_seed(self):
+        # Smoke is plumbing only — it reuses the smoke GBM seed, not nb08's.
+        cfg = runner._build_run_config(True)
+        assert cfg["g2_reference"]["gbm_random_state"] == runner.GBM_SMOKE_KWARGS["random_state"]
+
+    def test_deviation_string_marks_nb08_closed(self):
+        # The aggregate-OOS-Sharpe proxy deviation is retired (METHODOLOGY §9).
+        assert "best-regime" in runner.DECLARED_DEVIATIONS
+        assert "aggregate-OOS-Sharpe proxy" in runner.DECLARED_DEVIATIONS  # "no longer the …"
+
+
+class TestBestRegimeFromLiftTable:
+    """The pure nb08 §5 statistic: row-wise regime max of the add-one lift table."""
+
+    @staticmethod
+    def _lift_table() -> pd.DataFrame:
+        # feature_ablation_table shape: rows = feature sets, columns =
+        # aggregate + each regime label + n_bars. The baseline row is absolute
+        # Sharpe; +c rows are deltas. aggregate/n_bars are deliberately extreme
+        # so a leak into the statistic would be caught.
+        return pd.DataFrame(
+            {
+                "aggregate": [1.50, 9.00, 9.00],
+                "covid": [np.nan, 0.50, -0.30],
+                "rate_cycle": [np.nan, 0.20, 0.40],
+                "n_bars": [300, 300, 300],
+            },
+            index=["baseline", "+a", "+b"],
+        )
+
+    def test_takes_max_over_regime_columns(self):
+        out = runner._best_regime_from_lift_table(self._lift_table(), ["a", "b"])
+        assert out["a"] == pytest.approx(0.50)  # max(0.50, 0.20)
+        assert out["b"] == pytest.approx(0.40)  # max(-0.30, 0.40)
+
+    def test_excludes_aggregate_and_n_bars(self):
+        # aggregate (9.0) and n_bars (300) dwarf the regime lifts; the statistic
+        # must ignore both — else it would return 300/9.0, not 0.50.
+        out = runner._best_regime_from_lift_table(self._lift_table(), ["a"])
+        assert out["a"] == pytest.approx(0.50)
+
+    def test_skips_nan_regimes(self):
+        # A regime with no OOS overlap shows NaN; max must skip it (nb08 §5).
+        table = self._lift_table()
+        table.loc["+a", "rate_cycle"] = np.nan  # only covid=0.50 remains
+        out = runner._best_regime_from_lift_table(table, ["a"])
+        assert out["a"] == pytest.approx(0.50)
+
+    def test_indexed_by_candidates_and_named(self):
+        out = runner._best_regime_from_lift_table(self._lift_table(), ["a", "b"])
+        assert list(out.index) == ["a", "b"]
+        assert out.name == "addone_reference"

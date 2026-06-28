@@ -1344,8 +1344,9 @@ tasks:
     title: "G2 exact reproduction: systematized ablation vs nb08's frozen best-regime lifts"
     project: B
     sub_project: B2
-    status: in_progress
+    status: done
     started_at: 2026-06-28T21:30:00Z
+    completed_at: 2026-06-28
     depends_on: [B2-M2]
     blocks: [B-CLOSE]
     deliverable:
@@ -1723,7 +1724,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B3-PRD, B3-M1, B3-M2, B3-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-DD-VOLIMPLIED-PANEL-PARITY, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08, B2-ATTR-SET-DRIFT-TEST]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B3-PRD, B3-M1, B3-M2, B3-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-DD-VOLIMPLIED-PANEL-PARITY, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08, B2-G2-DESIGN-MISMATCH, B2-ATTR-SET-DRIFT-TEST]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb
@@ -2599,3 +2600,45 @@ tasks:
       report); choose the lighter option. LOW PRIORITY / non-gating hardening — the
       reconciliation is already correct and documented; this guards against silent
       future drift. Parked at rank 86 in the queued band.
+
+  - id: B2-G2-DESIGN-MISMATCH
+    rank: 87
+    title: "Resolve G2 ablation-design mismatch: leave-one-out systematized vs add-one nb08 reference"
+    project: B
+    sub_project: B2
+    status: ready
+    depends_on: [B2-M2-G2-NB08]
+    blocks: [B-CLOSE]
+    deliverable:
+      file: scripts/run_b2_attribution.py
+      methodology: docs/METHODOLOGY.md
+    references:
+      primary: .claude/prds/b2-oos-attribution.prd.md
+      concept: docs/concepts/oos-attribution.md
+      nb08: notebooks/08_phase4a_feature_ablation.ipynb
+    est_complexity: small
+    notes: |
+      Discovered during B2-M2-G2-NB08 (commit of scripts/run_b2_attribution.py).
+      With nb08's EXACT statistic now wired as the G2 reference (best-regime add-one
+      lift, seed 7), the real-slice G2 ρ = -0.427 (data/b2/slice/gate.json) — the
+      systematized signal does NOT reproduce nb08, and is mildly ANTI-correlated.
+      Root cause: the two arms use different ablation DESIGNS. G2's systematized
+      signal is per_fold_ablation_attribution = LEAVE-ONE-OUT (the B2 canonical OOS
+      method, METHODOLOGY §14: importance = Sharpe(all) - Sharpe(all - f), a feature's
+      marginal value WITHIN the full set), while nb08's published reference is
+      ADD-ONE (Sharpe(base+f) - Sharpe(base), marginal value in ISOLATION on top of
+      the 17-base). LOO and add-one measure different things, so a high ρ was never
+      guaranteed — the old aggregate proxy masked this; the exact statistic exposes
+      it. The B2 PRD G2 row ("the systematized ablation reproduces M3") implicitly
+      assumed same-design reproduction. RESOLUTION OPTIONS (pick via a methodology
+      decision, do NOT silently change the gate): (a) make G2 a true same-design port
+      check — compare a systematized ADD-ONE lift vs nb08's add-one reference (ρ→~1
+      expected; this is the honest "did I port nb08" test) and keep LOO as the G1
+      reference only; (b) keep cross-design but reframe G2 as a "design-sensitivity"
+      report, not a 0.90 reproduction gate; (c) accept the mismatch and document G2
+      as N/A. NOTE this does NOT affect the B2 G1 verdict (permutation vs LOO ablation,
+      ρ=-0.004 FAIL) — LOO is a valid OOS signal regardless of nb08 reproduction — nor
+      the B2-M3 catalog (G2 does not enter classify_attribution_status). Added to
+      B-CLOSE.depends_on (Step 7 corollary) so closeout does not certify on an
+      unresolved port question. LOW PRIORITY — B2's research thread is already a
+      documented NO-GO (B2-CONFORMAL-PRD is the live continuation).
