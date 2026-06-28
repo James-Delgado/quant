@@ -35,7 +35,12 @@ export function scaleX(i: number, n: number, width: number): number {
 }
 
 /** Map a value to a y pixel (SVG y grows downward; max sits at padY). */
-export function scaleY(value: number, domain: Domain, height: number, padY = 0): number {
+export function scaleY(
+  value: number,
+  domain: Domain,
+  height: number,
+  padY = 0,
+): number {
   const [min, max] = domain;
   const span = max - min || 1;
   const t = (value - min) / span; // 0 at min, 1 at max
@@ -68,7 +73,10 @@ export function linePath(values: number[], opts: LineOpts): string {
  * Closed "underwater" area between the series and a baseline value (default 0).
  * Used for the drawdown chart, where values are <= 0 and the baseline is the top.
  */
-export function areaPath(values: number[], opts: LineOpts & { baseline?: number }): string {
+export function areaPath(
+  values: number[],
+  opts: LineOpts & { baseline?: number },
+): string {
   const { width, height, padY = 0, baseline = 0 } = opts;
   if (values.length === 0) return "";
   const domain = opts.domain ?? extent([...values, baseline]);
@@ -84,7 +92,12 @@ export function dateFraction(date: string, start: string, end: string): number {
   const t = Date.parse(date);
   const a = Date.parse(start);
   const b = Date.parse(end);
-  if (!Number.isFinite(t) || !Number.isFinite(a) || !Number.isFinite(b) || b <= a) {
+  if (
+    !Number.isFinite(t) ||
+    !Number.isFinite(a) ||
+    !Number.isFinite(b) ||
+    b <= a
+  ) {
     return Number.NaN;
   }
   return Math.min(1, Math.max(0, (t - a) / (b - a)));
@@ -96,7 +109,8 @@ export function dateFraction(date: string, start: string, end: string): number {
  * Mirrors the mockup's inline rgba() ramp.
  */
 export function heatFill(value: number | null, maxAbs: number): string {
-  if (value === null || Number.isNaN(value) || maxAbs <= 0) return "transparent";
+  if (value === null || Number.isNaN(value) || maxAbs <= 0)
+    return "transparent";
   const alpha = Math.min(0.9, 0.12 + (Math.abs(value) / maxAbs) * 0.78);
   const rgb = value >= 0 ? "91,214,164" : "242,113,90";
   return `rgba(${rgb},${alpha.toFixed(2)})`;

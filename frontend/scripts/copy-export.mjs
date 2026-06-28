@@ -36,4 +36,6 @@ await cp(SRC, DEST, {
   recursive: true,
   filter: (s) => !path.basename(s).startsWith("."),
 });
-console.log(`[sync-data] copied export -> ${path.relative(process.cwd(), DEST)}`);
+console.log(
+  `[sync-data] copied export -> ${path.relative(process.cwd(), DEST)}`,
+);

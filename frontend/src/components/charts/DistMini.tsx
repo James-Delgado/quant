@@ -11,9 +11,18 @@ interface DistMiniProps {
  * Bespoke SVG, not a charting lib (E1-M3 decision). Renders an honest dim dash
  * when the monitor has not produced a distribution yet — never a fake shape.
  */
-export function DistMini({ values, width = 58, height = 20, ariaLabel }: DistMiniProps) {
+export function DistMini({
+  values,
+  width = 58,
+  height = 20,
+  ariaLabel,
+}: DistMiniProps) {
   if (!values || values.length === 0) {
-    return <span className="dim small" aria-label={`${ariaLabel} — pending`}>—</span>;
+    return (
+      <span className="dim small" aria-label={`${ariaLabel} — pending`}>
+        —
+      </span>
+    );
   }
   const max = Math.max(...values, 1);
   const n = values.length;
@@ -30,7 +39,15 @@ export function DistMini({ values, width = 58, height = 20, ariaLabel }: DistMin
     >
       {values.map((v, i) => {
         const h = Math.max(1, (v / max) * height);
-        return <rect key={i} x={i * (bw + gap)} y={height - h} width={bw} height={h} />;
+        return (
+          <rect
+            key={i}
+            x={i * (bw + gap)}
+            y={height - h}
+            width={bw}
+            height={h}
+          />
+        );
       })}
     </svg>
   );

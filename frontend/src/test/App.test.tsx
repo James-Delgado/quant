@@ -4,7 +4,10 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/App";
 
-const FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
+const FUTURE = {
+  v7_startTransition: true,
+  v7_relativeSplatPath: true,
+} as const;
 
 // AppShell does one real fetch (data_status). Stub it so routing tests are
 // hermetic and don't depend on synced files.
@@ -31,7 +34,9 @@ describe("App routing", () => {
   it("redirects the index route to Overview", async () => {
     renderApp("/");
     await waitFor(() =>
-      expect(screen.getByText("Overview", { selector: ".ttl" })).toBeInTheDocument(),
+      expect(
+        screen.getByText("Overview", { selector: ".ttl" }),
+      ).toBeInTheDocument(),
     );
     const link = screen.getByRole("link", { name: /Overview/ });
     expect(link).toHaveClass("active");
@@ -41,8 +46,12 @@ describe("App routing", () => {
     const user = userEvent.setup();
     renderApp("/overview");
     await user.click(screen.getByRole("link", { name: /Provenance/ }));
-    expect(screen.getByText("Provenance", { selector: ".ttl" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Provenance/ })).toHaveClass("active");
+    expect(
+      screen.getByText("Provenance", { selector: ".ttl" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Provenance/ })).toHaveClass(
+      "active",
+    );
   });
 
   it("renders the real Explanations panel for the last nav slug (no scaffold left)", async () => {
@@ -50,7 +59,9 @@ describe("App routing", () => {
     // so every nav slug now maps to a real page.
     renderApp("/explain");
     // findBy* flushes the AppShell data-status fetch inside act().
-    expect(await screen.findByText("Explanations", { selector: ".h1" })).toBeInTheDocument();
+    expect(
+      await screen.findByText("Explanations", { selector: ".h1" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Purge & embargo")).toBeInTheDocument();
     expect(screen.queryByText(/scaffold/i)).not.toBeInTheDocument();
   });

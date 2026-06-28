@@ -35,12 +35,16 @@ describe("buildIssueUrl", () => {
     const parsed = new URL(url);
     expect(parsed.pathname.endsWith("/issues/new")).toBe(true);
     expect(parsed.searchParams.get("labels")).toBe(FEEDBACK_LABEL);
-    expect(parsed.searchParams.get("title")).toBe("Sparkline renders off-by-one");
+    expect(parsed.searchParams.get("title")).toBe(
+      "Sparkline renders off-by-one",
+    );
     expect(parsed.searchParams.get("body")).toContain("Panel: Overview");
   });
 
   it("respects a repo override", () => {
     const url = buildIssueUrl(REPORT, "https://github.com/acme/widgets");
-    expect(url.startsWith("https://github.com/acme/widgets/issues/new?")).toBe(true);
+    expect(url.startsWith("https://github.com/acme/widgets/issues/new?")).toBe(
+      true,
+    );
   });
 });

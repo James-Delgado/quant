@@ -3,13 +3,18 @@ import { dataClient } from "@/lib/dataClient";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { ErrorState, Loading } from "@/components/ui/StatePanel";
 import { InfoTip } from "@/components/ui/InfoTip";
-import type { DataStatusView, FeedStatus, MarketSnapshot } from "@/types/viewmodels";
+import type {
+  DataStatusView,
+  FeedStatus,
+  MarketSnapshot,
+} from "@/types/viewmodels";
 
 /** Feed status string -> pill variant (honest: stale/lag reads as warn). */
 function feedPill(status: string): "ok" | "warn" | "bad" {
   const s = status.toLowerCase();
   if (s.includes("ok") || s.includes("fresh")) return "ok";
-  if (s.includes("stale") || s.includes("lag") || s.includes("warn")) return "warn";
+  if (s.includes("stale") || s.includes("lag") || s.includes("warn"))
+    return "warn";
   return "bad";
 }
 
@@ -74,7 +79,10 @@ function DataMarketBody({
         <span className="ln" />
       </div>
       <div className="grid c4">
-        <MarketTile label="VIX" value={market.vix != null ? String(market.vix) : "—"} />
+        <MarketTile
+          label="VIX"
+          value={market.vix != null ? String(market.vix) : "—"}
+        />
         <MarketTile
           label="10Y yield"
           value={market.ten_year != null ? `${market.ten_year}%` : "—"}
@@ -114,8 +122,9 @@ function DataMarketBody({
       </div>
       {market.notes?.length ? <p className="note">{market.notes[0]}</p> : null}
       <p className="note">
-        33-symbol universe · union timeline 2003 → 2026 · point-in-time validated. Live SLA
-        monitoring and intraday quotes arrive with the execution layer.
+        33-symbol universe · union timeline 2003 → 2026 · point-in-time
+        validated. Live SLA monitoring and intraday quotes arrive with the
+        execution layer.
       </p>
     </>
   );
@@ -134,8 +143,9 @@ export function DataMarket() {
     <section>
       <div className="h1">Data &amp; Market</div>
       <div className="lead">
-        Feed health over the lake, and a snapshot of the market environment the strategies
-        operate in. Live SLA monitoring and intraday quotes arrive with the execution layer.
+        Feed health over the lake, and a snapshot of the market environment the
+        strategies operate in. Live SLA monitoring and intraday quotes arrive
+        with the execution layer.
       </div>
       {state.status === "loading" && <Loading label="Loading data status…" />}
       {state.status === "error" && <ErrorState error={state.error} />}

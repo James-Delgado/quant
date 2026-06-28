@@ -11,7 +11,10 @@ function shortCommit(commit: string | null): string {
 }
 
 /** Cost line from per-share commission + slippage bps, honest about missing parts. */
-function costLine(commission: number | null, slippageBps: number | null): string {
+function costLine(
+  commission: number | null,
+  slippageBps: number | null,
+): string {
   const parts: string[] = [];
   if (commission != null) parts.push(`${(commission * 100).toFixed(1)}¢/sh`);
   if (slippageBps != null) parts.push(`${slippageBps} bps`);
@@ -57,7 +60,9 @@ function RunConfig({ p }: { p: ProvenanceView }) {
               tip="Bars dropped between train and test to stop adjacent, serially-correlated samples from leaking into the test window."
             />
           </span>
-          <span className="v">{c.embargo == null ? "—" : `${c.embargo} bars`}</span>
+          <span className="v">
+            {c.embargo == null ? "—" : `${c.embargo} bars`}
+          </span>
         </li>
         <li>
           <span className="k">label horizon</span>
@@ -65,7 +70,9 @@ function RunConfig({ p }: { p: ProvenanceView }) {
         </li>
         <li>
           <span className="k">costs</span>
-          <span className="v">{costLine(c.commission_per_share, c.slippage_bps)}</span>
+          <span className="v">
+            {costLine(c.commission_per_share, c.slippage_bps)}
+          </span>
         </li>
       </ul>
     </div>
@@ -112,10 +119,13 @@ export function Provenance() {
   const ids = rows.map((r) => r.id);
   const selectedId = picked && ids.includes(picked) ? picked : ids[0];
 
-  const provState = useAsyncData(async (signal) => {
-    if (!selectedId) return null;
-    return dataClient.provenance(selectedId, signal);
-  }, [selectedId]);
+  const provState = useAsyncData(
+    async (signal) => {
+      if (!selectedId) return null;
+      return dataClient.provenance(selectedId, signal);
+    },
+    [selectedId],
+  );
 
   function select(id: string) {
     setSearchParams({ run: id }, { replace: true });
@@ -125,9 +135,9 @@ export function Provenance() {
     <section>
       <div className="h1">Provenance</div>
       <div className="lead">
-        The exact inputs and controls behind a result — reproducible from the pinned
-        configuration and commit. Pick a run to inspect its leakage controls, harness
-        self-tests, and data lineage.
+        The exact inputs and controls behind a result — reproducible from the
+        pinned configuration and commit. Pick a run to inspect its leakage
+        controls, harness self-tests, and data lineage.
       </div>
 
       <div className="sec">
@@ -165,7 +175,9 @@ export function Provenance() {
         </div>
       )}
 
-      {selectedId && provState.status === "loading" && <Loading label="Loading provenance…" />}
+      {selectedId && provState.status === "loading" && (
+        <Loading label="Loading provenance…" />
+      )}
       {provState.status === "error" && <ErrorState error={provState.error} />}
       {provState.status === "ready" && provState.data && (
         <div className="grid c2" style={{ marginTop: 18 }}>
@@ -175,7 +187,10 @@ export function Provenance() {
             sub="enforced this run"
             rows={provState.data.leakage_controls}
           />
-          <ControlRows title="Harness self-tests" rows={provState.data.self_tests} />
+          <ControlRows
+            title="Harness self-tests"
+            rows={provState.data.self_tests}
+          />
           <div className="panel">
             <div className="phead">
               <span className="t">Data lineage</span>

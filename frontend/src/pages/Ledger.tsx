@@ -16,11 +16,15 @@ function projectLabel(project: string): string {
 }
 
 /** Verdict -> humanized label + pill variant. */
-function verdictBadge(verdict: string): { label: string; cls: "ok" | "warn" | "bad" | "" } {
+function verdictBadge(verdict: string): {
+  label: string;
+  cls: "ok" | "warn" | "bad" | "";
+} {
   const v = verdict.toLowerCase();
   if (v.includes("pass")) return { label: "passed", cls: "ok" };
   if (v.includes("fail")) return { label: "gate failed", cls: "bad" };
-  if (v.includes("running") || v.includes("pending")) return { label: verdict, cls: "warn" };
+  if (v.includes("running") || v.includes("pending"))
+    return { label: verdict, cls: "warn" };
   return { label: verdict.replace(/_/g, " "), cls: "" };
 }
 
@@ -38,7 +42,9 @@ function Row({ r }: { r: LedgerRun }) {
       </td>
       <td className="num">{r.comparisons}</td>
       <td>
-        <span className={badge.cls ? `pill ${badge.cls}` : "pill"}>{badge.label}</span>
+        <span className={badge.cls ? `pill ${badge.cls}` : "pill"}>
+          {badge.label}
+        </span>
       </td>
       <td className="mono small">
         {r.commit_url ? (
@@ -58,7 +64,11 @@ function Registry({ data }: { data: LedgerView }) {
   return (
     <>
       <div className="figrow" style={{ margin: "20px 0 8px" }}>
-        <Figure label="Trials to date" value={data.n_trials} sub={`${data.n_entries} registered runs`} />
+        <Figure
+          label="Trials to date"
+          value={data.n_trials}
+          sub={`${data.n_entries} registered runs`}
+        />
         <Figure
           label={
             <>
@@ -93,43 +103,52 @@ function Registry({ data }: { data: LedgerView }) {
         <LuckBar luck={data.luck_bar} best={data.best} />
         <div className="legend">
           <span>
-            <i className="swatch" style={{ background: clears ? "var(--gain)" : "var(--loss)" }} /> best
-            observed Sharpe
+            <i
+              className="swatch"
+              style={{ background: clears ? "var(--gain)" : "var(--loss)" }}
+            />{" "}
+            best observed Sharpe
           </span>
           <span>
-            <i className="swatch" style={{ background: "var(--warnc)", width: 2 }} /> luck bar
+            <i
+              className="swatch"
+              style={{ background: "var(--warnc)", width: 2 }}
+            />{" "}
+            luck bar
           </span>
         </div>
       </div>
 
       <div className="sec">
-        Registered runs <span className="dim">— every pre-registered comparison</span>
+        Registered runs{" "}
+        <span className="dim">— every pre-registered comparison</span>
         <span className="ln" />
       </div>
       <div className="panel flush">
         <TableScroll label="Registered comparison runs and verdicts">
-        <table>
-          <thead>
-            <tr>
-              <th>Run</th>
-              <th>Project</th>
-              <th className="num">Comparisons</th>
-              <th>Verdict</th>
-              <th>Commit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.runs.map((r) => (
-              <Row key={r.id} r={r} />
-            ))}
-          </tbody>
-        </table>
+          <table>
+            <thead>
+              <tr>
+                <th>Run</th>
+                <th>Project</th>
+                <th className="num">Comparisons</th>
+                <th>Verdict</th>
+                <th>Commit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.runs.map((r) => (
+                <Row key={r.id} r={r} />
+              ))}
+            </tbody>
+          </table>
         </TableScroll>
       </div>
       <p className="note">
-        The trial count drives the multiple-testing bar: the more strategies tried, the
-        higher an out-of-sample Sharpe must clear to be believed. A run links to its commit
-        when one was recorded; runs without a recorded commit show “—”.
+        The trial count drives the multiple-testing bar: the more strategies
+        tried, the higher an out-of-sample Sharpe must clear to be believed. A
+        run links to its commit when one was recorded; runs without a recorded
+        commit show “—”.
       </p>
     </>
   );
@@ -142,7 +161,8 @@ export function Ledger() {
       <div className="h1">Trial Registry</div>
       <div className="lead">
         Every pre-registered comparison and its verdict. The count drives the
-        multiple-testing bar that an out-of-sample result must clear to be believed.
+        multiple-testing bar that an out-of-sample result must clear to be
+        believed.
       </div>
       {state.status === "loading" && <Loading label="Loading registry…" />}
       {state.status === "error" && <ErrorState error={state.error} />}

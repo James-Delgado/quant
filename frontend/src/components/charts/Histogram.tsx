@@ -11,7 +11,12 @@ interface HistogramProps {
  * Daily-return distribution: bars colored by the sign of each bin (loss left,
  * gain right) with a vertical axis at zero — the mockup's left-skew read.
  */
-export function Histogram({ hist, height = 150, width = 480, ariaLabel }: HistogramProps) {
+export function Histogram({
+  hist,
+  height = 150,
+  width = 480,
+  ariaLabel,
+}: HistogramProps) {
   const { bin_edges, counts } = hist;
   if (!counts?.length || bin_edges.length !== counts.length + 1) {
     return <span className="dim small">no distribution data</span>;

@@ -18,8 +18,12 @@ function renderPanel() {
 describe("Provenance panel", () => {
   it("resolves the commit link to the James-Delgado/quant repo", async () => {
     renderPanel();
-    const link = (await screen.findByText(/↗/, { selector: "a" })) as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toContain("github.com/James-Delgado/quant/commit/");
+    const link = (await screen.findByText(/↗/, {
+      selector: "a",
+    })) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toContain(
+      "github.com/James-Delgado/quant/commit/",
+    );
   });
 
   it("renders leakage controls and self-tests as quiet enforced-status rows", async () => {
@@ -34,8 +38,8 @@ describe("Provenance panel", () => {
   it("renders data lineage one item per line", async () => {
     const { container } = renderPanel();
     await screen.findByText("Data lineage");
-    const lineagePanel = Array.from(container.querySelectorAll(".panel")).find((p) =>
-      p.querySelector(".phead .t")?.textContent === "Data lineage",
+    const lineagePanel = Array.from(container.querySelectorAll(".panel")).find(
+      (p) => p.querySelector(".phead .t")?.textContent === "Data lineage",
     )!;
     const items = lineagePanel.querySelectorAll(".lin li");
     expect(items.length).toBe(3);

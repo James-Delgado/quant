@@ -26,17 +26,64 @@ function hasKeys(obj: unknown, keys: string[]): boolean {
   return keys.every((k) => k in (obj as Record<string, unknown>));
 }
 
-const STRATEGY_KEYS = ["id", "name", "mode", "sharpe", "total_return", "status", "driver", "sparkline"];
+const STRATEGY_KEYS = [
+  "id",
+  "name",
+  "mode",
+  "sharpe",
+  "total_return",
+  "status",
+  "driver",
+  "sparkline",
+];
 const PORTFOLIO_KEYS = ["strategies", "n_enabled", "n_idle"];
-const PORTFOLIO_STRATEGY_KEYS = ["id", "display_name", "description", "model_ref", "target_ref", "universe", "status", "allocation_pct", "provenance", "provenance_summary"];
+const PORTFOLIO_STRATEGY_KEYS = [
+  "id",
+  "display_name",
+  "description",
+  "model_ref",
+  "target_ref",
+  "universe",
+  "status",
+  "allocation_pct",
+  "provenance",
+  "provenance_summary",
+];
 const DATA_STATUS_KEYS = ["asof", "feeds"];
 const FEED_KEYS = ["feed", "last_timestamp", "age_days", "status"];
 const MARKET_KEYS = ["asof", "vix", "ten_year", "fed_funds", "notes"];
 const LEDGER_KEYS = ["n_trials", "n_entries", "luck_bar", "best", "runs"];
 const CATALOG_KEYS = ["summary", "features"];
-const CATALOG_FEATURE_KEYS = ["name", "group", "coverage", "mean", "std", "stability", "distribution", "ablation_status", "oos_status"];
-const LEDGER_RUN_KEYS = ["id", "project", "milestone", "comparisons", "verdict", "commit", "commit_url"];
-const PROVENANCE_KEYS = ["run", "name", "commit", "commit_url", "config", "leakage_controls", "self_tests", "lineage"];
+const CATALOG_FEATURE_KEYS = [
+  "name",
+  "group",
+  "coverage",
+  "mean",
+  "std",
+  "stability",
+  "distribution",
+  "ablation_status",
+  "oos_status",
+];
+const LEDGER_RUN_KEYS = [
+  "id",
+  "project",
+  "milestone",
+  "comparisons",
+  "verdict",
+  "commit",
+  "commit_url",
+];
+const PROVENANCE_KEYS = [
+  "run",
+  "name",
+  "commit",
+  "commit_url",
+  "config",
+  "leakage_controls",
+  "self_tests",
+  "lineage",
+];
 
 describe("export contract (TS mirror vs real Python export)", () => {
   const strategies = load("strategies.json");

@@ -13,7 +13,9 @@ import "./styles/console.css";
 // build, no SSR".
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <HashRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <App />
     </HashRouter>
   </StrictMode>,

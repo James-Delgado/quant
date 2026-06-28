@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-M1-EXPORT-FRESHNESS-STAMP done
+last_updated: 2026-06-28  # E1-M2-FE-LINT done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2444,8 +2444,9 @@ tasks:
     title: "E1-M2 follow-up: ESLint + Prettier for the frontend (web coding-style standards)"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T23:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M2]
     blocks: [E1-CLOSE]
     deliverable:
@@ -2463,6 +2464,52 @@ tasks:
       wire it into whatever CI runs the frontend build/test. Blocks E1-CLOSE so
       closeout certifies a linted frontend. Non-urgent; current code is
       tsc-strict clean.
+
+      DELIVERED (commit on branch worktree-e1-m1-console): ESLint 9 flat config
+      (frontend/eslint.config.js) = @eslint/js + typescript-eslint + react-hooks
+      + jsx-a11y + react-refresh, with eslint-config-prettier applied last so
+      Prettier owns formatting; Prettier 3 (.prettierrc.json: semi, double-quote,
+      trailing-comma all, printWidth 80) + .prettierignore. New scripts: lint,
+      lint:fix, format, format:check. Fixed all findings: 2 jsx-a11y issues
+      resolved in SOURCE via justified inline disables (TableScroll's deliberately
+      focusable role="region" scroll container; ReportButton's mouse-only backdrop
+      click-to-dismiss, keyboard already covered by Esc/focus-trap) — NOT by
+      weakening the config (honors the repo config-protection guard). One-time
+      `prettier --write` reformatted 40 source files (pure reflow; 78/78 Vitest
+      still green). Verified: `npm run lint` exit 0, `npm run format:check` clean,
+      `npm run build` green, 78 Vitest tests green, ruff clean (no Python touched).
+      Declared scoping (METHODOLOGY §9): root vite/tailwind .config.ts left out of
+      ESLint scope (already tsc -b-checked); src/styles/*.css prettier-ignored to
+      keep the verbatim-from-mockup provenance. No .github/workflows exists, so the
+      gate runs locally (frontend/README.md documents it) — CI wiring is the
+      E1-CI-WORKFLOW follow-up.
+
+  - id: E1-CI-WORKFLOW
+    rank: 116
+    title: "E1-M2-FE-LINT follow-up: GitHub Actions CI running the Python suite + the frontend lint/build/test gate"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M2-FE-LINT]
+    blocks: []
+    deliverable:
+      app: .github/workflows/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M2-FE-LINT (commit of frontend/eslint.config.js +
+      .prettierrc.json). The task said "wire it into whatever CI runs the frontend
+      build/test", but the repo has NO .github/workflows yet — so the frontend gate
+      (npm run lint && format:check && build && test) and the Python gate
+      (pytest tests/ + ruff check) both run locally only. Add a CI workflow that
+      runs BOTH: the Python suite (METHODOLOGY §18, currently un-automated) and the
+      frontend gate. Cross-project infra, not an E1 panel concern — deliberately
+      NOT in E1-CLOSE.depends_on (the frontend lint gate is runnable locally now;
+      gating E1 closeout on standing up repo-wide CI would be scope-inflation —
+      mirrors the E1-M1-FEATURE-MONITOR-EXPORT-COST / E1-LEDGER-ARTIFACTS-PATH-JOIN
+      non-gating exclusions). Low priority.
 
   - id: E1-M2-EXPORT-DETAIL
     rank: 105

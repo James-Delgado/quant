@@ -45,8 +45,8 @@ export function Explanations() {
     <section>
       <div className="h1">Explanations</div>
       <div className="lead">
-        Plain-language references for the methods behind the numbers — also surfaced as
-        inline tips across the console.
+        Plain-language references for the methods behind the numbers — also
+        surfaced as inline tips across the console.
       </div>
       <div className="grid c3" style={{ marginTop: 20 }}>
         {CARDS.map((c) => (

@@ -18,6 +18,8 @@ describe("Explanations panel", () => {
     expect(
       screen.getByText(/each is weighted by the unique portion of its window/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/it is why the trial registry is kept/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/it is why the trial registry is kept/),
+    ).toBeInTheDocument();
   });
 });

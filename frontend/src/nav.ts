@@ -22,24 +22,64 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Monitor",
     items: [
       { path: "overview", label: "Overview", title: "Overview", icon: "▤" },
-      { path: "strategies", label: "Strategies", title: "Strategies", icon: "⇡" },
-      { path: "portfolio", label: "Portfolio", title: "Strategy Portfolio", icon: "▦" },
-      { path: "conditions", label: "Conditions", title: "Conditions", icon: "◵" },
-      { path: "data", label: "Data & Market", title: "Data & Market", icon: "◍" },
+      {
+        path: "strategies",
+        label: "Strategies",
+        title: "Strategies",
+        icon: "⇡",
+      },
+      {
+        path: "portfolio",
+        label: "Portfolio",
+        title: "Strategy Portfolio",
+        icon: "▦",
+      },
+      {
+        path: "conditions",
+        label: "Conditions",
+        title: "Conditions",
+        icon: "◵",
+      },
+      {
+        path: "data",
+        label: "Data & Market",
+        title: "Data & Market",
+        icon: "◍",
+      },
     ],
   },
   {
     label: "Evidence",
     items: [
-      { path: "provenance", label: "Provenance", title: "Provenance", icon: "◈" },
-      { path: "catalog", label: "Feature Catalog", title: "Feature Catalog", icon: "≣" },
-      { path: "ledger", label: "Trial Registry", title: "Trial Registry", icon: "▥" },
+      {
+        path: "provenance",
+        label: "Provenance",
+        title: "Provenance",
+        icon: "◈",
+      },
+      {
+        path: "catalog",
+        label: "Feature Catalog",
+        title: "Feature Catalog",
+        icon: "≣",
+      },
+      {
+        path: "ledger",
+        label: "Trial Registry",
+        title: "Trial Registry",
+        icon: "▥",
+      },
     ],
   },
   {
     label: "Reference",
     items: [
-      { path: "explain", label: "Explanations", title: "Explanations", icon: "✶" },
+      {
+        path: "explain",
+        label: "Explanations",
+        title: "Explanations",
+        icon: "✶",
+      },
     ],
   },
 ];

@@ -14,9 +14,14 @@ function groupLabel(group: string): string {
 }
 
 /** OOS-evidence badge from the registry's real ablation/attribution fields. */
-function oosBadge(f: FeatureCard): { label: string; cls: "ok" | "warn" | "bad" | "tag" } {
-  if (f.ablation_status === "tested_edge") return { label: "edge", cls: "warn" };
-  if (f.ablation_status === "tested_no_edge") return { label: "no edge", cls: "bad" };
+function oosBadge(f: FeatureCard): {
+  label: string;
+  cls: "ok" | "warn" | "bad" | "tag";
+} {
+  if (f.ablation_status === "tested_edge")
+    return { label: "edge", cls: "warn" };
+  if (f.ablation_status === "tested_no_edge")
+    return { label: "no edge", cls: "bad" };
   return { label: "untested", cls: "tag" };
 }
 
@@ -24,7 +29,11 @@ function oosBadge(f: FeatureCard): { label: string; cls: "ok" | "warn" | "bad" |
 function stabilityCell(stability: string | null) {
   if (stability == null) return <span className="dim small">—</span>;
   const s = stability.toLowerCase();
-  const cls = s.includes("stable") ? "ok" : s.includes("drift") ? "warn" : "bad";
+  const cls = s.includes("stable")
+    ? "ok"
+    : s.includes("drift")
+      ? "warn"
+      : "bad";
   return <span className={`pill ${cls}`}>{stability}</span>;
 }
 
@@ -40,9 +49,9 @@ export function FeatureCatalog() {
     <section>
       <div className="h1">Feature Catalog</div>
       <div className="lead">
-        The registered feature set with live monitoring — summary statistics, coverage,
-        and a drift check that compares each feature's recent window against its training
-        distribution.
+        The registered feature set with live monitoring — summary statistics,
+        coverage, and a drift check that compares each feature's recent window
+        against its training distribution.
       </div>
 
       {state.status === "loading" && <Loading label="Loading catalog…" />}
@@ -81,7 +90,11 @@ function Catalog({ data }: { data: CatalogView }) {
           value={monitoringPending ? "—" : summary.drifting}
           valueClass={monitoringPending ? "dim" : ""}
         />
-        <Figure label="Stale" value={monitoringPending ? "—" : summary.stale} valueClass="dim" />
+        <Figure
+          label="Stale"
+          value={monitoringPending ? "—" : summary.stale}
+          valueClass="dim"
+        />
         <Figure
           label={
             <>
@@ -100,56 +113,67 @@ function Catalog({ data }: { data: CatalogView }) {
       {monitoringPending && (
         <div className="banner" style={{ margin: "6px 0 10px" }}>
           <span>
-            <b>Monitoring pending.</b> Coverage, μ/σ, distribution, and drift status
-            populate once the nightly lake-backed feature monitor is wired. The registry
-            below — groups, point-in-time rules, and OOS evidence — is live.
+            <b>Monitoring pending.</b> Coverage, μ/σ, distribution, and drift
+            status populate once the nightly lake-backed feature monitor is
+            wired. The registry below — groups, point-in-time rules, and OOS
+            evidence — is live.
           </span>
         </div>
       )}
 
       <div className="panel flush" style={{ marginTop: 8 }}>
         <TableScroll label="Registered features with coverage and stability">
-        <table>
-          <thead>
-            <tr>
-              <th>Feature</th>
-              <th>Group</th>
-              <th className="num">Coverage</th>
-              <th>Distribution</th>
-              <th className="num">μ / σ</th>
-              <th>Stability</th>
-              <th>OOS status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {features.map((f) => {
-              const badge = oosBadge(f);
-              return (
-                <tr key={f.name}>
-                  <td className="mono small">{f.name}</td>
-                  <td className="steel small">{groupLabel(f.group)}</td>
-                  <td className="num">{f.coverage == null ? "—" : pct(f.coverage)}</td>
-                  <td>
-                    <DistMini values={f.distribution} ariaLabel={`${f.name} distribution`} />
-                  </td>
-                  <td className="num small">{muSigma(f.mean, f.std)}</td>
-                  <td>{stabilityCell(f.stability)}</td>
-                  <td>
-                    <span className={badge.cls === "tag" ? "tag" : `pill ${badge.cls}`}>
-                      {badge.label}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Group</th>
+                <th className="num">Coverage</th>
+                <th>Distribution</th>
+                <th className="num">μ / σ</th>
+                <th>Stability</th>
+                <th>OOS status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {features.map((f) => {
+                const badge = oosBadge(f);
+                return (
+                  <tr key={f.name}>
+                    <td className="mono small">{f.name}</td>
+                    <td className="steel small">{groupLabel(f.group)}</td>
+                    <td className="num">
+                      {f.coverage == null ? "—" : pct(f.coverage)}
+                    </td>
+                    <td>
+                      <DistMini
+                        values={f.distribution}
+                        ariaLabel={`${f.name} distribution`}
+                      />
+                    </td>
+                    <td className="num small">{muSigma(f.mean, f.std)}</td>
+                    <td>{stabilityCell(f.stability)}</td>
+                    <td>
+                      <span
+                        className={
+                          badge.cls === "tag" ? "tag" : `pill ${badge.cls}`
+                        }
+                      >
+                        {badge.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </TableScroll>
       </div>
       <p className="note">
-        Distributions and coverage refresh nightly once the monitor lands. OOS evidence is
-        per-fold ablation: features marked <b>edge</b> carry it on slice evidence only —
-        full-panel confirmation is open and flagged, not assumed.
+        Distributions and coverage refresh nightly once the monitor lands. OOS
+        evidence is per-fold ablation: features marked <b>edge</b> carry it on
+        slice evidence only — full-panel confirmation is open and flagged, not
+        assumed.
       </p>
     </>
   );

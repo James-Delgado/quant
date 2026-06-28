@@ -18,7 +18,9 @@ describe("Trial Registry panel", () => {
   it("links runs that carry a commit and dashes runs without one", async () => {
     const { container } = render(<Ledger />);
     await screen.findByText("Trials to date");
-    const links = container.querySelectorAll('a[href*="github.com/James-Delgado/quant/commit/"]');
+    const links = container.querySelectorAll(
+      'a[href*="github.com/James-Delgado/quant/commit/"]',
+    );
     // The git-sha run and the content-hash run joined to its checkpoint commit
     // both link; the audit run (no recorded git_sha) shows "—".
     expect(links.length).toBe(2);

@@ -9,10 +9,14 @@ afterEach(() => vi.unstubAllGlobals());
 describe("Strategy Portfolio panel", () => {
   it("renders enabled strategies under 'In use' with allocation and provenance", async () => {
     render(<Portfolio />);
-    expect(await screen.findByText("ARIMA(1,0,0) Placeholder")).toBeInTheDocument();
+    expect(
+      await screen.findByText("ARIMA(1,0,0) Placeholder"),
+    ).toBeInTheDocument();
     expect(screen.getByText("In use")).toBeInTheDocument();
     expect(screen.getByText("100%")).toBeInTheDocument();
-    expect(screen.getByText(/Placeholder \(infrastructure/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Placeholder \(infrastructure/),
+    ).toBeInTheDocument();
   });
 
   it("renders idle strategies under 'Idle' with no allocation", async () => {
@@ -38,6 +42,8 @@ describe("Strategy Portfolio panel", () => {
 
   it("states honestly that no live P&L is shown (deferred to live monitoring)", async () => {
     render(<Portfolio />);
-    expect(await screen.findByText(/no live P&L is shown here/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/no live P&L is shown here/i),
+    ).toBeInTheDocument();
   });
 });

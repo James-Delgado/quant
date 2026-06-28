@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Overview } from "@/pages/Overview";
 import { stubExportFetch } from "./mockExport";
 
-const FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
+const FUTURE = {
+  v7_startTransition: true,
+  v7_relativeSplatPath: true,
+} as const;
 
 function LocationProbe() {
   const loc = useLocation();
@@ -33,7 +36,9 @@ describe("Overview panel", () => {
       /Live P&L and intraday market data activate once the execution layer is online/,
     );
     // ...and the hero labels its figures as walk-forward, never "live".
-    expect(screen.getAllByText(/walk-forward backtest/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/walk-forward backtest/).length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("renders the deployable candidate (highest Sharpe) in the hero", async () => {
@@ -44,16 +49,22 @@ describe("Overview panel", () => {
     expect(within(hero).getByText("+272.0%")).toBeInTheDocument();
     expect(within(hero).getByText("+0.42")).toBeInTheDocument();
     // candidate name appears in the hero (figure sub + legend).
-    expect(within(hero).getAllByText("ARIMA(1,0,0) control").length).toBeGreaterThan(0);
+    expect(
+      within(hero).getAllByText("ARIMA(1,0,0) control").length,
+    ).toBeGreaterThan(0);
   });
 
   it("lists every strategy and navigates to its detail on click", async () => {
     const user = userEvent.setup();
     renderOverview();
-    const row = await screen.findByRole("link", { name: /Open ARIMA\(1,0,0\) control detail/ });
+    const row = await screen.findByRole("link", {
+      name: /Open ARIMA\(1,0,0\) control detail/,
+    });
     await user.click(row);
     await waitFor(() =>
-      expect(screen.getByTestId("loc")).toHaveTextContent("/strategies?pick=arima"),
+      expect(screen.getByTestId("loc")).toHaveTextContent(
+        "/strategies?pick=arima",
+      ),
     );
   });
 
@@ -71,7 +82,9 @@ describe("Overview panel", () => {
     // Honest counts from the registry view-model, plus the equal-weight framing...
     expect(within(tile).getByText("In use")).toBeInTheDocument();
     expect(within(tile).getByText("Idle")).toBeInTheDocument();
-    expect(within(tile).getByText(/equal-weight allocation/)).toBeInTheDocument();
+    expect(
+      within(tile).getByText(/equal-weight allocation/),
+    ).toBeInTheDocument();
     // ...and no live-P&L claim anywhere in the tile (E3 territory, DECISIONS #5/#7).
     expect(tile).not.toHaveTextContent(/P&L|live/i);
   });
@@ -79,16 +92,22 @@ describe("Overview panel", () => {
   it("cross-links the portfolio summary tile to the Portfolio panel", async () => {
     const user = userEvent.setup();
     renderOverview();
-    const tile = await screen.findByRole("link", { name: /Open Strategy Portfolio/ });
+    const tile = await screen.findByRole("link", {
+      name: /Open Strategy Portfolio/,
+    });
     await user.click(tile);
-    await waitFor(() => expect(screen.getByTestId("loc")).toHaveTextContent("/portfolio"));
+    await waitFor(() =>
+      expect(screen.getByTestId("loc")).toHaveTextContent("/portfolio"),
+    );
   });
 
   it("retrofits an inline ⓘ tooltip onto the Sharpe figure (E1-M5)", async () => {
     renderOverview();
     await screen.findByText(/Research mode\./);
     // The reusable InfoTip is a focusable button carrying the tip on aria-label.
-    const tip = screen.getByRole("button", { name: /Sharpe: Risk-adjusted return/ });
+    const tip = screen.getByRole("button", {
+      name: /Sharpe: Risk-adjusted return/,
+    });
     expect(tip).toHaveClass("info");
     expect(tip.getAttribute("data-tip")).toContain("annualized");
   });

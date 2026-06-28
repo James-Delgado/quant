@@ -49,7 +49,8 @@ export const dataClient = {
     getJSON<ConditionsView>("conditions.json", signal),
   provenance: (run: string, signal?: AbortSignal) =>
     getJSON<ProvenanceView>(`provenance/${run}.json`, signal),
-  catalog: (signal?: AbortSignal) => getJSON<CatalogView>("catalog.json", signal),
+  catalog: (signal?: AbortSignal) =>
+    getJSON<CatalogView>("catalog.json", signal),
   ledger: (signal?: AbortSignal) => getJSON<LedgerView>("ledger.json", signal),
   dataStatus: (signal?: AbortSignal) =>
     getJSON<DataStatusView>("data_status.json", signal),

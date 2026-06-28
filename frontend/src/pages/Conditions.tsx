@@ -43,10 +43,12 @@ export function Conditions() {
               />
               <div className="legend">
                 <span>
-                  <i className="swatch" style={{ background: "var(--gain)" }} /> positive Sharpe
+                  <i className="swatch" style={{ background: "var(--gain)" }} />{" "}
+                  positive Sharpe
                 </span>
                 <span>
-                  <i className="swatch" style={{ background: "var(--loss)" }} /> negative Sharpe
+                  <i className="swatch" style={{ background: "var(--loss)" }} />{" "}
+                  negative Sharpe
                 </span>
               </div>
             </div>
@@ -61,33 +63,36 @@ export function Conditions() {
           </div>
 
           <div className="sec">
-            Stress windows <span className="dim">— named historical episodes</span>
+            Stress windows{" "}
+            <span className="dim">— named historical episodes</span>
             <span className="ln" />
           </div>
           <div className="panel flush">
             <TableScroll label="Stress windows by Sharpe">
-            <table>
-              <thead>
-                <tr>
-                  <th>Episode</th>
-                  <th>Window</th>
-                  <th className="num">Sharpe</th>
-                  <th className="num">Bars</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.data.stress_windows.map((w) => (
-                  <tr key={w.name}>
-                    <td>{w.name}</td>
-                    <td className="num dim">{yearSpan(w.start, w.end)}</td>
-                    <td className={`num ${w.sharpe == null ? "dim" : signClass(w.sharpe)}`}>
-                      {w.sharpe == null ? "—" : fixed(w.sharpe, 2)}
-                    </td>
-                    <td className="num dim">{w.n_bars}</td>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Episode</th>
+                    <th>Window</th>
+                    <th className="num">Sharpe</th>
+                    <th className="num">Bars</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {state.data.stress_windows.map((w) => (
+                    <tr key={w.name}>
+                      <td>{w.name}</td>
+                      <td className="num dim">{yearSpan(w.start, w.end)}</td>
+                      <td
+                        className={`num ${w.sharpe == null ? "dim" : signClass(w.sharpe)}`}
+                      >
+                        {w.sharpe == null ? "—" : fixed(w.sharpe, 2)}
+                      </td>
+                      <td className="num dim">{w.n_bars}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </TableScroll>
           </div>
         </>

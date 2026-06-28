@@ -107,7 +107,9 @@ export function ReportButton() {
     triggerRef.current?.focus();
     setTitle("");
     setDescription("");
-    setToast("Report opened in a new tab — submit it on GitHub to file the issue.");
+    setToast(
+      "Report opened in a new tab — submit it on GitHub to file the issue.",
+    );
   }
 
   const submitDisabled = title.trim().length === 0;
@@ -126,6 +128,12 @@ export function ReportButton() {
       </button>
 
       {open && (
+        // Backdrop click-to-dismiss is a mouse-only convenience; keyboard users
+        // already dismiss via Escape (handled on the dialog, see the keydown
+        // effect above) plus Cancel. Giving the backdrop an interactive role +
+        // tabindex would wrongly put it in the tab order and announce it as a
+        // control, which is worse a11y — so suppress the generic handler rules here.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
         <div
           className="modal-bg open"
           onClick={(e) => {
@@ -176,7 +184,9 @@ export function ReportButton() {
                 <select
                   id="r-sev"
                   value={severity}
-                  onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
+                  onChange={(e) =>
+                    setSeverity(e.target.value as FeedbackSeverity)
+                  }
                 >
                   {FEEDBACK_SEVERITIES.map((s) => (
                     <option key={s} value={s}>

@@ -4,7 +4,10 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReportButton } from "@/components/layout/ReportButton";
 
-const FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
+const FUTURE = {
+  v7_startTransition: true,
+  v7_relativeSplatPath: true,
+} as const;
 
 function renderButton(path = "/provenance") {
   return render(

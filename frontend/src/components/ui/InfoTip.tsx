@@ -44,7 +44,8 @@ export function InfoTip({ tip, label }: InfoTipProps) {
   useEffect(() => {
     if (!open) return;
     function onDocClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -73,7 +74,10 @@ export function InfoTip({ tip, label }: InfoTipProps) {
         setOpen(next);
         // Broadcast from the handler (not the reducer) so the other tips' close
         // is a normal batched state update, not a side effect during render.
-        if (next) tipBus.dispatchEvent(new CustomEvent("open", { detail: idRef.current }));
+        if (next)
+          tipBus.dispatchEvent(
+            new CustomEvent("open", { detail: idRef.current }),
+          );
       }}
     >
       i
