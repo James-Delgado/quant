@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-M1-CONDITIONS-MARKET-AXIS done
+last_updated: 2026-06-28  # E1-M1-FEATURE-MONITOR done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2267,8 +2267,9 @@ tasks:
     title: "E1-M1 follow-up: lake-backed feature monitor (coverage, mu/sigma, distribution, stability/drift)"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T21:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1]
     blocks: [E1-CLOSE]
     deliverable:
@@ -2292,6 +2293,48 @@ tasks:
       tz-alignment care as the conditions follow-up. Blocks E1-CLOSE so the
       Feature Catalog panel certifies with real monitoring stats (the panel
       acceptance in PRD §7 M4 requires drift/stale status).
+
+  - id: E1-M1-FEATURE-MONITOR-EXPORT-COST
+    rank: 113
+    title: "E1-M1-FEATURE-MONITOR follow-up: cache/gate the export-time feature-panel build (+ richer drift options)"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-FEATURE-MONITOR]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-FEATURE-MONITOR post-task review (commit of
+      src/quant/console/sources.py). Wiring build_feature_monitor(_load_feature_panel)
+      into ConsoleSources.default() makes `python -m quant.console export` build the
+      full settings.equity_universe feature panel (build_features over ~33 symbols ×
+      ~5k bars + FRED + sentiment), adding ~1-2 min of wall-time to every export (the
+      monitor is memoized per-process, but each export is a fresh process). Honest +
+      correct today — load_catalog now shows 25/27 features with real coverage/
+      mu-sigma/distribution/stability (live run: 24 stable / 1 drifting / 0 stale,
+      mean_coverage 0.99) — just slower. Options, none gating:
+        (a) cache the built panel to the lake/processed tree (or a parquet under
+            data/) keyed by the universe + lake mtime, so repeat exports reuse it;
+        (b) a `--no-monitor` / env flag on the export CLI for fast schema-only exports;
+        (c) richer drift: the verdict is a standardized MEAN-shift on the per-date
+            cross-sectional mean (sources._stability_verdict) and won't catch a
+            variance/shape shift with stable mean — a PSI or KS distribution metric
+            would; pin the new threshold per METHODOLOGY §1 + a ledger note if added;
+        (d) point-in-time monitoring: _load_feature_panel builds full history;
+            build_features already takes `asof`, so an asof-aware monitor would let
+            E3/E4 show the feature state knowable at a date.
+        (e) two registered xs_rank_* features stay unmonitored (the panel adds only
+            the M3 survivor xs_rank_vol_21d) and render registry-only — add the
+            others if the catalog should monitor them.
+      NON-GATING / NOT in E1-CLOSE.depends_on (mirrors E1-M1-LEDGER-COMMIT-LINKS /
+      E1-M1-EXPORT-FRESHNESS-STAMP): the Feature Catalog panel already certifies with
+      real monitoring stats, so this polish must not deadlock closeout.
 
   - id: E1-M1-LEDGER-COMMIT-LINKS
     rank: 102

@@ -17,6 +17,7 @@ import pytest
 import yaml
 
 from quant.console import export, readers, schemas
+from quant.console import sources as sources_mod
 from quant.console import viewmodels as vm
 from quant.console.sources import ConsoleSources, FeedSpec, read_oos_returns
 
@@ -487,6 +488,202 @@ def test_load_catalog_without_monitor(sources):
     cat = readers.load_catalog(bare)
     assert cat.summary.mean_coverage is None
     assert all(f.coverage is None for f in cat.features)
+
+
+# ── feature monitor (E1-M1-FEATURE-MONITOR) ──────────────────────────────────
+
+
+def _feature_panel() -> pd.DataFrame:
+    """Synthetic pooled feature panel: 2 symbols × 60 business days, stacked.
+
+    Columns exercise every stability branch with a small ``recent_bars`` so the
+    panel stays tiny: ``stable_feat`` (flat-ish), ``drift_feat`` (recent window
+    shifted far off baseline), ``stale_feat`` (stops updating before the tail),
+    and ``empty_feat`` (all-NaN).
+    """
+    rng = np.random.default_rng(7)
+    dates = pd.date_range("2020-01-01", periods=60, freq="B")
+    frames = []
+    for _sym in ("AAA", "BBB"):
+        stable = rng.normal(0.0, 0.01, size=60)
+        drift = rng.normal(0.0, 0.01, size=60)
+        drift[-10:] += 5.0  # recent window jumps far off the baseline
+        stale = np.full(60, 1.0)
+        stale[40:] = np.nan  # last 20 dates missing → behind the tail
+        empty = np.full(60, np.nan)
+        frames.append(
+            pd.DataFrame(
+                {
+                    "stable_feat": stable,
+                    "drift_feat": drift,
+                    "stale_feat": stale,
+                    "empty_feat": empty,
+                },
+                index=dates,
+            )
+        )
+    return pd.concat(frames, axis=0).sort_index()
+
+
+def _monitor(panel_fn):
+    return sources_mod.build_feature_monitor(
+        panel_fn, hist_bins=5, recent_bars=10, drift_z_threshold=1.0, stale_bars=5
+    )
+
+
+def test_feature_monitor_classifies_each_stability_branch():
+    monitor = _monitor(_feature_panel)
+    assert monitor("stable_feat")["stability"] == "stable"
+    assert monitor("drift_feat")["stability"] == "drifting"
+    assert monitor("stale_feat")["stability"] == "stale"
+
+    empty = monitor("empty_feat")
+    assert empty["stability"] == "stale"
+    assert empty["coverage"] == 0.0
+    assert empty["mean"] is None and empty["std"] is None
+    assert empty["distribution"] is None
+
+
+def test_feature_monitor_reports_coverage_mean_std_distribution():
+    stats = _monitor(_feature_panel)("stable_feat")
+    assert stats["coverage"] == pytest.approx(1.0)  # dense column
+    assert stats["mean"] == pytest.approx(0.0, abs=0.02)
+    assert stats["std"] > 0.0
+    assert len(stats["distribution"]) == 5  # hist_bins
+    assert sum(stats["distribution"]) == 120  # 2 symbols × 60 rows
+
+    # A column that stops updating still reports partial coverage honestly.
+    stale = _monitor(_feature_panel)("stale_feat")
+    assert stale["coverage"] == pytest.approx(40 / 60)
+
+
+def test_feature_monitor_unmonitored_feature_returns_none():
+    assert _monitor(_feature_panel)("not_in_panel") is None
+
+
+def test_feature_monitor_memoizes_panel_build():
+    calls = {"n": 0}
+
+    def counting_panel():
+        calls["n"] += 1
+        return _feature_panel()
+
+    monitor = _monitor(counting_panel)
+    monitor("stable_feat")
+    monitor("drift_feat")
+    monitor("missing")
+    assert calls["n"] == 1  # panel built exactly once, then cached
+
+
+def test_feature_monitor_degrades_when_panel_fails():
+    def boom():
+        raise RuntimeError("lake unavailable")
+
+    monitor = _monitor(boom)
+    assert monitor("stable_feat") is None  # honest degrade, no fabricated stats
+
+
+def test_feature_monitor_none_panel_is_empty():
+    assert sources_mod.build_feature_monitor(lambda: None)("ret_1d") is None
+    assert sources_mod.build_feature_monitor(None)("ret_1d") is None
+
+
+def test_panel_from_features_normalizes_timezone_and_aligns_by_date():
+    # NY-close stamps must collapse onto the same calendar date as a naive frame.
+    ny = pd.DataFrame(
+        {"f": [1.0, 2.0]},
+        index=pd.DatetimeIndex(
+            ["2020-01-02 16:00", "2020-01-03 16:00"], tz="America/New_York"
+        ),
+    )
+    naive = pd.DataFrame(
+        {"f": [3.0, 4.0]},
+        index=pd.DatetimeIndex(["2020-01-02", "2020-01-03"]),
+    )
+    panel = sources_mod._panel_from_features({"X": ny, "Y": naive})
+    assert panel.index.tz is None
+    assert (panel.index == panel.index.normalize()).all()
+    # Both symbols' 2020-01-02 rows landed on the same date key.
+    assert (panel.index == pd.Timestamp("2020-01-02")).sum() == 2
+    assert sources_mod._panel_from_features({}) is None  # no frames → None
+
+
+class _FakeStorageCatalog:
+    """Minimal stand-in for ``quant.storage.catalog`` (query + table)."""
+
+    def __init__(self, df=None, raises=False):
+        self._df = df
+        self._raises = raises
+
+    def table(self, name: str) -> str:
+        return f"'lake/{name}/*.parquet'"
+
+    def query(self, sql: str) -> pd.DataFrame:
+        if self._raises:
+            raise RuntimeError("duckdb unavailable")
+        return self._df if self._df is not None else pd.DataFrame()
+
+
+def _eq_rows() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "symbol": ["AAA", "AAA"],
+            "timestamp": pd.to_datetime(["2020-01-02", "2020-01-03"]),
+            "open": [1.0, 1.1],
+            "high": [1.2, 1.3],
+            "low": [0.9, 1.0],
+            "adjClose": [1.05, 1.15],
+            "volume": [100.0, 110.0],
+        }
+    )
+
+
+def test_load_prices_for_panel_renames_and_skips_empty_symbols():
+    prices = sources_mod._load_prices_for_panel(
+        _FakeStorageCatalog(_eq_rows()), ["AAA", "BBB"]
+    )
+    assert set(prices) == {"AAA"}  # BBB has no rows → skipped
+    assert "close" in prices["AAA"].columns and "adjClose" not in prices["AAA"].columns
+    assert len(prices["AAA"]) == 2
+
+
+def test_load_prices_for_panel_degrades_to_empty():
+    assert sources_mod._load_prices_for_panel(_FakeStorageCatalog(), []) == {}
+    assert sources_mod._load_prices_for_panel(_FakeStorageCatalog(pd.DataFrame()), ["AAA"]) == {}
+    assert sources_mod._load_prices_for_panel(_FakeStorageCatalog(raises=True), ["AAA"]) == {}
+
+
+def test_load_feature_panel_returns_none_without_lake(monkeypatch):
+    # No usable bars → None, without ever touching build_features.
+    monkeypatch.setattr(sources_mod, "_load_prices_for_panel", lambda *a, **k: {})
+    assert sources_mod._load_feature_panel() is None
+
+
+def test_feature_monitor_feeds_load_catalog(tmp_path):
+    catalog_path = tmp_path / "catalog.yaml"
+    _write_catalog(catalog_path)  # registers ret_1d + DGS10
+    panel = pd.DataFrame(
+        {
+            "ret_1d": np.linspace(-0.05, 0.05, 80),
+            "DGS10": [np.nan] * 30 + list(np.linspace(3.0, 4.0, 50)),
+        },
+        index=pd.date_range("2020-01-01", periods=80, freq="B"),
+    )
+    src = ConsoleSources(
+        data_root=tmp_path,
+        ledger_path=tmp_path / "ledger.yaml",
+        catalog_path=catalog_path,
+        strategy_roots=(tmp_path,),
+        feature_monitor_fn=sources_mod.build_feature_monitor(
+            lambda: panel, recent_bars=10, stale_bars=5
+        ),
+    )
+    cat = readers.load_catalog(src)
+    by_name = {f.name: f for f in cat.features}
+    assert by_name["ret_1d"].coverage == pytest.approx(1.0)
+    assert by_name["DGS10"].coverage == pytest.approx(50 / 80)
+    assert cat.summary.mean_coverage == pytest.approx((1.0 + 50 / 80) / 2)
+    assert by_name["ret_1d"].distribution is not None
 
 
 # ── load_ledger ──────────────────────────────────────────────────────────────
