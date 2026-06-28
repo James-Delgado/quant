@@ -1494,8 +1494,9 @@ tasks:
     title: "E1-M4: Evidence panels — Provenance, Feature Catalog, Trial Registry, Data & Market"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T19:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M2]
     blocks: [E1-M5, E1-CLOSE]
     deliverable:
@@ -1521,7 +1522,7 @@ tasks:
     title: "E1-M5: Explanations panel + tooltips + a11y/responsive polish"
     project: E
     sub_project: E1
-    status: blocked
+    status: ready
     depends_on: [E1-M3, E1-M4]
     blocks: [E1-M6, E1-CLOSE]
     deliverable:
@@ -1569,7 +1570,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -2096,3 +2097,33 @@ tasks:
       + dashed bench styling). Keep the stress-band shading. Blocks E1-CLOSE so
       closeout certifies the intended hero (vs-benchmark), not the candidate-only
       proxy. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  - id: E1-M4-PROVENANCE-HYPERPARAMS
+    rank: 107
+    title: "E1-M4 follow-up: expose hyperparameter-search config (n_iter / inner folds) in the Provenance run-config"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1, E1-M4]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: src/quant/console/readers.py
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: small
+    notes: |
+      Discovered in E1-M4 (declared deviation, METHODOLOGY §9). The mockup's
+      Provenance run-configuration panel shows a "hyperparameter search · 50 iters
+      · 3 inner folds" row, but the service layer's RunConfigView (from M1) does
+      not carry the search budget — only train/test/step/embargo/label_horizon/
+      costs. The M4 Provenance panel (frontend/src/pages/Provenance.tsx) therefore
+      renders the real config rows and OMITS the hyperparameter-search row rather
+      than fabricate it. For the GBM arms the budget is real (n_iter=50,
+      n_splits=3); ARIMA has none. Add the search config (n_iter, inner_folds,
+      nullable) to RunConfigView + the provenance reader, then render it as an
+      additional `.lin` row in the Provenance run-config (skip when null). Blocks
+      E1-CLOSE so closeout certifies full Provenance parity. Added to
+      E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.

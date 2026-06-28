@@ -1,8 +1,11 @@
 import { vi } from "vitest";
 import type {
+  CatalogView,
   ConditionsView,
   DataStatusView,
+  LedgerView,
   MarketSnapshot,
+  ProvenanceView,
   StrategyCard,
   StrategyDetail,
 } from "@/types/viewmodels";
@@ -130,6 +133,122 @@ export const MARKET: MarketSnapshot = {
   notes: ["2s10s spread and market breadth are not yet ingested (planned for E4)."],
 };
 
+// Monitoring stats are null on purpose: the lake-backed feature monitor
+// (E1-M1-FEATURE-MONITOR) is not wired, so the panel renders a pending state.
+export const CATALOG: CatalogView = {
+  summary: { registered: 2, stable: 0, drifting: 0, stale: 0, mean_coverage: null },
+  features: [
+    {
+      name: "ret_1d",
+      group: "price",
+      source: "alpaca_ohlcv",
+      formula: "close.pct_change()",
+      point_in_time_rule: "uses only bar-t close",
+      lookback_bars: 1,
+      publication_lag_days: 0,
+      ablation_status: "tested_edge",
+      oos_status: "both",
+      glossary_ref: "docs/concepts/feature-glossary.md#ret_1d",
+      coverage: null,
+      mean: null,
+      std: null,
+      stability: null,
+      distribution: null,
+    },
+    {
+      name: "DFF",
+      group: "macro",
+      source: "fred",
+      formula: "FRED DFF series",
+      point_in_time_rule: "observation date shifted +1 business day",
+      lookback_bars: 0,
+      publication_lag_days: 1,
+      ablation_status: "tested_no_edge",
+      oos_status: "both",
+      glossary_ref: "docs/concepts/feature-glossary.md#DFF",
+      coverage: null,
+      mean: null,
+      std: null,
+      stability: null,
+      distribution: null,
+    },
+  ],
+};
+
+export const LEDGER: LedgerView = {
+  n_trials: 75,
+  n_entries: 14,
+  luck_bar: 0.85,
+  best: 0.42,
+  runs: [
+    {
+      id: "ledger-2026-06-13-0001",
+      project: "phase-4a",
+      milestone: "M4",
+      comparisons: 30,
+      verdict: "gate_failed",
+      commit: "397f68acc56c",
+      commit_url: "https://github.com/James-Delgado/quant/commit/397f68acc56c",
+      started_at: "2026-06-13 17:55:43+00:00",
+      completed_at: "2026-06-13 17:55:43+00:00",
+    },
+    {
+      id: "ledger-2026-06-27-0005",
+      project: "b2",
+      milestone: "B2-M2",
+      comparisons: 1,
+      verdict: "gate_failed",
+      commit: "4ca7489f1273",
+      commit_url: null,
+      started_at: "2026-06-27 23:03:46+00:00",
+      completed_at: "2026-06-27 23:22:31+00:00",
+    },
+  ],
+};
+
+function provenance(run: string, name: string, model: string, commitUrl: string | null): ProvenanceView {
+  return {
+    run,
+    name,
+    commit: commitUrl ? "397f68acc56c5fe1" : "f3b75332527b",
+    commit_url: commitUrl,
+    started_at: "2026-06-13T18:14:19+00:00",
+    finished_at: "2026-06-13T18:31:02+00:00",
+    n_symbols: 33,
+    n_folds: 87,
+    config: {
+      model,
+      label_horizon: 1,
+      train_window: 504,
+      test_window: 63,
+      step: 63,
+      embargo: 3,
+      initial_capital: 100000,
+      commission_per_share: 0.005,
+      slippage_bps: 5,
+    },
+    leakage_controls: [
+      { name: "Purge", status: "enforced", detail: "Label-window overlap removed." },
+      { name: "Embargo", status: "enforced", detail: "Serial-correlation gap." },
+    ],
+    self_tests: [
+      { name: "Random-strategy null", status: "passing", detail: "≈ zero edge net of costs." },
+      { name: "Leaky-strategy trap", status: "passing", detail: "Leak is detected." },
+    ],
+    lineage: ["Alpaca daily OHLCV bars", "FRED macro series", "FinBERT sentiment"],
+  };
+}
+
+export const PROVENANCE: Record<string, ProvenanceView> = {
+  arima: provenance(
+    "arima",
+    "ARIMA(1,0,0) control",
+    "ARIMABaseline",
+    "https://github.com/James-Delgado/quant/commit/397f68acc56c",
+  ),
+  signed: provenance("signed", "GBM · signed returns", "GBMModel", null),
+};
+
 const ROUTES: Record<string, unknown> = {
   "strategy/arima.json": STRATEGY_DETAIL.arima,
   "strategy/signed.json": STRATEGY_DETAIL.signed,
@@ -137,6 +256,10 @@ const ROUTES: Record<string, unknown> = {
   "conditions.json": CONDITIONS,
   "data_status.json": DATA_STATUS,
   "market.json": MARKET,
+  "catalog.json": CATALOG,
+  "ledger.json": LEDGER,
+  "provenance/arima.json": PROVENANCE.arima,
+  "provenance/signed.json": PROVENANCE.signed,
 };
 
 /** Install a fetch stub that resolves each export file from the fixtures. */
