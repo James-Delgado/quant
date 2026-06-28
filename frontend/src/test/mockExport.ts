@@ -229,15 +229,29 @@ export const LEDGER: LedgerView = {
       completed_at: "2026-06-13 17:55:43+00:00",
     },
     {
+      // Content-hash run: its commit is joined from the checkpoint git_sha
+      // (E1-M1-LEDGER-COMMIT-LINKS), so the row links to a real commit.
       id: "ledger-2026-06-27-0005",
       project: "b2",
       milestone: "B2-M2",
       comparisons: 1,
       verdict: "gate_failed",
-      commit: "4ca7489f1273",
-      commit_url: null,
+      commit: "7b81d43bff23",
+      commit_url: "https://github.com/James-Delgado/quant/commit/7b81d43bff23",
       started_at: "2026-06-27 23:03:46+00:00",
       completed_at: "2026-06-27 23:22:31+00:00",
+    },
+    {
+      // Audit run whose checkpoint recorded no git_sha → honest "—" (no link).
+      id: "ledger-2026-06-28-0001",
+      project: "c2",
+      milestone: "C2-M3",
+      comparisons: 0,
+      verdict: "gate_passed",
+      commit: null,
+      commit_url: null,
+      started_at: "2026-06-28 15:31:00+00:00",
+      completed_at: "2026-06-28 15:31:01+00:00",
     },
   ],
 };

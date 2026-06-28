@@ -23,7 +23,9 @@ from quant.console.sources import (
     MARKET_SERIES,
     ArmCheckpoint,
     ConsoleSources,
+    checkpoint_git_sha_index,
     discover_strategies,
+    is_git_sha,
     read_oos_returns,
 )
 
@@ -655,8 +657,22 @@ def load_catalog(sources: ConsoleSources | None = None) -> vm.CatalogView:
 # ── 6. Trial Registry (ledger) ───────────────────────────────────────────────
 
 
-def _looks_like_git_sha(value: str | None) -> bool:
-    return bool(value) and len(value) == 40 and all(c in "0123456789abcdef" for c in value)
+def _resolve_commit(
+    config_hash: str | None, git_sha_index: dict[str, str]
+) -> str | None:
+    """Resolve a ledger entry's real git commit SHA, or ``None`` if unrecorded.
+
+    The entry's ``config_hash`` *is* the commit for the reconstructed Phase 4A
+    M1-M5 rows (those store a 40-hex git SHA directly). For content-hash runs
+    (M6 / B1 / B2 / …) the commit lives in the matching checkpoint, joined by
+    ``config_hash`` via ``git_sha_index``. A run whose checkpoint recorded no
+    git-sha-shaped ``git_sha`` (e.g. the C2 audit) resolves to ``None`` — an
+    honest "—", never a fabricated link (METHODOLOGY §9).
+    """
+    if is_git_sha(config_hash):
+        return config_hash
+    resolved = git_sha_index.get(config_hash) if config_hash else None
+    return resolved if is_git_sha(resolved) else None
 
 
 def load_ledger(sources: ConsoleSources | None = None) -> vm.LedgerView:
@@ -671,11 +687,11 @@ def load_ledger(sources: ConsoleSources | None = None) -> vm.LedgerView:
         entries = []
 
     n_trials = cumulative_trial_count(entries=entries) if entries else 0
+    git_sha_index = checkpoint_git_sha_index(sources)
 
     runs: list[vm.LedgerRun] = []
     for e in entries:
-        sha = getattr(e, "config_hash", None)
-        commit_url = sources.commit_url(sha) if _looks_like_git_sha(sha) else None
+        git_sha = _resolve_commit(getattr(e, "config_hash", None), git_sha_index)
         runs.append(
             vm.LedgerRun(
                 id=e.id,
@@ -683,8 +699,10 @@ def load_ledger(sources: ConsoleSources | None = None) -> vm.LedgerView:
                 milestone=e.milestone,
                 comparisons=int(e.n_comparisons),
                 verdict=e.verdict,
-                commit=(sha[:12] if sha else None),
-                commit_url=commit_url,
+                # The displayed short hash and the link target are the same
+                # resolved commit — no content-hash prefix masquerading as one.
+                commit=(git_sha[:12] if git_sha else None),
+                commit_url=sources.commit_url(git_sha),
                 started_at=str(e.started_at),
                 completed_at=str(e.completed_at),
             )

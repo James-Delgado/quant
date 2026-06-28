@@ -490,6 +490,52 @@ def read_metadata(path: Path) -> dict:
         return json.load(f)
 
 
+def is_git_sha(value: str | None) -> bool:
+    """True iff ``value`` is a 40-char lowercase-hex string — a git commit SHA.
+
+    The shared predicate that distinguishes a real commit (linkable to
+    ``github.com/.../commit/<sha>``) from a 64-hex *content* hash. Pinned shape
+    per METHODOLOGY §1; used by both the checkpoint join below and the Trial
+    Registry reader.
+    """
+    return bool(value) and len(value) == 40 and all(c in "0123456789abcdef" for c in value)
+
+
+def checkpoint_git_sha_index(sources: ConsoleSources) -> dict[str, str]:
+    """Map each run's content ``config_hash`` to its real git ``git_sha``.
+
+    Scans every ``metadata.json`` under ``sources.data_root`` (the phase4a / b1 /
+    b2 / … run trees the ledger's ``artifacts`` point into) and records the run's
+    git commit keyed by its content hash. The Trial Registry reader
+    (:func:`quant.console.readers.load_ledger`) uses this to resolve a commit link
+    for ledger entries whose ``config_hash`` is a 64-hex content hash rather than a
+    40-hex git SHA — the real commit lives in the matching checkpoint, not in the
+    ledger row. ``config_hash`` is the join key because it is recorded verbatim in
+    *both* the ledger entry and the checkpoint metadata, uniquely tying one to the
+    other (the ledger ``artifacts`` path is the human-facing pointer to the same
+    directory).
+
+    Honest degrade (METHODOLOGY §9): a missing ``data_root``, an unreadable
+    ``metadata.json``, or a checkpoint without a git-sha-shaped ``git_sha`` (e.g.
+    an audit run that recorded ``git_sha: null``) contributes no mapping — so its
+    ledger row stays link-less rather than pointing at a non-commit.
+    """
+    index: dict[str, str] = {}
+    root = sources.data_root
+    if not root.exists():
+        return index
+    for meta_path in sorted(root.rglob("metadata.json")):
+        try:
+            meta = read_metadata(meta_path)
+        except Exception:
+            continue
+        config_hash = meta.get("config_hash")
+        git_sha = meta.get("git_sha")
+        if isinstance(config_hash, str) and is_git_sha(git_sha):
+            index[config_hash] = git_sha
+    return index
+
+
 def read_oos_returns(path: Path) -> pd.Series:
     """Load an ``oos_returns.parquet`` as a tz-naive-indexed float Series.
 

@@ -2341,8 +2341,9 @@ tasks:
     title: "E1-M1 follow-up: resolvable Trial Registry commit links for content-hash runs"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T22:07:40Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1]
     blocks: []
     deliverable:
@@ -2361,6 +2362,53 @@ tasks:
       and surface the checkpoint git_sha so every run row gets a resolvable
       github.com/James-Delgado/quant commit link (DECISIONS §5). Non-blocking
       polish; the current behaviour is honest (no broken links), just incomplete.
+
+      DELIVERED (commit on branch worktree-e1-m1-console): sources.is_git_sha (the
+      shared 40-hex-git predicate, replacing readers._looks_like_git_sha) +
+      sources.checkpoint_git_sha_index (scans every metadata.json under data_root,
+      maps content config_hash -> git_sha); readers.load_ledger now resolves each
+      row's commit = config_hash when it IS a git SHA (the reconstructed M1-M5
+      rows) else the joined checkpoint git_sha, and the displayed short hash equals
+      the link target (no content-hash prefix masquerading as a commit). Honest
+      degrade (METHODOLOGY §9): a checkpoint with git_sha: null (the C2 audit) or
+      no matching checkpoint -> no link. Verified on the REAL ledger + checkpoints:
+      14/15 runs now link (was 5/15 — only M1-M5); the C2 audit honestly shows "—".
+      Frontend kept faithful: Ledger.tsx footer note corrected, mockExport + the
+      Ledger Vitest updated (content-hash run links via checkpoint; audit run
+      dashes). 60 console tests + 78 Vitest green; npm build green; ruff clean.
+
+  - id: E1-LEDGER-ARTIFACTS-PATH-JOIN
+    rank: 114
+    title: "E1-M1-LEDGER-COMMIT-LINKS follow-up: artifacts-path fallback join for checkpoints outside data_root"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-LEDGER-COMMIT-LINKS]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-LEDGER-COMMIT-LINKS post-task review (commit of
+      src/quant/console/sources.py). The task spec said "join ... by the `artifacts`
+      path OR config_hash"; the shipped join uses config_hash (the content hash
+      recorded verbatim in both the ledger entry and the checkpoint metadata),
+      which fully resolves all 14 linkable runs today because every checkpoint
+      lives under data_root keyed by config_hash. The `artifacts`-path half is the
+      deferred robustness case: a ledger entry whose checkpoint is stored OUTSIDE
+      data_root (so checkpoint_git_sha_index's data_root.rglob misses it) would
+      stay link-less even though its metadata.json carries a git_sha. Add an
+      artifacts-path fallback in load_ledger: for an unresolved content-hash entry,
+      resolve each `artifacts` path (relative to data_root.parent), read the
+      metadata.json in that dir (or the parent of a file artifact), and use its
+      git_sha when config_hash matches. NON-GATING and deliberately NOT in
+      E1-CLOSE.depends_on (mirrors E1-M1-EXPORT-FRESHNESS-STAMP /
+      E1-M1-FEATURE-MONITOR-EXPORT-COST): the panel already certifies with 14/15
+      real links + an honest dash, so this must not deadlock closeout. Low priority.
 
   - id: E1-M1-EXPORT-FRESHNESS-STAMP
     rank: 103

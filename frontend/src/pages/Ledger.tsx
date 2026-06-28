@@ -128,8 +128,8 @@ function Registry({ data }: { data: LedgerView }) {
       </div>
       <p className="note">
         The trial count drives the multiple-testing bar: the more strategies tried, the
-        higher an out-of-sample Sharpe must clear to be believed. Content-hash runs predate
-        resolvable commit links and show “—”.
+        higher an out-of-sample Sharpe must clear to be believed. A run links to its commit
+        when one was recorded; runs without a recorded commit show “—”.
       </p>
     </>
   );
