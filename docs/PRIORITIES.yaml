@@ -565,7 +565,8 @@ tasks:
     title: "C1-M3: Freshness monitor + alert (cron)"
     project: C
     sub_project: C1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T01:58:07Z
     depends_on: [C1-M2]
     blocks: []
     deliverable:
