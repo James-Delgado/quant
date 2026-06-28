@@ -709,8 +709,9 @@ tasks:
     title: "Draft C6 (strategy registry + daily executor) PRD"
     project: C
     sub_project: C6
-    status: in_progress
+    status: done
     started_at: 2026-06-28T18:00:00Z
+    completed_at: 2026-06-28
     depends_on: [C2-M2]
     blocks: [C6-M1]
     deliverable:
@@ -766,7 +767,7 @@ tasks:
     title: "C6-M1: Strategy registry schema + loader + drift test"
     project: C
     sub_project: C6
-    status: blocked
+    status: ready
     depends_on: [C6-PRD]
     blocks: [C6-M2, C3-PRD, C4-PRD, E-STRATEGIES-PANEL]
     deliverable:
