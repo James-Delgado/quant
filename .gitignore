@@ -35,3 +35,4 @@ __pycache__/
 # payloads are never committed (they can go stale vs the artifacts).
 src/quant/console/export/*.json
 src/quant/console/export/**/*.json
+.gstack/

@@ -45,10 +45,12 @@ describe("App routing", () => {
     expect(screen.getByRole("link", { name: /Provenance/ })).toHaveClass("active");
   });
 
-  it("renders a scaffold placeholder for each panel", async () => {
-    renderApp("/catalog");
+  it("renders a scaffold placeholder for a not-yet-built panel", async () => {
+    // Explanations is the only remaining placeholder after E1-M3/M4 swapped the
+    // Monitor + Evidence panels to real pages.
+    renderApp("/explain");
     // findBy* flushes the AppShell data-status fetch inside act().
-    expect(await screen.findByText("Feature Catalog", { selector: ".h1" })).toBeInTheDocument();
+    expect(await screen.findByText("Explanations", { selector: ".h1" })).toBeInTheDocument();
     expect(screen.getByText(/scaffold/i)).toBeInTheDocument();
   });
 });

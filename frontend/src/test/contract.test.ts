@@ -32,6 +32,9 @@ const FEED_KEYS = ["feed", "last_timestamp", "age_days", "status"];
 const MARKET_KEYS = ["asof", "vix", "ten_year", "fed_funds", "notes"];
 const LEDGER_KEYS = ["n_trials", "n_entries", "luck_bar", "best", "runs"];
 const CATALOG_KEYS = ["summary", "features"];
+const CATALOG_FEATURE_KEYS = ["name", "group", "coverage", "mean", "std", "stability", "distribution", "ablation_status", "oos_status"];
+const LEDGER_RUN_KEYS = ["id", "project", "milestone", "comparisons", "verdict", "commit", "commit_url"];
+const PROVENANCE_KEYS = ["run", "name", "commit", "commit_url", "config", "leakage_controls", "self_tests", "lineage"];
 
 describe("export contract (TS mirror vs real Python export)", () => {
   const strategies = load("strategies.json");
@@ -63,5 +66,19 @@ describe("export contract (TS mirror vs real Python export)", () => {
   const catalog = load("catalog.json");
   it.skipIf(catalog === null)("catalog matches CatalogView", () => {
     expect(hasKeys(catalog, CATALOG_KEYS)).toBe(true);
+    for (const f of (catalog as { features: unknown[] }).features) {
+      expect(hasKeys(f, CATALOG_FEATURE_KEYS)).toBe(true);
+    }
+  });
+
+  it.skipIf(ledger === null)("ledger runs match LedgerRun", () => {
+    for (const run of (ledger as { runs: unknown[] }).runs) {
+      expect(hasKeys(run, LEDGER_RUN_KEYS)).toBe(true);
+    }
+  });
+
+  const provenance = load("provenance/arima.json");
+  it.skipIf(provenance === null)("provenance matches ProvenanceView", () => {
+    expect(hasKeys(provenance, PROVENANCE_KEYS)).toBe(true);
   });
 });
