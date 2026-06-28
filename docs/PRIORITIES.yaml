@@ -1192,7 +1192,8 @@ tasks:
     title: "Concept doc for the B1 candidate targets (docs/concepts/target-reframing.md)"
     project: B
     sub_project: B1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T22:26:49Z
     depends_on: [B1-M1]
     blocks: [B-CLOSE]
     deliverable:
