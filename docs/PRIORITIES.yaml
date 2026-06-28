@@ -655,7 +655,8 @@ tasks:
     title: "C2-M2: ARIMA(1,0,0) daily signal feeds LEAN paper account"
     project: C
     sub_project: C2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T07:30:00Z
     depends_on: [C2-M1]
     blocks: [C2-M3, C3-PRD, C4-PRD, E3-M1]
     deliverable:
