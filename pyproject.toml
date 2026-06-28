@@ -27,6 +27,11 @@ dependencies = [
     "matplotlib>=3.8",       # plotting for research notebooks
 ]
 
+[project.scripts]
+# Research console CLI (E1). Activates on the next editable install; until then
+# use the module form `python -m quant.console export`.
+console = "quant.console.__main__:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8",

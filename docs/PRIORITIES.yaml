@@ -1364,8 +1364,9 @@ tasks:
     title: "E1-M1: Console service layer + static JSON export"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T08:20:00Z
+    completed_at: 2026-06-28
     depends_on: []
     blocks: [E1-M2, E1-CLOSE]
     deliverable:
@@ -1393,7 +1394,7 @@ tasks:
     title: "E1-M2: Frontend scaffold (Vite + React + TS + Tailwind/shadcn shell)"
     project: E
     sub_project: E1
-    status: blocked
+    status: ready
     depends_on: [E1-M1]
     blocks: [E1-M3, E1-M4, E1-CLOSE]
     deliverable:
@@ -1522,7 +1523,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -1851,3 +1852,115 @@ tasks:
       When both are met, this task generates the trigger report and unblocks
       the Phase 5 milestone backlog (which gets appended to this file at that
       time, not before — Phase 5's design depends on what B and C surfaced).
+
+  # ------ E1-M1 discovered follow-ups (post-task review of E1-M1) ------
+  # Ranks 100+ are append-order hints; depends_on is the hard ordering constraint.
+  # The two CLOSE-blocking refinements are in E1-CLOSE.depends_on (Step 7 corollary).
+
+  - id: E1-M1-CONDITIONS-MARKET-AXIS
+    rank: 100
+    title: "E1-M1 follow-up: market-level Conditions axes (VIX-detector vol + rates) replacing the return-vol proxy"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: src/quant/console/readers.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      decisions: docs/project-e/DECISIONS.md
+    est_complexity: medium
+    notes: |
+      Discovered in E1-M1 post-task review (DECLARED DEVIATION, METHODOLOGY §9).
+      load_conditions currently derives the volatility axis from each return
+      series' OWN rolling vol and the trend axis from its equity-vs-MA — a
+      self-contained M1 proxy that needs no lake/tz alignment. PRD §5/§11 +
+      DECISIONS §6 intend MARKET-level, live-computable conditions: reuse the
+      repo's VIXThresholdDetector (vol from VIX) and ADD a rates axis (FRED
+      DGS10 / yield_curve). Requires aligning VIX/FRED to the OOS calendar
+      (the documented NY-vs-UTC tz pitfall — see project_lake_tz_alignment memory
+      + run_b1_arms._to_naive_utc). Keep the service layer emitting neutral
+      chart-ready series. Blocks E1-CLOSE so the Conditions panel certifies on
+      the intended axes, not the proxy.
+
+  - id: E1-M1-FEATURE-MONITOR
+    rank: 101
+    title: "E1-M1 follow-up: lake-backed feature monitor (coverage, mu/sigma, distribution, stability/drift)"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      decisions: docs/project-e/DECISIONS.md
+    est_complexity: medium
+    notes: |
+      Discovered in E1-M1 post-task review. E1-M1 ships the Feature Catalog
+      REGISTRY plus an injectable `feature_monitor_fn` hook, but the production
+      ConsoleSources.default() wires it to None, so coverage / mean / std /
+      distribution / stability render empty. DECISIONS §8 + PRD §5 want the
+      catalog to be a MONITORING surface (per-feature coverage, mu/sigma, a
+      distribution mini, and a stable/drifting/stale status with a nightly drift
+      check). Implement a lake-backed monitor (read each registered feature's
+      column from build_features / the processed lake; compute the stats and a
+      drift/staleness verdict) and wire it into default(). Reuses the same
+      tz-alignment care as the conditions follow-up. Blocks E1-CLOSE so the
+      Feature Catalog panel certifies with real monitoring stats (the panel
+      acceptance in PRD §7 M4 requires drift/stale status).
+
+  - id: E1-M1-LEDGER-COMMIT-LINKS
+    rank: 102
+    title: "E1-M1 follow-up: resolvable Trial Registry commit links for content-hash runs"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1 post-task review. load_ledger only emits a commit_url
+      when an entry's config_hash is a 40-hex git SHA; the M6 / B1 / B2 entries
+      use 64-hex CONTENT hashes, so those Trial Registry rows have no link even
+      though the real git_sha lives in the matching checkpoint metadata.json.
+      Join ledger entries to checkpoints (by the `artifacts` path or config_hash)
+      and surface the checkpoint git_sha so every run row gets a resolvable
+      github.com/James-Delgado/quant commit link (DECISIONS §5). Non-blocking
+      polish; the current behaviour is honest (no broken links), just incomplete.
+
+  - id: E1-M1-EXPORT-FRESHNESS-STAMP
+    rank: 103
+    title: "E1-M1 follow-up: export freshness stamp for the UI (kept out of the idempotency surface)"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1]
+    blocks: []
+    deliverable:
+      file: src/quant/console/export.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1 post-task review. The export is deliberately
+      byte-idempotent (no embedded timestamp) so re-running over unchanged
+      artifacts is a no-op diff. PRD §12 risk table wants a "freshness stamp
+      shown in the UI". Add a SEPARATE manifest (e.g. export/_manifest.json with
+      generated_at + per-source artifact mtimes) that the idempotency check
+      excludes, so the UI can show staleness without breaking the deterministic
+      payload contract. Non-blocking polish.
