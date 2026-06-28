@@ -1394,7 +1394,8 @@ tasks:
     title: "E1-M2: Frontend scaffold (Vite + React + TS + Tailwind/shadcn shell)"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T09:05:00Z
     depends_on: [E1-M1]
     blocks: [E1-M3, E1-M4, E1-CLOSE]
     deliverable:
