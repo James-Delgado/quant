@@ -16,8 +16,14 @@ interface ConditionBarsProps {
  * Positive bars rise (gain), negative bars fall (loss). One bar per condition,
  * from the single walk-forward Sharpe series the export provides.
  */
-export function ConditionBars({ items, height = 180, width = 460, ariaLabel }: ConditionBarsProps) {
-  if (!items.length) return <span className="dim small">no condition data</span>;
+export function ConditionBars({
+  items,
+  height = 180,
+  width = 460,
+  ariaLabel,
+}: ConditionBarsProps) {
+  if (!items.length)
+    return <span className="dim small">no condition data</span>;
   const midY = height / 2;
   const half = midY - 28; // headroom for labels
   const maxAbs = Math.max(...items.map((d) => Math.abs(d.value)), 0.001);

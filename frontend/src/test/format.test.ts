@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { fixed, pct, signClass, signedFixed, signedPct, yearSpan } from "@/lib/format";
+import {
+  fixed,
+  pct,
+  signClass,
+  signedFixed,
+  signedPct,
+  yearSpan,
+} from "@/lib/format";
 
 describe("format helpers", () => {
   it("renders fixed decimals with a typographic minus", () => {

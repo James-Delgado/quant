@@ -36,7 +36,10 @@ describe("chartGeometry", () => {
   });
 
   it("dateFraction places a date inside a span and clamps", () => {
-    expect(dateFraction("2015-01-01", "2010-01-01", "2020-01-01")).toBeCloseTo(0.5, 1);
+    expect(dateFraction("2015-01-01", "2010-01-01", "2020-01-01")).toBeCloseTo(
+      0.5,
+      1,
+    );
     expect(dateFraction("2005-01-01", "2010-01-01", "2020-01-01")).toBe(0);
     expect(Number.isNaN(dateFraction("x", "2010", "2010"))).toBe(true);
   });

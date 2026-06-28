@@ -49,7 +49,12 @@ export const STRATEGIES: StrategyCard[] = [
   },
 ];
 
-function detail(id: string, name: string, sharpe: number, why: string): StrategyDetail {
+function detail(
+  id: string,
+  name: string,
+  sharpe: number,
+  why: string,
+): StrategyDetail {
   return {
     id,
     name,
@@ -79,7 +84,10 @@ function detail(id: string, name: string, sharpe: number, why: string): Strategy
       { date: "2015-06-21", value: -0.2 },
       { date: "2026-03-30", value: 0.1 },
     ],
-    return_hist: { bin_edges: [-0.02, -0.01, 0, 0.01, 0.02], counts: [3, 20, 25, 5] },
+    return_hist: {
+      bin_edges: [-0.02, -0.01, 0, 0.01, 0.02],
+      counts: [3, 20, 25, 5],
+    },
     condition_link: "/conditions",
     why,
     config_hash: id,
@@ -89,8 +97,18 @@ function detail(id: string, name: string, sharpe: number, why: string): Strategy
 }
 
 export const STRATEGY_DETAIL: Record<string, StrategyDetail> = {
-  arima: detail("arima", "ARIMA(1,0,0) control", 0.42, "It stays aligned with the long trend."),
-  signed: detail("signed", "GBM · signed returns", -0.34, "It fights the trend in up-markets."),
+  arima: detail(
+    "arima",
+    "ARIMA(1,0,0) control",
+    0.42,
+    "It stays aligned with the long trend.",
+  ),
+  signed: detail(
+    "signed",
+    "GBM · signed returns",
+    -0.34,
+    "It fights the trend in up-markets.",
+  ),
 };
 
 export const PORTFOLIO: PortfolioView = {
@@ -131,7 +149,10 @@ export const PORTFOLIO: PortfolioView = {
 export const CONDITIONS: ConditionsView = {
   axes: [
     { name: "volatility", conditions: ["low_vol", "mid_vol", "high_vol"] },
-    { name: "rates", conditions: ["rates_falling", "rates_steady", "rates_rising"] },
+    {
+      name: "rates",
+      conditions: ["rates_falling", "rates_steady", "rates_rising"],
+    },
   ],
   by_condition: [
     { axis: "volatility", condition: "low_vol", sharpe: -1.23, n_bars: 1792 },
@@ -148,16 +169,38 @@ export const CONDITIONS: ConditionsView = {
     ],
   },
   stress_windows: [
-    { name: "Global Financial Crisis", start: "2007-10-01", end: "2009-03-31", sharpe: 0.28, n_bars: 372 },
-    { name: "COVID crash", start: "2020-02-01", end: "2020-04-30", sharpe: -3.29, n_bars: 61 },
+    {
+      name: "Global Financial Crisis",
+      start: "2007-10-01",
+      end: "2009-03-31",
+      sharpe: 0.28,
+      n_bars: 372,
+    },
+    {
+      name: "COVID crash",
+      start: "2020-02-01",
+      end: "2020-04-30",
+      sharpe: -3.29,
+      n_bars: 61,
+    },
   ],
 };
 
 export const DATA_STATUS: DataStatusView = {
   asof: "2026-06-28",
   feeds: [
-    { feed: "Daily equity bars", last_timestamp: "2026-06-05", age_days: 23.5, status: "stale" },
-    { feed: "FRED macro series", last_timestamp: "2026-06-04", age_days: 24.7, status: "stale" },
+    {
+      feed: "Daily equity bars",
+      last_timestamp: "2026-06-05",
+      age_days: 23.5,
+      status: "stale",
+    },
+    {
+      feed: "FRED macro series",
+      last_timestamp: "2026-06-04",
+      age_days: 24.7,
+      status: "stale",
+    },
   ],
 };
 
@@ -166,13 +209,21 @@ export const MARKET: MarketSnapshot = {
   vix: 15.4,
   ten_year: 4.47,
   fed_funds: 3.62,
-  notes: ["2s10s spread and market breadth are not yet ingested (planned for E4)."],
+  notes: [
+    "2s10s spread and market breadth are not yet ingested (planned for E4).",
+  ],
 };
 
 // Monitoring stats are null on purpose: the lake-backed feature monitor
 // (E1-M1-FEATURE-MONITOR) is not wired, so the panel renders a pending state.
 export const CATALOG: CatalogView = {
-  summary: { registered: 2, stable: 0, drifting: 0, stale: 0, mean_coverage: null },
+  summary: {
+    registered: 2,
+    stable: 0,
+    drifting: 0,
+    stale: 0,
+    mean_coverage: null,
+  },
   features: [
     {
       name: "ret_1d",
@@ -256,7 +307,12 @@ export const LEDGER: LedgerView = {
   ],
 };
 
-function provenance(run: string, name: string, model: string, commitUrl: string | null): ProvenanceView {
+function provenance(
+  run: string,
+  name: string,
+  model: string,
+  commitUrl: string | null,
+): ProvenanceView {
   return {
     run,
     name,
@@ -278,14 +334,34 @@ function provenance(run: string, name: string, model: string, commitUrl: string 
       slippage_bps: 5,
     },
     leakage_controls: [
-      { name: "Purge", status: "enforced", detail: "Label-window overlap removed." },
-      { name: "Embargo", status: "enforced", detail: "Serial-correlation gap." },
+      {
+        name: "Purge",
+        status: "enforced",
+        detail: "Label-window overlap removed.",
+      },
+      {
+        name: "Embargo",
+        status: "enforced",
+        detail: "Serial-correlation gap.",
+      },
     ],
     self_tests: [
-      { name: "Random-strategy null", status: "passing", detail: "≈ zero edge net of costs." },
-      { name: "Leaky-strategy trap", status: "passing", detail: "Leak is detected." },
+      {
+        name: "Random-strategy null",
+        status: "passing",
+        detail: "≈ zero edge net of costs.",
+      },
+      {
+        name: "Leaky-strategy trap",
+        status: "passing",
+        detail: "Leak is detected.",
+      },
     ],
-    lineage: ["Alpaca daily OHLCV bars", "FRED macro series", "FinBERT sentiment"],
+    lineage: [
+      "Alpaca daily OHLCV bars",
+      "FRED macro series",
+      "FinBERT sentiment",
+    ],
   };
 }
 

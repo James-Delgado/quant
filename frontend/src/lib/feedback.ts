@@ -13,7 +13,11 @@ export type FeedbackType = "bug" | "idea" | "data";
 export type FeedbackSeverity = "low" | "med" | "high";
 
 export const FEEDBACK_TYPES: readonly FeedbackType[] = ["bug", "idea", "data"];
-export const FEEDBACK_SEVERITIES: readonly FeedbackSeverity[] = ["low", "med", "high"];
+export const FEEDBACK_SEVERITIES: readonly FeedbackSeverity[] = [
+  "low",
+  "med",
+  "high",
+];
 
 /** The `feedback` label every reported issue carries (DECISIONS #11). */
 export const FEEDBACK_LABEL = "feedback";
@@ -58,7 +62,10 @@ export function buildIssueBody(r: FeedbackReport): string {
 }
 
 /** A pre-filled `issues/new` URL: title + body + the `feedback` label. */
-export function buildIssueUrl(r: FeedbackReport, repoUrl: string = REPO_URL): string {
+export function buildIssueUrl(
+  r: FeedbackReport,
+  repoUrl: string = REPO_URL,
+): string {
   const params = new URLSearchParams({
     title: r.title.trim(),
     body: buildIssueBody(r),

@@ -59,7 +59,10 @@ export function LineChart({
   if (series.some((s) => s.area)) anchorValues.push(0);
   const domain = extent(anchorValues);
 
-  const grid = Array.from({ length: gridLines }, (_, i) => ((i + 1) / (gridLines + 1)) * height);
+  const grid = Array.from(
+    { length: gridLines },
+    (_, i) => ((i + 1) / (gridLines + 1)) * height,
+  );
 
   return (
     <svg
@@ -81,7 +84,14 @@ export function LineChart({
         />
       ))}
       {grid.map((y, i) => (
-        <line key={`grid-${i}`} className="grid-l" x1={0} y1={y} x2={width} y2={y} />
+        <line
+          key={`grid-${i}`}
+          className="grid-l"
+          x1={0}
+          y1={y}
+          x2={width}
+          y2={y}
+        />
       ))}
       {zeroAxisAt !== undefined && (
         <line

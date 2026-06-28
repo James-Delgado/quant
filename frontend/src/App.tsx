@@ -48,7 +48,10 @@ export function App() {
             />
           );
         })}
-        <Route path="*" element={<Navigate to={`/${DEFAULT_PATH}`} replace />} />
+        <Route
+          path="*"
+          element={<Navigate to={`/${DEFAULT_PATH}`} replace />}
+        />
       </Route>
     </Routes>
   );

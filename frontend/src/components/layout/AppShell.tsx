@@ -45,7 +45,11 @@ export function AppShell() {
       )}
       <Sidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
       <div className="main">
-        <Topbar title={title} asof={asof} onMenu={() => setNavOpen((o) => !o)} />
+        <Topbar
+          title={title}
+          asof={asof}
+          onMenu={() => setNavOpen((o) => !o)}
+        />
         <div className="content">
           <div className="maxw">
             <Outlet />

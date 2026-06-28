@@ -56,11 +56,17 @@ function StrategyCardPanel({ strategy }: { strategy: PortfolioStrategy }) {
           </span>
         </Kv>
         <Kv label="Allocation">
-          <span className="mono">{inUse ? pct(strategy.allocation_pct) : "—"}</span>
-          {!inUse && <span className="dim small"> (no capital while idle)</span>}
+          <span className="mono">
+            {inUse ? pct(strategy.allocation_pct) : "—"}
+          </span>
+          {!inUse && (
+            <span className="dim small"> (no capital while idle)</span>
+          )}
         </Kv>
         <Kv label="Provenance">
-          <span className={inUse ? "" : "dim"}>{strategy.provenance_summary}</span>
+          <span className={inUse ? "" : "dim"}>
+            {strategy.provenance_summary}
+          </span>
         </Kv>
         <Kv label="Universe">
           <span className="pf-tags">
@@ -117,12 +123,15 @@ function PortfolioBody({ view }: { view: PortfolioView }) {
         strategies={idle}
       />
       {idle.length === 0 && (
-        <p className="note">No idle strategies — every configured strategy is deployed.</p>
+        <p className="note">
+          No idle strategies — every configured strategy is deployed.
+        </p>
       )}
       <p className="note">
-        This is the deployment portfolio — what is configured to run, and how capital is
-        split across it. Realized per-strategy performance arrives with live execution
-        monitoring; until then no live P&amp;L is shown here.
+        This is the deployment portfolio — what is configured to run, and how
+        capital is split across it. Realized per-strategy performance arrives
+        with live execution monitoring; until then no live P&amp;L is shown
+        here.
       </p>
     </>
   );
@@ -134,10 +143,10 @@ export function Portfolio() {
     <section>
       <div className="h1">Strategy Portfolio</div>
       <div className="lead">
-        Every strategy in the deployment registry — those <strong>in use</strong> (live in
-        the daily run, sharing capital equally) and those <strong>idle</strong> (configured
-        but not yet deployed). Each carries its model, prediction target, universe,
-        allocation, and{" "}
+        Every strategy in the deployment registry — those{" "}
+        <strong>in use</strong> (live in the daily run, sharing capital equally)
+        and those <strong>idle</strong> (configured but not yet deployed). Each
+        carries its model, prediction target, universe, allocation, and{" "}
         <InfoTip
           label="Provenance"
           tip="What justifies deploying this strategy: either an infrastructure placeholder (no edge claim) or a gate-verified trial verdict. No strategy goes live on an unbacked claim."

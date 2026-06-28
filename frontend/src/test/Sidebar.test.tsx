@@ -4,7 +4,10 @@ import { describe, expect, it } from "vitest";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { NAV_ITEMS } from "@/nav";
 
-const FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
+const FUTURE = {
+  v7_startTransition: true,
+  v7_relativeSplatPath: true,
+} as const;
 
 function renderSidebar() {
   return render(
@@ -26,7 +29,9 @@ describe("Sidebar", () => {
     renderSidebar();
     const nav = screen.getByRole("navigation", { name: "Primary" });
     for (const item of NAV_ITEMS) {
-      expect(within(nav).getByRole("link", { name: new RegExp(item.label) })).toBeInTheDocument();
+      expect(
+        within(nav).getByRole("link", { name: new RegExp(item.label) }),
+      ).toBeInTheDocument();
     }
   });
 

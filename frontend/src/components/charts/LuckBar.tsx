@@ -15,7 +15,12 @@ interface LuckBarProps {
  * sits at the luck bar. The fill reads `loss` when best fails to clear the bar
  * and `gain` when it clears — the whole point of the registry (PRD §5).
  */
-export function LuckBar({ luck, best, width = 320, height = 22 }: LuckBarProps) {
+export function LuckBar({
+  luck,
+  best,
+  width = 320,
+  height = 22,
+}: LuckBarProps) {
   // Scale so the luck bar sits at ~70% of the track, leaving headroom above it.
   const scaleMax = Math.max(luck, best ?? 0) * 1.25 || 1;
   const xOf = (v: number) => Math.max(0, Math.min(1, v / scaleMax)) * width;
@@ -35,7 +40,14 @@ export function LuckBar({ luck, best, width = 320, height = 22 }: LuckBarProps) 
       role="img"
       aria-label={`Best observed Sharpe ${best == null ? "n/a" : fixed(best, 2)} versus luck bar ${fixed(luck, 2)}`}
     >
-      <rect className="track" x={0} y={barY} width={width} height={barH} rx={2} />
+      <rect
+        className="track"
+        x={0}
+        y={barY}
+        width={width}
+        height={barH}
+        rx={2}
+      />
       {best != null && (
         <rect
           className="fill"

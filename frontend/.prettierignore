@@ -1,0 +1,14 @@
+# Build output, deps, copied data, coverage, lockfile — not ours to format.
+dist
+public
+node_modules
+coverage
+package-lock.json
+*.tsbuildinfo
+
+# Instrument design system ported VERBATIM from docs/project-e/mockups/console.css
+# (E1-M2). Reformatting would break the "ported verbatim" provenance and bloat the
+# diff for zero behavioural gain. CSS is reviewed against the frozen mockup, not Prettier.
+src/styles/console.css
+src/styles/tokens.css
+src/index.css

@@ -26,7 +26,8 @@ export function useAsyncData<T>(
     setState({ status: "loading", data: null, error: null });
     load(ctrl.signal)
       .then((data) => {
-        if (!ctrl.signal.aborted) setState({ status: "ready", data, error: null });
+        if (!ctrl.signal.aborted)
+          setState({ status: "ready", data, error: null });
       })
       .catch((err: unknown) => {
         if (ctrl.signal.aborted) return;
