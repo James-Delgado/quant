@@ -1364,7 +1364,8 @@ tasks:
     title: "E1-M1: Console service layer + static JSON export"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T08:20:00Z
     depends_on: []
     blocks: [E1-M2, E1-CLOSE]
     deliverable:
