@@ -2579,8 +2579,9 @@ tasks:
     title: "E1-M4 follow-up: expose hyperparameter-search config (n_iter / inner folds) in the Provenance run-config"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T23:35:57Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1, E1-M4]
     blocks: [E1-CLOSE]
     deliverable:

@@ -25,8 +25,20 @@ function num(v: number | null): string {
   return v == null ? "—" : String(v);
 }
 
+/** Hyperparameter-search budget line, or null when the model ran no search. */
+function searchLine(
+  nIter: number | null,
+  innerFolds: number | null,
+): string | null {
+  const parts: string[] = [];
+  if (nIter != null) parts.push(`${nIter} iters`);
+  if (innerFolds != null) parts.push(`${innerFolds} inner folds`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 function RunConfig({ p }: { p: ProvenanceView }) {
   const c = p.config;
+  const search = searchLine(c.n_iter, c.inner_folds);
   return (
     <div className="panel">
       <div className="phead">
@@ -68,6 +80,12 @@ function RunConfig({ p }: { p: ProvenanceView }) {
           <span className="k">label horizon</span>
           <span className="v">{num(c.label_horizon)}</span>
         </li>
+        {search && (
+          <li>
+            <span className="k">hyperparameter search</span>
+            <span className="v">{search}</span>
+          </li>
+        )}
         <li>
           <span className="k">costs</span>
           <span className="v">

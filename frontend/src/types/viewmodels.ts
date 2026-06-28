@@ -129,6 +129,9 @@ export interface RunConfigView {
   test_window: number | null;
   step: number | null;
   embargo: number | null;
+  // Hyperparameter-search budget; null for models with no search (ARIMA).
+  n_iter: number | null;
+  inner_folds: number | null;
   initial_capital: number | null;
   commission_per_share: number | null;
   slippage_bps: number | null;

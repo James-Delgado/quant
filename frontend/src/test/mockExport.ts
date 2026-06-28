@@ -314,6 +314,8 @@ function provenance(
   name: string,
   model: string,
   commitUrl: string | null,
+  nIter: number | null = null,
+  innerFolds: number | null = null,
 ): ProvenanceView {
   return {
     run,
@@ -331,6 +333,8 @@ function provenance(
       test_window: 63,
       step: 63,
       embargo: 3,
+      n_iter: nIter,
+      inner_folds: innerFolds,
       initial_capital: 100000,
       commission_per_share: 0.005,
       slippage_bps: 5,
@@ -374,7 +378,7 @@ export const PROVENANCE: Record<string, ProvenanceView> = {
     "ARIMABaseline",
     "https://github.com/James-Delgado/quant/commit/397f68acc56c",
   ),
-  signed: provenance("signed", "GBM · signed returns", "GBMModel", null),
+  signed: provenance("signed", "GBM · signed returns", "GBMModel", null, 50, 3),
 };
 
 const ROUTES: Record<string, unknown> = {
