@@ -1,0 +1,52 @@
+# Strategy registry (Project C6 — Milestone 1).
+#
+# The deployment-side analog of features/catalog.yaml: one entry per DEPLOYABLE
+# strategy — the full pipeline spec (model + feature_set + target + universe +
+# decision_rule + sizing_policy + confidence_gate + risk_limits + provenance).
+# The typed loader + G1 gate live in strategy_registry.py; the drift test
+# (tests/test_strategy_registry.py) keeps this YAML and the code in lock-step.
+#
+# Drift contract (METHODOLOGY §6): registry_drift_report() resolves every
+#   - model_ref      -> MODEL_REGISTRY (quant.models)
+#   - feature_set_ref-> features/catalog.yaml names ([] = label-only model)
+#   - target_ref     -> known_targets() = {next_bar_return} ∪ TARGET_CATALOG keys
+# and enforces the PROVENANCE GATE: enabled ⇒ provenance is either the literal
+# 'placeholder' (sanctioned infra exception) or a 'ledger-<id>' resolving to a
+# gate_passed entry in data/ledger.yaml. Both the unresolved-refs and the
+# provenance-violations lists must be EMPTY to pass (G1 = (0, 0)).
+#
+# Placeholder fields (PRD §Out of scope) until C3/C4:
+#   - sizing_policy.method:    fully_invested_equal_weight  (C3 adds vol_target)
+#   - confidence_gate.method:  always_pass (inert)          (C4 supplies calib.)
+#   - risk_limits:             permissive defaults          (C3 populates)
+#
+# Adding a deployable strategy = adding an entry here, NOT editing source — the
+# explicit ROADMAP §3 promise. Timestamps are ISO-8601 UTC strings.
+
+strategies:
+  - id: arima_placeholder
+    display_name: "ARIMA(1,0,0) Placeholder"
+    description: >-
+      Infrastructure placeholder that exercises the multi-strategy
+      registry/allocator/executor spine end-to-end on paper. ARIMA(1,0,0)
+      forecasts the next-bar return from the price label series (no features);
+      its P&L is deliberately uninteresting. Makes no edge claim — provenance is
+      'placeholder', not a gate verdict.
+    model_ref: arima_baseline
+    feature_set_ref: []          # ARIMA fits on the label series; consumes no features
+    target_ref: next_bar_return  # Phase-1/2 forward-return label (generate_labels, horizon=1)
+    universe: ["SPY", "QQQ", "IWM"]  # a few liquid ETFs — fully-invested equal-weight
+    decision_rule: sign          # C2 parity rule: sign(forecast) ∈ {-1, 0, +1}
+    sizing_policy:
+      method: fully_invested_equal_weight
+    confidence_gate:
+      method: always_pass
+    risk_limits:
+      max_position: 1.0
+      max_drawdown_stop: null
+    cadence: daily
+    broker: alpaca_paper
+    enabled: true
+    provenance: placeholder
+    created_at: "2026-06-28T16:57:08Z"
+    enabled_at: "2026-06-28T16:57:08Z"
