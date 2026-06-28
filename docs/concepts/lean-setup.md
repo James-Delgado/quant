@@ -153,6 +153,61 @@ The contract M2 inherits from this milestone:
 
 ---
 
+## 4. G3 — daily paper-loop liveness runbook (C2-M3)
+
+> **What G3 certifies.** A real paper run completes **≥ 5 consecutive daily cycles**
+> (`G3_MIN_CYCLES`, pinned in `scripts/reconcile_paper_backtest.py`) with **zero**
+> pipeline errors and position state that **round-trips** across runs (run N's
+> persisted holdings == run N+1's opening holdings). This is the *liveness* gate —
+> it proves the loop **runs**, not that it **profits** (the placeholder's P&L is
+> uninteresting by design). The merge-blocking reconciliation evidence is the
+> deterministic G2 replay (§ below); G3 accrues over real market days.
+
+Each cycle is one call to `run_daily_cycle` (composed by `run_paper_loop`), which
+chains the C2-M1/M2 primitives:
+
+```
+load_position_state(state.json)          # prior holdings (None on cycle 1)
+  → daily_signal(asof)                   # get_pit_panel → ARIMA → target position (C2-M2)
+  → bridge.place_target(...)             # AlpacaPaperBridge submits the signed-delta order
+  → save_position_state(holdings, …)     # persist the broker's reported positions
+```
+
+**Operational procedure** (one cycle per trading day, ≥ 5 sessions):
+
+1. After the Tiingo T+1 bar lands (parity-safe cadence, PRD Open-Q 1), run one cycle:
+
+   ```bash
+   # A thin daily driver over the C2-M3 primitives (run_paper_loop with a single asof):
+   .venv/bin/python - <<'PY'
+   import pandas as pd
+   from quant.execution.lean_bridge import AlpacaPaperBridge
+   import importlib.util, pathlib
+   spec = importlib.util.spec_from_file_location(
+       "rpb", pathlib.Path("scripts/reconcile_paper_backtest.py"))
+   rpb = importlib.util.module_from_spec(spec); spec.loader.exec_module(rpb)
+   bridge = AlpacaPaperBridge.from_settings()
+   state = rpb.run_paper_loop([pd.Timestamp.now("UTC").normalize()],
+                              bridge, "data/c2/paper_state.json")[0]
+   print("cycle ok — holdings:", state.holdings)
+   PY
+   ```
+
+2. Repeat on the next trading day. `data/c2/paper_state.json` carries holdings
+   forward; cycle N+1 opens where cycle N closed (the round-trip).
+3. After ≥ 5 clean cycles, record the run in `lean-setup.md` (date span, cycle
+   count, zero-error confirmation) — the G3 evidence, mirroring the §2 hello-world
+   evidence capture.
+
+**What is testable now vs. operational.** The *gateable half* of G3 — the loop
+runs end-to-end and state round-trips across cycles — is covered deterministically
+in `tests/test_reconciliation.py::test_run_paper_loop_state_round_trips` (5 cycles
+through a fake bridge). The *live* ≥ 5-session accrual against the real Alpaca
+paper account spans real market days and cannot be run in a single session; it is
+this runbook, exercised operationally (declared per METHODOLOGY §9).
+
+---
+
 ## Appendix A — LEAN-local install (preserved for the future swap)
 
 If a later milestone justifies LEAN (multi-asset data we lack, or hosted live after a
