@@ -148,6 +148,52 @@ def _write_catalog(path: Path) -> None:
     path.write_text(yaml.safe_dump(catalog))
 
 
+def _write_registry(path: Path) -> None:
+    """Synthetic C6 strategy registry: one enabled (in-use) + one idle entry.
+
+    Exercises both ``status`` branches and the 1/N equal-weight allocation
+    (one enabled → 100%). Refs are not resolved by ``load_portfolio`` (it never
+    calls the G1 drift gate), so the values only need to satisfy the StrategySpec
+    schema.
+    """
+    registry = {
+        "strategies": [
+            {
+                "id": "arima_placeholder",
+                "display_name": "ARIMA(1,0,0) Placeholder",
+                "description": "Infrastructure placeholder. Makes no edge claim.",
+                "model_ref": "arima_baseline",
+                "feature_set_ref": [],
+                "target_ref": "next_bar_return",
+                "universe": ["SPY", "QQQ", "IWM"],
+                "decision_rule": "sign",
+                "cadence": "daily",
+                "broker": "alpaca_paper",
+                "enabled": True,
+                "provenance": "placeholder",
+                "created_at": "2026-06-28T16:57:08Z",
+                "enabled_at": "2026-06-28T16:57:08Z",
+            },
+            {
+                "id": "gbm_idle",
+                "display_name": "GBM (idle)",
+                "description": "Disabled GBM strategy, not yet deployed.",
+                "model_ref": "gbm",
+                "feature_set_ref": ["ret_1d"],
+                "target_ref": "next_bar_return",
+                "universe": ["SPY"],
+                "decision_rule": "sign",
+                "cadence": "daily",
+                "broker": "alpaca_paper",
+                "enabled": False,
+                "provenance": "",
+                "created_at": "2026-06-28T16:57:08Z",
+            },
+        ]
+    }
+    path.write_text(yaml.safe_dump(registry))
+
+
 @pytest.fixture
 def sources(tmp_path: Path) -> ConsoleSources:
     data_root = tmp_path / "data"
@@ -161,6 +207,8 @@ def sources(tmp_path: Path) -> ConsoleSources:
     _write_ledger(ledger_path)
     catalog_path = tmp_path / "catalog.yaml"
     _write_catalog(catalog_path)
+    registry_path = tmp_path / "strategy_registry.yaml"
+    _write_registry(registry_path)
 
     fixed_now = dt.datetime(2026, 6, 28, tzinfo=dt.timezone.utc)
     feed_ages = {
@@ -186,6 +234,7 @@ def sources(tmp_path: Path) -> ConsoleSources:
         ledger_path=ledger_path,
         catalog_path=catalog_path,
         strategy_roots=(data_root / "phase4a",),
+        registry_path=registry_path,
         feeds=(
             FeedSpec("equity_bars_daily", "Daily equity bars", "timestamp"),
             FeedSpec("macro_fred", "FRED macro series", "timestamp"),
@@ -229,6 +278,41 @@ def test_load_strategies_verdict_from_ledger(sources):
     signed = next(c for c in readers.load_strategies(sources) if c.id == "signed")
     assert signed.status == "gate_failed"
     assert "gate failed" in signed.driver.lower()
+
+
+# ── load_portfolio (C6 registry) ─────────────────────────────────────────────
+
+
+def test_load_portfolio_status_and_allocation(sources):
+    view = readers.load_portfolio(sources)
+    assert view.n_enabled == 1 and view.n_idle == 1
+    by_id = {s.id: s for s in view.strategies}
+
+    enabled = by_id["arima_placeholder"]
+    assert enabled.status == "enabled"
+    assert enabled.allocation_pct == 100.0  # 1/N with one enabled strategy
+    assert enabled.universe == ["SPY", "QQQ", "IWM"]
+    assert enabled.model_ref == "arima_baseline"
+    assert "Placeholder" in enabled.provenance_summary
+
+    idle = by_id["gbm_idle"]
+    assert idle.status == "idle"
+    assert idle.allocation_pct == 0.0  # idle strategies hold no capital
+
+
+def test_load_portfolio_falls_back_to_default_registry(tmp_path):
+    """A None registry_path resolves the committed default (production wiring)."""
+    bare = ConsoleSources(
+        data_root=tmp_path,
+        ledger_path=tmp_path / "ledger.yaml",
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(tmp_path / "phase4a",),
+        registry_path=None,
+    )
+    view = readers.load_portfolio(bare)
+    # The seeded real registry has at least the enabled ARIMA placeholder.
+    assert any(s.status == "enabled" for s in view.strategies)
+    assert view.n_enabled + view.n_idle == len(view.strategies)
 
 
 # ── load_strategy ────────────────────────────────────────────────────────────
@@ -387,6 +471,7 @@ def test_build_export_validates_against_schemas(sources):
     problems = export.validate_export(exp)
     assert problems == {}, problems
     assert "strategies.json" in exp
+    assert "portfolio.json" in exp
     assert "strategy/arima.json" in exp
     assert "provenance/arima.json" in exp
 
@@ -397,8 +482,8 @@ def test_export_idempotent(sources, tmp_path):
     export.write_export(out2, sources)
     files1 = sorted(p.relative_to(out1) for p in out1.rglob("*.json"))
     files2 = sorted(p.relative_to(out2) for p in out2.rglob("*.json"))
-    # 6 top-level + 2 strategy detail + 2 provenance (2 strategies in fixture).
-    assert files1 == files2 and len(files1) == 10
+    # 7 top-level + 2 strategy detail + 2 provenance (2 strategies in fixture).
+    assert files1 == files2 and len(files1) == 11
     for rel in files1:
         assert (out1 / rel).read_bytes() == (out2 / rel).read_bytes()
 
@@ -441,7 +526,7 @@ def test_cli_export(monkeypatch, sources, tmp_path, capsys):
     monkeypatch.setattr(ConsoleSources, "default", classmethod(lambda cls: sources))
     rc = cli.main(["export", "--out", str(tmp_path / "cli")])
     assert rc == 0
-    assert "Wrote 10 export files" in capsys.readouterr().out
+    assert "Wrote 11 export files" in capsys.readouterr().out
 
 
 # ── production sources wiring ─────────────────────────────────────────────────
@@ -454,6 +539,8 @@ def test_default_sources_constructs():
     assert src.commit_url(None) is None
     assert src.now().tzinfo is not None
     assert src.strategy_roots[0].name == "phase4a"
+    assert src.registry_path is not None
+    assert src.registry_path.name == "strategy_registry.yaml"
 
 
 # ── feedback: capture payload + issue construction (E1-M6) ───────────────────

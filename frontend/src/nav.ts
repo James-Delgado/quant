@@ -23,6 +23,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: "overview", label: "Overview", title: "Overview", icon: "▤" },
       { path: "strategies", label: "Strategies", title: "Strategies", icon: "⇡" },
+      { path: "portfolio", label: "Portfolio", title: "Strategy Portfolio", icon: "▦" },
       { path: "conditions", label: "Conditions", title: "Conditions", icon: "◵" },
       { path: "data", label: "Data & Market", title: "Data & Market", icon: "◍" },
     ],

@@ -77,6 +77,7 @@ def _array_of(tp: Any) -> dict:
 # Each export file → its root schema.
 EXPORT_SCHEMAS: dict[str, dict] = {
     "strategies.json": _array_of(vm.StrategyCard),
+    "portfolio.json": schema_for(vm.PortfolioView),
     "conditions.json": schema_for(vm.ConditionsView),
     "catalog.json": schema_for(vm.CatalogView),
     "ledger.json": schema_for(vm.LedgerView),

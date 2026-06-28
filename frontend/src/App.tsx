@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Placeholder } from "@/pages/Placeholder";
 import { Overview } from "@/pages/Overview";
 import { Strategies } from "@/pages/Strategies";
+import { Portfolio } from "@/pages/Portfolio";
 import { Conditions } from "@/pages/Conditions";
 import { Provenance } from "@/pages/Provenance";
 import { FeatureCatalog } from "@/pages/FeatureCatalog";
@@ -23,6 +24,7 @@ import { NAV_ITEMS, DEFAULT_PATH } from "@/nav";
 const PANELS: Record<string, ComponentType> = {
   overview: Overview,
   strategies: Strategies,
+  portfolio: Portfolio,
   conditions: Conditions,
   data: DataMarket,
   provenance: Provenance,

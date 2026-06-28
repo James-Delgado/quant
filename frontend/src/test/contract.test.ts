@@ -27,6 +27,8 @@ function hasKeys(obj: unknown, keys: string[]): boolean {
 }
 
 const STRATEGY_KEYS = ["id", "name", "mode", "sharpe", "total_return", "status", "driver", "sparkline"];
+const PORTFOLIO_KEYS = ["strategies", "n_enabled", "n_idle"];
+const PORTFOLIO_STRATEGY_KEYS = ["id", "display_name", "description", "model_ref", "target_ref", "universe", "status", "allocation_pct", "provenance", "provenance_summary"];
 const DATA_STATUS_KEYS = ["asof", "feeds"];
 const FEED_KEYS = ["feed", "last_timestamp", "age_days", "status"];
 const MARKET_KEYS = ["asof", "vix", "ten_year", "fed_funds", "notes"];
@@ -42,6 +44,14 @@ describe("export contract (TS mirror vs real Python export)", () => {
     expect(Array.isArray(strategies)).toBe(true);
     for (const row of strategies as unknown[]) {
       expect(hasKeys(row, STRATEGY_KEYS)).toBe(true);
+    }
+  });
+
+  const portfolio = load("portfolio.json");
+  it.skipIf(portfolio === null)("portfolio matches PortfolioView", () => {
+    expect(hasKeys(portfolio, PORTFOLIO_KEYS)).toBe(true);
+    for (const s of (portfolio as { strategies: unknown[] }).strategies) {
+      expect(hasKeys(s, PORTFOLIO_STRATEGY_KEYS)).toBe(true);
     }
   });
 

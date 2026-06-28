@@ -65,6 +65,28 @@ export interface StrategyDetail {
   commit_url: string | null;
 }
 
+// ── Strategy Portfolio (C6 registry) ──────────────────────────────────────────
+
+export interface PortfolioStrategy {
+  id: string;
+  display_name: string;
+  description: string;
+  model_ref: string;
+  target_ref: string;
+  universe: string[];
+  cadence: string;
+  broker: string;
+  status: string; // "enabled" (in-use) | "idle"
+  allocation_pct: number;
+  provenance: string;
+  provenance_summary: string;
+}
+export interface PortfolioView {
+  strategies: PortfolioStrategy[];
+  n_enabled: number;
+  n_idle: number;
+}
+
 // ── Conditions ──────────────────────────────────────────────────────────────
 
 export interface ConditionAxis {
