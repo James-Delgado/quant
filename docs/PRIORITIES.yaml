@@ -1394,8 +1394,9 @@ tasks:
     title: "E1-M2: Frontend scaffold (Vite + React + TS + Tailwind/shadcn shell)"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T09:05:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1]
     blocks: [E1-M3, E1-M4, E1-CLOSE]
     deliverable:
@@ -1413,17 +1414,31 @@ tasks:
       "Trust" — DECISIONS.md), routing, and a thin static data client reading
       the M1 export/*.json. Acceptance: app builds; shell + nav match the
       mockup at 320/768/1024/1440; keyboard nav + reduced-motion + visible
-      focus. CONVENTION DECISION (AGENT_OPERATION "new directory" pause): the
-      exact frontend directory location is a build-time decision for this, the
-      first frontend task — `frontend/` is a placeholder; pick and document the
-      real path here.
+      focus.
+      CONVENTION DECISION RECORDED (AGENT_OPERATION "new directory" pause):
+      the frontend lives at repo-root `frontend/` (canonical Vite location;
+      keeps the disposable UI cleanly separated from the durable Python core
+      under src/quant/). See frontend/README.md "Directory decision".
+      DELIVERED (commit on branch worktree-e1-m2-frontend): Vite 6 + React 18 +
+      TS + Tailwind 3 + shadcn foundation (components.json + cn util); tokens +
+      instrument design system ported verbatim from console.css into
+      frontend/src/styles/; app shell (Sidebar groups Monitor/Evidence/
+      Reference, Topbar with honest "live execution · not connected" + real
+      data_status asof, footer real git SHA); HashRouter over 8 placeholder
+      panels; typed static data client (frontend/src/lib/dataClient.ts) mirroring
+      schemas.py; export synced to public/data via scripts/copy-export.mjs
+      (predev/prebuild/pretest). Verified: `npm run build` green; 15 Vitest tests
+      green (component + routing + dataClient + a contract/drift smoke that reads
+      the real export); breakpoints 320/768/1024/1440 screenshot-checked +
+      mobile slide-over nav; 0 console errors; ruff clean (no Python changed).
+      Report button is present-but-disabled (modal/submission is M6).
 
   - id: E1-M3
     rank: 48
     title: "E1-M3: Monitor panels — Overview, Strategies (roster->detail), Conditions"
     project: E
     sub_project: E1
-    status: blocked
+    status: ready
     depends_on: [E1-M2]
     blocks: [E1-M5, E1-CLOSE]
     deliverable:
@@ -1450,7 +1465,7 @@ tasks:
     title: "E1-M4: Evidence panels — Provenance, Feature Catalog, Trial Registry, Data & Market"
     project: E
     sub_project: E1
-    status: blocked
+    status: ready
     depends_on: [E1-M2]
     blocks: [E1-M5, E1-CLOSE]
     deliverable:
@@ -1524,7 +1539,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -1965,3 +1980,58 @@ tasks:
       generated_at + per-source artifact mtimes) that the idempotency check
       excludes, so the UI can show staleness without breaking the deterministic
       payload contract. Non-blocking polish.
+      NOTE (E1-M2): the M2 Topbar already shows "data exported <data_status.asof>"
+      as an interim freshness proxy; swap it to the manifest's generated_at when
+      this lands.
+
+  - id: E1-M2-FE-LINT
+    rank: 104
+    title: "E1-M2 follow-up: ESLint + Prettier for the frontend (web coding-style standards)"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M2]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M2 post-task review. The frontend scaffold ships
+      TypeScript (tsc strict) + Vitest but NO JS linter/formatter — the repo's
+      lint gate (ruff) only covers Python. Web coding-style rules expect ESLint
+      (typescript-eslint, react-hooks, jsx-a11y) + Prettier. Add flat-config
+      ESLint + Prettier + `npm run lint` to frontend/, fix any findings, and
+      wire it into whatever CI runs the frontend build/test. Blocks E1-CLOSE so
+      closeout certifies a linted frontend. Non-urgent; current code is
+      tsc-strict clean.
+
+  - id: E1-M2-EXPORT-DETAIL
+    rank: 105
+    title: "E1-M2 follow-up: ensure per-strategy + provenance export fan-out populates for M3/M4 panels"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1, E1-M2]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+      file: src/quant/console/export.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M2. `python -m quant.console export` in a fresh checkout
+      wrote only the 6 top-level files (strategies/conditions/catalog/ledger/
+      data_status/market); the per-strategy `strategy/<id>.json` and
+      `provenance/<run>.json` fan-out depends on the phase4a parquet checkpoints
+      under data/phase4a/* being present, which they are not in a clean clone.
+      The M3 Strategies-detail panel and the M4 Provenance panel render those
+      detail files, and E1-CLOSE requires "ALL panels from freshly exported real
+      artifacts". Before M3/M4/E1-CLOSE, regenerate the checkpoints (scripts/
+      run_phase4a_arms.py) or otherwise guarantee the detail/provenance exports
+      populate — and document the data-prep step so closeout is reproducible.
+      Blocks E1-CLOSE.

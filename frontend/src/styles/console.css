@@ -1,0 +1,435 @@
+/* Research Console design system — ported from docs/project-e/mockups/console.css
+   (the frozen visual + interaction contract). Shell chrome is used by E1-M2;
+   panel-body classes are carried forward verbatim for M3/M4. The only additions
+   over the mockup are the mobile nav slide-over (.menu-btn / .side.open / .scrim)
+   so navigation stays reachable below 920px — an a11y floor the static mockup,
+   which simply hid the sidebar, did not meet. */
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+body {
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.mono {
+  font-family: var(--mono);
+  font-feature-settings: "tnum";
+}
+.num {
+  font-family: var(--mono);
+  font-feature-settings: "tnum";
+  text-align: right;
+}
+a {
+  color: var(--series);
+  text-decoration: none;
+}
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--series);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 236px 1fr;
+  height: 100vh;
+}
+
+/* Sidebar */
+.side {
+  background: #0b0e13;
+  border-right: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.brand {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--hair);
+}
+.brand .nm {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.brand .mk {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--series);
+  border-radius: 3px;
+  position: relative;
+}
+.brand .mk::after {
+  content: "";
+  position: absolute;
+  inset: 3px 3px auto auto;
+  width: 4px;
+  height: 4px;
+  background: var(--gain);
+  border-radius: 50%;
+}
+.brand .sub {
+  color: var(--dim);
+  font-size: 10.5px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  margin-top: 4px;
+  font-family: var(--mono);
+}
+.nav {
+  padding: 10px;
+  overflow-y: auto;
+  flex: 1;
+}
+.nav .grp {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  margin: 16px 12px 6px;
+  font-family: var(--mono);
+}
+.nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  color: var(--steel);
+  font-size: 13.5px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.nav a:hover {
+  background: var(--slate);
+  color: var(--bone);
+}
+.nav a.active {
+  background: var(--slate-2);
+  color: var(--bone);
+  border-left-color: var(--series);
+}
+.nav .ic {
+  width: 15px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--steel);
+}
+.side .ft {
+  padding: 12px 18px;
+  border-top: 1px solid var(--hair);
+  font-size: 11px;
+  color: var(--dim);
+  font-family: var(--mono);
+}
+
+/* Topbar */
+.main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 52px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--hair);
+}
+.top .ttl {
+  font-size: 14px;
+  font-weight: 600;
+}
+.top .sp {
+  flex: 1;
+}
+.meta {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.dotlive {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--steel);
+  padding: 4px 10px;
+  border: 1px solid var(--hair-2);
+  border-radius: 20px;
+}
+.dotlive i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warnc);
+  box-shadow: 0 0 8px var(--warnc);
+}
+.content {
+  overflow-y: auto;
+  padding: 24px;
+  flex: 1;
+}
+.maxw {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* Mobile nav menu button — hidden on desktop */
+.menu-btn {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--hair-2);
+  color: var(--steel);
+  border-radius: var(--r-sm);
+  width: 32px;
+  height: 32px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.menu-btn:hover {
+  color: var(--bone);
+}
+.scrim {
+  display: none;
+}
+
+/* Banner */
+.banner {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--slate);
+  border: 1px solid var(--hair-2);
+  border-left: 2px solid var(--warnc);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--steel);
+  margin-bottom: 18px;
+}
+.banner b {
+  color: var(--bone);
+}
+
+/* Headings */
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  margin: 2px 0 0;
+}
+.lead {
+  color: var(--steel);
+  margin-top: 6px;
+  max-width: 74ch;
+  font-size: 13.5px;
+}
+.sec {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 26px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sec .ln {
+  height: 1px;
+  background: var(--hair);
+  flex: 1;
+}
+
+/* Grid + panels */
+.grid {
+  display: grid;
+  gap: 14px;
+}
+.c2 {
+  grid-template-columns: 1fr 1fr;
+}
+.c3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.c4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.hero {
+  grid-template-columns: 1.7fr 1fr;
+}
+.panel {
+  background: var(--slate);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  padding: 16px 18px;
+}
+.panel.flush {
+  padding: 0;
+  overflow: hidden;
+}
+.phead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.phead .t {
+  font-size: 13px;
+  font-weight: 600;
+}
+.phead .s {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* Stat / figure */
+.fig {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fig .lab {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.fig .val {
+  font-family: var(--mono);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+.fig .sub {
+  font-size: 11.5px;
+  color: var(--steel);
+}
+.figrow {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+
+.gain { color: var(--gain); }
+.loss { color: var(--loss); }
+.ser { color: var(--series); }
+.steel { color: var(--steel); }
+.dim { color: var(--dim); }
+.small { font-size: 12px; }
+
+/* Status pill */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--hair-2);
+  color: var(--steel);
+}
+.pill.ok { color: var(--gain); border-color: rgba(91, 214, 164, 0.3); background: var(--gain-bg); }
+.pill.bad { color: var(--loss); border-color: rgba(242, 113, 90, 0.3); background: var(--loss-bg); }
+.pill.idle { color: var(--dim); }
+.pill.warn { color: var(--warnc); border-color: rgba(224, 177, 92, 0.3); }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.tag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--raise);
+  color: var(--steel);
+  border: 1px solid var(--hair);
+}
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 500;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hair);
+}
+td { padding: 11px 14px; border-bottom: 1px solid var(--hair); font-size: 12.5px; }
+td.num, th.num { text-align: right; font-family: var(--mono); }
+tr:last-child td { border-bottom: none; }
+tbody tr.clk { cursor: pointer; }
+tbody tr.clk:hover { background: var(--slate-2); }
+
+.note { font-size: 12px; color: var(--dim); margin-top: 10px; font-style: italic; }
+
+/* Placeholder (scaffold-only, M2) — a quiet "panel arrives later" surface.
+   Honest empty state: no faked data, just the panel's frame + status. */
+.ph {
+  border: 1px dashed var(--hair-2);
+  border-radius: var(--r);
+  padding: 28px;
+  color: var(--dim);
+  font-size: 13px;
+  background: var(--slate);
+  margin-top: 18px;
+}
+.ph .pill { margin-bottom: 12px; }
+
+/* Responsive — mockup contract: collapse multi-column grids; sidebar becomes a
+   slide-over toggled from the topbar (a11y addition over the static mockup). */
+@media (max-width: 920px) {
+  .app { grid-template-columns: 1fr; }
+  .hero, .c2, .c3, .c4 { grid-template-columns: 1fr; }
+  .menu-btn { display: inline-flex; align-items: center; justify-content: center; }
+  .side {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 236px;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+  }
+  .side.open { transform: translateX(0); }
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 8, 11, 0.6);
+    z-index: 30;
+  }
+}
