@@ -35,13 +35,14 @@ function pickCandidate(rows: StrategyCard[]): StrategyCard | null {
 export function Overview() {
   const navigate = useNavigate();
   const state = useAsyncData(async (signal) => {
-    const [strategies, conditions, dataStatus, market] = await Promise.all([
+    const [strategies, conditions, dataStatus, market, portfolio] = await Promise.all([
       dataClient.strategies(signal),
       dataClient.conditions(signal),
       dataClient.dataStatus(signal),
       dataClient.market(signal),
+      dataClient.portfolio(signal),
     ]);
-    return { strategies, conditions, dataStatus, market };
+    return { strategies, conditions, dataStatus, market, portfolio };
   }, []);
 
   const banner = (
@@ -74,6 +75,7 @@ export function Overview() {
   const stressWindows = state.data.conditions?.stress_windows ?? [];
   const feeds = state.data.dataStatus?.feeds ?? [];
   const market = state.data.market;
+  const portfolio = state.data.portfolio;
 
   const bands: StressBand[] =
     candidate && candidate.oos_start && candidate.oos_end
@@ -204,6 +206,50 @@ export function Overview() {
               </li>
             ))}
           </ul>
+
+          {portfolio ? (
+            <>
+              <div className="phead" style={{ marginTop: 18 }}>
+                <span className="t">Strategy portfolio</span>
+                <span className="s">deployment registry</span>
+              </div>
+              <div
+                className="xtile"
+                role="link"
+                tabIndex={0}
+                aria-label={`Open Strategy Portfolio — ${portfolio.n_enabled} in use, ${portfolio.n_idle} idle`}
+                onClick={() => navigate("/portfolio")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate("/portfolio");
+                  }
+                }}
+              >
+                <ul className="lin">
+                  <li>
+                    <span className="k">In use</span>
+                    <span className="v">
+                      <span className="pill ok">
+                        <i />
+                        {portfolio.n_enabled}
+                      </span>
+                    </span>
+                  </li>
+                  <li>
+                    <span className="k">Idle</span>
+                    <span className="v">
+                      <span className="pill idle">{portfolio.n_idle}</span>
+                    </span>
+                  </li>
+                </ul>
+                <p className="note" style={{ marginTop: 6 }}>
+                  {portfolio.n_enabled} deployed · equal-weight allocation.{" "}
+                  <span className="xlink">View portfolio →</span>
+                </p>
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
 
