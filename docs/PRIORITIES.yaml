@@ -1039,7 +1039,8 @@ tasks:
     title: "Sync METHODOLOGY Open-Questions: non-Sharpe materiality thresholds now set in B1 PRD"
     project: A
     sub_project: methodology-upgrade
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T19:40:00Z
     depends_on: [B1-PRD]
     blocks: []
     deliverable:
