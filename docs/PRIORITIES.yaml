@@ -1068,8 +1068,9 @@ tasks:
     title: "Sync METHODOLOGY Open-Questions: OOS attribution method now picked in B2 PRD"
     project: A
     sub_project: methodology-upgrade
-    status: in_progress
+    status: done
     started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
     depends_on: [B2-PRD]
     blocks: []
     deliverable:
