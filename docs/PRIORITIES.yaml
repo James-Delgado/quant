@@ -372,7 +372,7 @@ tasks:
     project: A
     sub_project: closeout
     status: blocked
-    depends_on: [A-LEDGER, A-PRIORITIES-TEST, A-PRIORITIES-TEST-TS, A-LEDGER-RUNNERS, A-DSR-GATE, A-DSR-LEDGER-SHARPE, A-DSR-DOC-SYNC]
+    depends_on: [A-LEDGER, A-PRIORITIES-TEST, A-PRIORITIES-TEST-TS, A-LEDGER-RUNNERS, A-DSR-GATE, A-DSR-LEDGER-SHARPE, A-DSR-DOC-SYNC, A-DSR-WIRE-EMPIRICAL-STD, A-DSR-METH-SCHEMA-SYNC]
     blocks: []
     deliverable:
       notebook: notebooks/12_project_a_closeout.ipynb
@@ -1129,8 +1129,9 @@ tasks:
     title: "Store per-trial Sharpe in the ledger; compute empirical sharpe_std for the DSR benchmark"
     project: A
     sub_project: methodology-upgrade-13
-    status: in_progress
+    status: done
     started_at: 2026-06-28T22:30:00Z
+    completed_at: 2026-06-28
     depends_on: [A-LEDGER, A-DSR-GATE]
     blocks: [A-CLOSE]
     deliverable:
@@ -2443,3 +2444,72 @@ tasks:
       NON-GATING and deliberately NOT added to C-CLOSE.depends_on (mirrors the
       C2-M3-LIVE-REPLAY strengthening-beyond-scope precedent — closeout is not
       gated on optional hardening). Low priority.
+
+  # ------ A-DSR-LEDGER-SHARPE follow-ups (discovered 2026-06-28) ------
+  # Parked in the queued 80s band (the C3-PRD/B3 "re-rank when prioritized"
+  # convention) — both non-gating, both Project-A so added to A-CLOSE.depends_on
+  # per AGENT_OPERATION Step 7 corollary. The contract (sharpe field +
+  # observed_sharpe_std) landed in A-DSR-LEDGER-SHARPE; these are its consumer +
+  # doc-sync, deferred to keep that deliverable scoped to ledger.py.
+
+  - id: A-DSR-WIRE-EMPIRICAL-STD
+    rank: 83
+    title: "Wire observed_sharpe_std into dsr_aware_gate_report (empirical sharpe_std with scalar fallback)"
+    project: A
+    sub_project: methodology-upgrade-13
+    status: ready
+    depends_on: [A-DSR-LEDGER-SHARPE, A-DSR-GATE]
+    blocks: [A-CLOSE]
+    deliverable:
+      file: src/quant/backtest/regime_metrics.py
+      tests: tests/test_regime_metrics.py
+    references:
+      primary: src/quant/ledger.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during A-DSR-LEDGER-SHARPE post-task review (commit of
+      src/quant/ledger.py observed_sharpe_std). The helper now exists but nothing
+      consumes it — dsr_aware_gate_report still always defaults
+      sharpe_std=DEFAULT_SHARPE_STD (the pinned 0.35 scalar). Make the gate read
+      the EMPIRICAL dispersion from the ledger: when the caller does not pass
+      sharpe_std explicitly, call quant.ledger.observed_sharpe_std() and use it,
+      falling back to DEFAULT_SHARPE_STD when it returns None (< 2 trials carry a
+      Sharpe). Check `is None` explicitly (0.0 is a valid zero-dispersion result).
+      Pre-commit the fallback rule (METHODOLOGY §1) so it is not a tuning knob.
+      Surface which std source was used in the returned dict (e.g.
+      sharpe_std_source ∈ {empirical, default_scalar}) for the audit trail. Tests:
+      empirical path with a seeded ≥2-Sharpe ledger, fallback path with a
+      sharpe-less ledger. Contract-before-consumer (§4): this is the consumer of
+      the A-DSR-LEDGER-SHARPE contract. Also note for follow-on: B1/B3 multi-arm
+      runners write `sharpe_arm_aggregate` (a dict), not the scalar
+      `aggregate_sharpe` record_run reads — they must pass `sharpe=` explicitly per
+      logged arm for the ledger to accumulate empirical Sharpes. Non-gating; the
+      scalar default keeps the gate correct meanwhile. Low priority.
+
+  - id: A-DSR-METH-SCHEMA-SYNC
+    rank: 84
+    title: "Sync METHODOLOGY reference schema: add the optional `sharpe` field to the ledger entry example"
+    project: A
+    sub_project: methodology-upgrade
+    status: ready
+    depends_on: [A-DSR-LEDGER-SHARPE]
+    blocks: [A-CLOSE]
+    deliverable:
+      file: docs/METHODOLOGY.md
+    references:
+      primary: src/quant/ledger.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during A-DSR-LEDGER-SHARPE post-task review. LedgerEntry's
+      docstring says its field set is "pinned in docs/METHODOLOGY.md §Reference
+      schemas", but A-DSR-LEDGER-SHARPE added an optional `sharpe` field to the
+      code without touching the doc (the deliverable was scoped to ledger.py +
+      tests). Add `sharpe: <float>   # optional — headline annualised Sharpe;
+      feeds observed_sharpe_std` to the §"Reference schemas" ledger YAML example,
+      marked optional/back-compat, and note its role in the §13 empirical-deflation
+      story. Doc-only; the schema block is still labelled "(proposed — to be
+      ratified in B1 or B2)", so this is a faithful sync, not a rule change — do
+      NOT touch any numbered rule (§1–§21). Mirrors A-DSR-DOC-SYNC /
+      A-METH-*-SYNC. Non-gating; low priority.

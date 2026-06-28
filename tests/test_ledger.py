@@ -11,6 +11,7 @@ Three jobs:
 """
 from __future__ import annotations
 
+import statistics as stdlib_statistics
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,6 +29,7 @@ from quant.ledger import (
     cumulative_trial_count,
     load_ledger,
     next_ledger_id,
+    observed_sharpe_std,
     record_run,
 )
 
@@ -107,6 +109,23 @@ class TestLedgerEntry:
         del d["config_hash"]
         with pytest.raises(ValidationError):
             LedgerEntry(**d)
+
+    def test_sharpe_optional_defaults_none(self):
+        # Back-compat: an entry without a sharpe is valid; the field is absent.
+        entry = LedgerEntry(**_entry_dict())
+        assert entry.sharpe is None
+
+    def test_sharpe_present_stored_as_float(self):
+        entry = LedgerEntry(**_entry_dict(sharpe=-0.12))
+        assert entry.sharpe == pytest.approx(-0.12)
+
+    def test_sharpe_nan_rejected(self):
+        with pytest.raises(ValidationError, match="sharpe must be a finite number"):
+            LedgerEntry(**_entry_dict(sharpe=float("nan")))
+
+    def test_sharpe_inf_rejected(self):
+        with pytest.raises(ValidationError, match="sharpe must be a finite number"):
+            LedgerEntry(**_entry_dict(sharpe=float("inf")))
 
 
 # --------------------------------------------------------------------- #
@@ -200,6 +219,20 @@ class TestAppendLedger:
         returned = append_ledger_entry(LedgerEntry(**_entry_dict()), path)
         assert isinstance(returned, LedgerEntry)
 
+    def test_sharpe_omitted_from_yaml_when_absent(self, tmp_path: Path):
+        # A sharpe-less entry must serialize byte-identically to the pre-sharpe
+        # format — no `sharpe:` key in the file (back-compat / append-only safety).
+        path = tmp_path / "ledger.yaml"
+        append_ledger_entry(_entry_dict(), path)
+        assert "sharpe" not in path.read_text()
+        assert load_ledger(path)[0].sharpe is None
+
+    def test_sharpe_written_and_reloaded_when_present(self, tmp_path: Path):
+        path = tmp_path / "ledger.yaml"
+        append_ledger_entry(_entry_dict(sharpe=1.25), path)
+        assert "sharpe: 1.25" in path.read_text()
+        assert load_ledger(path)[0].sharpe == pytest.approx(1.25)
+
     def test_duplicate_id_rejected(self, tmp_path: Path):
         path = tmp_path / "ledger.yaml"
         append_ledger_entry(_entry_dict(id="dup"), path)
@@ -247,6 +280,68 @@ class TestCumulativeTrialCount:
     def test_accepts_preloaded_entries(self):
         entries = [LedgerEntry(**_entry_dict(id="a", n_comparisons=2))]
         assert cumulative_trial_count(entries) == 2
+
+
+class TestObservedSharpeStd:
+    @staticmethod
+    def _entries(sharpes: list[float | None]) -> list[LedgerEntry]:
+        """Build entries with the given per-trial sharpes (None = field absent)."""
+        return [
+            LedgerEntry(**_entry_dict(id=f"e{i}", sharpe=s))
+            for i, s in enumerate(sharpes)
+        ]
+
+    def test_sample_std_of_recorded_sharpes(self):
+        # statistics.stdev([0.0, 1.0, 2.0]) == 1.0 (ddof=1).
+        entries = self._entries([0.0, 1.0, 2.0])
+        assert observed_sharpe_std(entries) == pytest.approx(1.0)
+
+    def test_population_std_when_sample_false(self):
+        # statistics.pstdev([0.0, 1.0, 2.0]) == sqrt(2/3).
+        entries = self._entries([0.0, 1.0, 2.0])
+        assert observed_sharpe_std(entries, sample=False) == pytest.approx(
+            (2.0 / 3.0) ** 0.5
+        )
+
+    def test_skips_entries_without_sharpe(self):
+        # Only the two sharpe-carrying entries feed the std; the None is ignored.
+        entries = self._entries([1.0, None, 3.0])
+        assert observed_sharpe_std(entries) == pytest.approx(
+            stdlib_statistics.stdev([1.0, 3.0])
+        )
+
+    def test_none_when_fewer_than_min_trials(self):
+        assert observed_sharpe_std(self._entries([0.5])) is None
+        assert observed_sharpe_std(self._entries([None, None])) is None
+        assert observed_sharpe_std([]) is None
+
+    def test_identical_sharpes_returns_zero_not_none(self):
+        # A genuine zero-dispersion ledger is 0.0, not None — callers must check
+        # `is None`, not truthiness, to distinguish "no data" from "no spread".
+        result = observed_sharpe_std(self._entries([0.7, 0.7, 0.7]))
+        assert result == 0.0
+        assert result is not None
+
+    def test_custom_min_trials(self):
+        entries = self._entries([1.0, 2.0])
+        assert observed_sharpe_std(entries, min_trials=3) is None
+        assert observed_sharpe_std(entries, min_trials=2) == pytest.approx(
+            stdlib_statistics.stdev([1.0, 2.0])
+        )
+
+    def test_reads_from_path(self, tmp_path: Path):
+        path = tmp_path / "ledger.yaml"
+        append_ledger_entry(_entry_dict(id="a", sharpe=0.0), path)
+        append_ledger_entry(
+            _entry_dict(
+                id="b", sharpe=2.0, started_at="2026-01-02T00:00:00Z",
+                completed_at="2026-01-02T01:00:00Z",
+            ),
+            path,
+        )
+        assert observed_sharpe_std(path=path) == pytest.approx(
+            stdlib_statistics.stdev([0.0, 2.0])
+        )
 
 
 # --------------------------------------------------------------------- #
@@ -352,6 +447,34 @@ class TestRecordRun:
         bad = {"config_hash": "x", "started_at": "2026-07-01T00:00:00+00:00"}
         with pytest.raises(KeyError, match="completion timestamp"):
             record_run(bad, **self.REG, path=tmp_path / "ledger.yaml")
+
+    def test_sharpe_pulled_from_metadata(self, tmp_path: Path):
+        # _meta() carries aggregate_sharpe=-0.1 — record_run reads it by default.
+        path = tmp_path / "ledger.yaml"
+        entry = record_run(_meta(), **self.REG, path=path)
+        assert entry.sharpe == pytest.approx(-0.1)
+        assert load_ledger(path)[0].sharpe == pytest.approx(-0.1)
+
+    def test_explicit_sharpe_overrides_metadata(self, tmp_path: Path):
+        path = tmp_path / "ledger.yaml"
+        entry = record_run(_meta(), **self.REG, sharpe=0.9, path=path)
+        assert entry.sharpe == pytest.approx(0.9)
+
+    def test_nan_metadata_sharpe_recorded_as_none(self, tmp_path: Path):
+        # A runner writes float("nan") when an arm produced no returns; record_run
+        # must treat it as absent (not crash, not store a NaN).
+        path = tmp_path / "ledger.yaml"
+        meta = _meta()
+        meta["aggregate_sharpe"] = float("nan")
+        entry = record_run(meta, **self.REG, path=path)
+        assert entry.sharpe is None
+
+    def test_no_metadata_sharpe_leaves_none(self, tmp_path: Path):
+        path = tmp_path / "ledger.yaml"
+        meta = _meta()
+        del meta["aggregate_sharpe"]
+        entry = record_run(meta, **self.REG, path=path)
+        assert entry.sharpe is None
 
 
 # --------------------------------------------------------------------- #
