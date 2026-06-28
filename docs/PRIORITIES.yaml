@@ -1544,8 +1544,9 @@ tasks:
     title: "E1-M6: Issue reporting button + GitHub-issue submission + feedback->PRIORITIES promotion"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T18:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M5]
     blocks: [E1-CLOSE]
     deliverable:
@@ -1573,7 +1574,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -2189,3 +2190,58 @@ tasks:
       E1-CLOSE so closeout certifies the responsive treatment is discoverable, not
       just functional. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7
       corollary.
+
+  - id: E1-M6-FEEDBACK-LABEL
+    rank: 110
+    title: "E1-M6 follow-up: create the `feedback` GitHub label in James-Delgado/quant"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M6]
+    blocks: [E1-CLOSE]
+    deliverable:
+      doc: src/quant/console/feedback.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M6 (commit of src/quant/console/feedback.py +
+      frontend/src/lib/feedback.ts). Both submission paths build a pre-filled
+      issues/new URL carrying `labels=feedback`, but GitHub SILENTLY DROPS an
+      unknown `labels=` query param — so until the `feedback` label exists in the
+      repo, a submitted report files an *unlabeled* issue and the tracker query
+      `label:feedback` (which IS the tracker, DECISIONS #11) is incomplete. The
+      one-time creation is documented in feedback.py's module docstring:
+        gh label create feedback --repo James-Delgado/quant \
+            --description "Reported via the Research Console" --color B60205
+      `gh` was unavailable in the E1-M6 session, so the label could not be created
+      there. Run it once (gh or the web UI). Blocks E1-CLOSE so closeout certifies
+      the labeled-issue acceptance is real, not just URL-encoded. Added to
+      E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  - id: E1-M6-GH-SUBMIT
+    rank: 111
+    title: "E1-M6 follow-up (optional): direct gh/REST submission + promote label-guard"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M6]
+    blocks: []
+    deliverable:
+      file: src/quant/console/feedback.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M6. The E1 submission path is the pre-filled issues/new
+      URL opened in a new tab (no backend, no secret — the declared E1 design
+      default; E2 swaps it for POST /feedback). Two optional enhancements, neither
+      gating: (a) when a GitHub token is present locally, offer a direct
+      `gh issue create`/REST submission so the round-trip is one click instead of
+      two; (b) have `feedback.promote` verify the fetched issue actually carries
+      the `feedback` label before appending a task, so an arbitrary issue number
+      can't be promoted by mistake. CONDITIONAL / non-MVP — intentionally NOT in
+      E1-CLOSE.depends_on so an unbuilt optional enhancement cannot deadlock
+      closeout (mirrors B2-FULLPANEL-AGREEMENT). Low priority.
