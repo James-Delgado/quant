@@ -14,13 +14,22 @@ the source of truth, METHODOLOGY §2):
   gate scores their Spearman ρ (materiality ρ ≥ 0.50, permutation-test
   significance p < 0.05).
 * **G2** — port reproducibility on the **7 nb08 candidate features**: the
-  systematized leave-one-out ablation vs an nb08-style **add-one** lift
-  (Sharpe(base+c) − Sharpe(base)). A faithful systematization should rank the 7
-  near-identically (ρ ≥ 0.90). *Declared method choices* (METHODOLOGY §9):
-  (a) the add-one reference uses the **aggregate-OOS-Sharpe** lift, not nb08's
-  **best-regime** lift — the exact best-regime reproduction against nb08's frozen
-  published numbers is a flagged follow-up (B2-M2-G2-NB08); (b) the add-one
-  baseline is the 17 Phase-2.5 base features. These are pinned here before the run.
+  systematized leave-one-out ablation vs nb08's **exact published statistic** —
+  the **best-regime add-one lift** (``max`` over the per-regime Sharpe deltas of
+  ``+c`` vs the 17-base baseline; nb08 §5's ``best_regime_lift``). A faithful
+  systematization should rank the 7 near-identically (ρ ≥ 0.90). The reference is
+  reproduced via nb08's recipe verbatim (METHODOLOGY §1, B2-M2-G2-NB08): the
+  add-one ablation on the 17 Phase-2.5 base features, **GBM seed 7** (nb08 §3, not
+  the runner's seed-0 default), regimes tagged by ``DateRangeDetector`` and scored
+  by ``feature_ablation_table`` — then ``max`` across regime columns. The full
+  per-regime lift table is frozen to ``importances_g2_regime_lifts.parquet`` so the
+  reference vector is auditable. (Everything else — slice, walk-forward, n_iter,
+  sim costs — already matches nb08.) NOTE the two arms use different ablation
+  *designs* — the systematized signal is **leave-one-out** (the B2 canonical OOS
+  method, METHODOLOGY §14) while nb08's reference is **add-one** — so a low/negative
+  real-slice G2 ρ (−0.43 at the B2-M2-G2-NB08 commit) reflects a design mismatch,
+  not necessarily a port bug; whether G2 should instead be add-one-vs-add-one is the
+  open follow-up B2-G2-DESIGN-MISMATCH.
 * **G3** — reported (not gated): the IS importance (XGB gain) vs the OOS ablation
   lift on the 7 candidates, reproducing the ρ ≈ −0.074 "IS does not transfer"
   sanity floor. Declared proxy (§9): XGB **gain** importance stands in for nb08's
@@ -31,7 +40,12 @@ Checkpoint contract (per run dir ``data/b2/<run>/``)
 * ``importances_g1.parquet`` — index ``feature`` (25 rows), columns
   ``ablation_importance, permutation_importance, permutation_se``.
 * ``importances_g2.parquet`` — index ``feature`` (7 rows), columns
-  ``systematized_loo, addone_reference``.
+  ``systematized_loo, addone_reference`` (``addone_reference`` = nb08's best-regime
+  add-one lift).
+* ``importances_g2_regime_lifts.parquet`` — the frozen nb08 reference vector: the
+  full per-regime add-one lift table (rows ``baseline`` + ``+<candidate>``, columns
+  ``aggregate`` + regime labels + ``n_bars``) whose row-wise regime max is
+  ``addone_reference`` (auditable, B2-M2-G2-NB08).
 * ``importances_g3.parquet`` — index ``feature`` (7 rows), columns
   ``is_gain, oos_ablation``.
 * ``gate.json`` — the full ``b2_attribution_gate(...)`` dict (verbatim verdict).
@@ -47,7 +61,9 @@ Pre-committed protocol (frozen BEFORE any run; do not change based on results)
      M2/M6 default; ``sign(pred)`` is the trade signal (harness convention).
   4. Walk-forward = nb02/nb04 convention (train 504, test 63, step 63, embargo 3).
   5. GBM = RandomizedSearchCV n_iter=10 (the nb08 *preview* budget — B2 validates a
-     method, not an edge), n_splits=3, seed=0.
+     method, not an edge), n_splits=3, seed=0 — EXCEPT the G2 best-regime add-one
+     reference, which pins nb08's seed=7 (``NB08_GBM_RANDOM_STATE``) to reproduce
+     nb08's published lifts exactly.
   6. Gate thresholds are the pinned defaults of ``b2_attribution_gate`` (ρ ≥ 0.50,
      p < 0.05, ρ ≥ 0.90; n_permutations=10,000) — the runner adds none.
   7. Ledger: ``n_comparisons = 1`` (the single validated method — OOS permutation;
@@ -77,6 +93,8 @@ from quant.backtest.attribution import (
     oos_permutation_importance,
     per_fold_ablation_attribution,
 )
+from quant.backtest.regimes import DateRangeDetector, tag_regimes
+from quant.backtest.report import feature_ablation_table
 from quant.features.cross_sectional import add_cross_sectional_features
 from quant.features.engineering import FRED_PUBLICATION_LAGS, build_features
 from quant.features.labels import generate_labels
@@ -103,6 +121,7 @@ LABEL_HORIZON: int = 1
 GBM_N_ITER: int = 10          # nb08 preview budget — B2 validates a method, not an edge
 GBM_N_SPLITS: int = 3
 GBM_RANDOM_STATE: int = 0
+NB08_GBM_RANDOM_STATE: int = 7  # nb08 §3 published-lift seed — the G2 best-regime reference (B2-M2-G2-NB08)
 GBM_SMOKE_KWARGS: dict[str, int] = {"n_iter": 2, "n_splits": 2, "random_state": 0}
 SENTIMENT_LOOKBACK_DAYS: int = 30
 N_REPEATS: int = DEFAULT_N_REPEATS
@@ -134,11 +153,11 @@ CANDIDATES: tuple[str, ...] = (
 XS_COLUMNS: tuple[str, ...] = ("ret_21d", "ret_252d", "vol_21d")
 
 DECLARED_DEVIATIONS: str = (
-    "G2 reference uses aggregate-OOS-Sharpe add-one lift (not nb08's best-regime "
-    "lift) with the 17-base baseline; exact best-regime reproduction vs nb08's "
-    "frozen published numbers is follow-up B2-M2-G2-NB08. G3 IS signal is XGB gain "
-    "importance as a proxy for nb08's mean-|SHAP| (both IS-importance family, "
-    "reported not gated)."
+    "G2 reference is nb08's EXACT statistic — the best-regime add-one lift on the "
+    "17-base baseline at GBM seed 7 (nb08 §3/§5), recomputed verbatim and frozen to "
+    "importances_g2_regime_lifts.parquet (B2-M2-G2-NB08 closed; no longer the "
+    "aggregate-OOS-Sharpe proxy). G3 IS signal is XGB gain importance as a proxy "
+    "for nb08's mean-|SHAP| (both IS-importance family, reported not gated)."
 )
 
 
@@ -269,24 +288,62 @@ def _gbm(label_horizon: int, smoke: bool) -> GBMModel:
     return GBMModel(label_horizon=label_horizon, **gk)
 
 
+def _nb08_addone_gbm(smoke: bool) -> GBMModel:
+    """The GBM nb08 §3 used for its published add-one lifts (seed 7 — *not* the runner seed-0).
+
+    The G2 reference must reproduce nb08's *exact* published numbers, so the
+    reference arm pins nb08's seed; the rest of the runner (G1, systematized LOO)
+    stays at the runner's seed-0 convention.
+    """
+    if smoke:
+        return GBMModel(label_horizon=LABEL_HORIZON, **GBM_SMOKE_KWARGS)
+    return GBMModel(
+        label_horizon=LABEL_HORIZON, n_iter=GBM_N_ITER, n_splits=GBM_N_SPLITS,
+        random_state=NB08_GBM_RANDOM_STATE,
+    )
+
+
+def _best_regime_from_lift_table(
+    lift_table: pd.DataFrame, candidates: Sequence[str]
+) -> pd.Series:
+    """nb08 §5's published per-candidate statistic: the best-regime add-one lift.
+
+    ``lift_table`` is ``feature_ablation_table`` output — one row per feature set
+    (``baseline`` + ``+<candidate>``), columns ``aggregate`` + each regime label +
+    ``n_bars``. For each candidate this returns ``max`` over the **regime** columns
+    of its ``+c`` row (``aggregate``/``n_bars`` excluded; NaN regimes skipped), i.e.
+    ``lift_table.loc['+c', regime_cols].max()`` — byte-for-byte nb08 §5.
+    """
+    regime_cols = [c for c in lift_table.columns if c not in ("aggregate", "n_bars")]
+    return pd.Series(
+        {c: float(lift_table.loc[f"+{c}", regime_cols].max()) for c in candidates},
+        name="addone_reference",
+    )
+
+
 def _addone_reference(
     feats: dict[str, pd.DataFrame],
     labels: dict[str, pd.Series],
     prices: dict[str, pd.DataFrame],
     smoke: bool,
-) -> pd.Series:
-    """nb08-style add-one aggregate-Sharpe lift per candidate: Sharpe(base+c) − Sharpe(base)."""
+) -> tuple[pd.Series, pd.DataFrame]:
+    """nb08's exact published reference: the best-regime add-one lift per candidate.
+
+    Reproduces nb08 §4–§5 verbatim: run the add-one ablation (17-base baseline +
+    each candidate) at nb08's seed, tag the OOS bars by the ``DateRangeDetector``
+    macro-era axis, score per-regime Sharpe deltas with ``feature_ablation_table``,
+    and take the best-regime lift per candidate. Returns ``(best_regime_lift,
+    lift_table)`` — the second is frozen as the auditable reference vector.
+    """
     sets = make_add_one_sets(BASE_FEATURES_17, CANDIDATES)
     results = run_feature_ablation(
-        sets, _gbm(LABEL_HORIZON, smoke),
+        sets, _nb08_addone_gbm(smoke),
         features_by_symbol=feats, labels_by_symbol=labels, prices_by_symbol=prices,
         label_horizon=LABEL_HORIZON, **WALK_FORWARD, **SIM_KWARGS,
     )
-    base = float(results["baseline"].oos_metrics["sharpe"])
-    return pd.Series(
-        {c: float(results[f"+{c}"].oos_metrics["sharpe"]) - base for c in CANDIDATES},
-        name="addone_reference",
-    )
+    era_labels = tag_regimes(results["baseline"].oos_returns.index, DateRangeDetector())
+    lift_table = feature_ablation_table(results, "baseline", era_labels)
+    return _best_regime_from_lift_table(lift_table, CANDIDATES), lift_table
 
 
 def _is_gain_importance(
@@ -337,12 +394,12 @@ def _run(output_dir: Path, smoke: bool, force: bool, log_ledger: bool) -> int:
     )
 
     # ── G2 — port reproducibility on the 7 candidates ─────────────────────────
-    logger.info("G2: systematized LOO + nb08-style add-one reference (7 candidates)")
+    logger.info("G2: systematized LOO + nb08 best-regime add-one reference (7 candidates)")
     sys_loo = per_fold_ablation_attribution(
         _gbm(LABEL_HORIZON, smoke), feats, labels, prices, CANDIDATES,
         label_horizon=LABEL_HORIZON, **WALK_FORWARD, **SIM_KWARGS,
     )
-    addone = _addone_reference(feats, labels, prices, smoke)
+    addone, addone_regime_lifts = _addone_reference(feats, labels, prices, smoke)
 
     # ── G3 — IS-vs-OOS contrast (reported) ────────────────────────────────────
     logger.info("G3: IS gain importance vs OOS ablation (7 candidates)")
@@ -383,7 +440,9 @@ def _run(output_dir: Path, smoke: bool, force: bool, log_ledger: bool) -> int:
         "verdict": verdict,
         "n_comparisons": N_COMPARISONS,
     }
-    _write_outputs(run_dir, abl, perm, sys_loo, addone, is_gain, gate, metadata)
+    _write_outputs(
+        run_dir, abl, perm, sys_loo, addone, addone_regime_lifts, is_gain, gate, metadata
+    )
     logger.info("wrote checkpoint to %s (elapsed=%.1fs)", run_dir, elapsed)
 
     if log_ledger and not smoke:
@@ -394,7 +453,9 @@ def _run(output_dir: Path, smoke: bool, force: bool, log_ledger: bool) -> int:
 # ─── Output + config + ledger ─────────────────────────────────────────────────
 
 
-def _write_outputs(run_dir, abl, perm, sys_loo, addone, is_gain, gate, metadata) -> None:
+def _write_outputs(
+    run_dir, abl, perm, sys_loo, addone, addone_regime_lifts, is_gain, gate, metadata
+) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame({
         "ablation_importance": abl.importance,
@@ -405,6 +466,11 @@ def _write_outputs(run_dir, abl, perm, sys_loo, addone, is_gain, gate, metadata)
         "systematized_loo": sys_loo.importance,
         "addone_reference": addone,
     }).rename_axis("feature").to_parquet(run_dir / "importances_g2.parquet")
+    # Frozen nb08 reference vector: the full per-regime add-one lift table the
+    # best-regime statistic is the row-wise max of (B2-M2-G2-NB08, auditable).
+    addone_regime_lifts.rename_axis("feature_set").to_parquet(
+        run_dir / "importances_g2_regime_lifts.parquet"
+    )
     pd.DataFrame({
         "is_gain": is_gain,
         "oos_ablation": sys_loo.importance,
@@ -422,6 +488,11 @@ def _build_run_config(smoke: bool) -> dict[str, Any]:
         "feature_columns_g1": list(FINAL_FEATURE_COLUMNS),
         "candidates_g2g3": list(CANDIDATES),
         "addone_baseline": list(BASE_FEATURES_17),
+        "g2_reference": {
+            "statistic": "best_regime_addone_lift",  # nb08 §5 exact statistic
+            "gbm_random_state": GBM_SMOKE_KWARGS["random_state"] if smoke else NB08_GBM_RANDOM_STATE,
+            "regime_detector": "DateRangeDetector",
+        },
         "label": {"scheme": "signed_returns", "horizon": LABEL_HORIZON},
         "walk_forward": dict(WALK_FORWARD),
         "sim_kwargs": dict(SIM_KWARGS),
