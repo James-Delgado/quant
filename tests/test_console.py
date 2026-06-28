@@ -837,12 +837,77 @@ def test_export_idempotent(sources, tmp_path):
     out1, out2 = tmp_path / "o1", tmp_path / "o2"
     export.write_export(out1, sources)
     export.write_export(out2, sources)
-    files1 = sorted(p.relative_to(out1) for p in out1.rglob("*.json"))
-    files2 = sorted(p.relative_to(out2) for p in out2.rglob("*.json"))
+
+    def payloads(root: Path) -> list[Path]:
+        # The freshness manifest is excluded from the deterministic payload set:
+        # it carries the export-run time and is allowed to move between runs.
+        return sorted(
+            p.relative_to(root)
+            for p in root.rglob("*.json")
+            if p.name != export.MANIFEST_FILENAME
+        )
+
+    files1, files2 = payloads(out1), payloads(out2)
     # 7 top-level + 2 strategy detail + 2 provenance (2 strategies in fixture).
     assert files1 == files2 and len(files1) == 11
     for rel in files1:
         assert (out1 / rel).read_bytes() == (out2 / rel).read_bytes()
+
+
+def test_write_export_emits_manifest(sources, tmp_path):
+    out = tmp_path / "o"
+    written = export.write_export(out, sources)
+    manifest_path = out / export.MANIFEST_FILENAME
+    assert manifest_path.exists()
+    assert manifest_path in written  # write_export returns the manifest path too
+    # The manifest is a side artifact, not one of the 11 schema-validated payloads.
+    problems = export.validate_export(export.build_export(sources))
+    assert export.MANIFEST_FILENAME not in problems
+
+
+def test_manifest_generated_at_uses_clock(sources, tmp_path):
+    # generated_at comes from the injectable now() clock (fixed_now in the fixture).
+    manifest = export.build_manifest(sources)
+    assert manifest["generated_at"] == "2026-06-28T00:00:00Z"
+    errors = schemas.validate(manifest, schemas.MANIFEST_SCHEMA, name="_manifest.json")
+    assert errors == [], errors
+
+
+def test_manifest_stamps_per_source_mtimes(sources, tmp_path):
+    manifest = export.build_manifest(sources)
+    by_source = {s["source"]: s for s in manifest["sources"]}
+    # Every wired artifact exists in the fixture → each carries an ISO-8601 mtime.
+    for label in (
+        export.LEDGER_SOURCE_LABEL,
+        export.CATALOG_SOURCE_LABEL,
+        export.REGISTRY_SOURCE_LABEL,
+        export.CHECKPOINTS_SOURCE_LABEL,
+    ):
+        assert label in by_source
+        stamp = by_source[label]["modified_at"]
+        assert stamp is not None and stamp.endswith("Z")
+    # No internal filesystem paths leak into the UI contract (DECISIONS #5/#7).
+    for s in manifest["sources"]:
+        assert "/" not in s["source"]
+
+
+def test_manifest_honest_degrade_on_missing_artifacts(tmp_path):
+    # A sources with no artifacts on disk → mtimes degrade to None, not fabricated.
+    fixed_now = dt.datetime(2026, 6, 28, 12, 30, 0, tzinfo=dt.timezone.utc)
+    bare = ConsoleSources(
+        data_root=tmp_path / "absent",
+        ledger_path=tmp_path / "absent" / "ledger.yaml",
+        catalog_path=tmp_path / "absent" / "catalog.yaml",
+        strategy_roots=(tmp_path / "absent" / "phase4a",),
+        registry_path=tmp_path / "absent" / "registry.yaml",
+        now_fn=lambda: fixed_now,
+    )
+    manifest = export.build_manifest(bare)
+    assert manifest["generated_at"] == "2026-06-28T12:30:00Z"
+    assert all(s["modified_at"] is None for s in manifest["sources"])
+    # Still schema-valid (nulls are allowed) so write_manifest never fails-fast here.
+    written = export.write_manifest(tmp_path / "out", bare)
+    assert written.name == export.MANIFEST_FILENAME
 
 
 def test_export_rejects_invalid_payload(sources, tmp_path, monkeypatch):
@@ -883,7 +948,8 @@ def test_cli_export(monkeypatch, sources, tmp_path, capsys):
     monkeypatch.setattr(ConsoleSources, "default", classmethod(lambda cls: sources))
     rc = cli.main(["export", "--out", str(tmp_path / "cli")])
     assert rc == 0
-    assert "Wrote 11 export files" in capsys.readouterr().out
+    # 11 schema-validated payloads + the freshness manifest side artifact.
+    assert "Wrote 12 export files" in capsys.readouterr().out
 
 
 # ── production sources wiring ─────────────────────────────────────────────────

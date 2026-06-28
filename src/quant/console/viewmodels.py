@@ -315,3 +315,26 @@ class MarketSnapshot:
     ten_year: float | None
     fed_funds: float | None
     notes: list[str] = field(default_factory=list)  # deferred metrics, stated honestly
+
+
+# ── Export manifest (freshness stamp; E1-M1-EXPORT-FRESHNESS-STAMP) ───────────
+#
+# The payload export (build_export) is byte-idempotent — no embedded timestamp —
+# so re-running over unchanged artifacts is a no-op diff. The manifest is the
+# DELIBERATE exception: it carries the export-run time and per-source artifact
+# mtimes so the UI can show a freshness stamp (PRD §12 risk table). It is written
+# as a side artifact (export/_manifest.json) OUTSIDE build_export, so it never
+# enters the deterministic payload set. ``source`` is a friendly label, never a
+# filesystem path (DECISIONS #5/#7: no internal paths in the UI).
+
+
+@dataclass(frozen=True)
+class ManifestSource:
+    source: str  # friendly label, e.g. "Trial Registry" — never a file path
+    modified_at: str | None  # ISO-8601 UTC artifact mtime, or None when absent
+
+
+@dataclass(frozen=True)
+class ExportManifest:
+    generated_at: str  # ISO-8601 UTC — when write_export last ran
+    sources: list[ManifestSource]

@@ -89,6 +89,11 @@ EXPORT_SCHEMAS: dict[str, dict] = {
 STRATEGY_DETAIL_SCHEMA: dict = schema_for(vm.StrategyDetail)
 PROVENANCE_SCHEMA: dict = schema_for(vm.ProvenanceView)
 
+# The freshness-stamp side artifact (export/_manifest.json). Deliberately NOT in
+# EXPORT_SCHEMAS — the manifest is excluded from the byte-idempotent payload set;
+# write_export validates it against this schema separately (E1-M1-EXPORT-FRESHNESS-STAMP).
+MANIFEST_SCHEMA: dict = schema_for(vm.ExportManifest)
+
 
 # ── Validator ────────────────────────────────────────────────────────────────
 
