@@ -11,6 +11,20 @@ predate its existence:
   * ``docs/AGENT_OPERATION.md`` Step 5 — listed in the drift-test row of the
     verification table.
 
+Three further invariants (added by ``A-PRIORITIES-TEST-TS``) cover the
+timestamp fields the original four checks did not, but which
+``docs/AGENT_OPERATION.md`` requires: Step 3 mandates ``started_at`` on any
+claimed task, Step 8 mandates ``completed_at`` on ``done``:
+
+  * (e) every ``in_progress`` or ``done`` task carries ``started_at``;
+  * (f) ``completed_at >= started_at`` (date ordering) where both are present;
+  * (g) ``started_at`` / ``completed_at``, where present, parse as ISO
+    dates/datetimes.
+
+Note on types: ``yaml.safe_load`` parses ``2026-06-17`` as ``datetime.date``
+and ``2026-06-17T17:17:12Z`` as ``datetime.datetime`` (tz-aware), while the
+synthetic fixtures below pass ISO strings. ``_to_date`` coerces all three.
+
 It mirrors the ``tests/test_catalog.py`` / ``tests/test_ledger.py`` pattern:
 small validators that raise ``ValueError`` *naming the offender*, exercised
 in both directions (METHODOLOGY §6) — the committed file passes, synthetic
@@ -26,6 +40,7 @@ edge symmetry.
 """
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
 import pytest
@@ -143,6 +158,90 @@ def check_done_have_completed_at(tasks: list[dict]) -> None:
         raise ValueError(f"done tasks missing completed_at: {missing}")
 
 
+def _to_date(value: object) -> dt.date:
+    """Coerce a YAML timestamp to a ``date``; raise ValueError if unparseable.
+
+    Handles the three forms a task timestamp can take: ``datetime.datetime``
+    and ``datetime.date`` (what ``yaml.safe_load`` yields for ISO timestamps),
+    and ``str`` (the synthetic fixtures). The trailing ``Z`` that the
+    ``started_at`` convention uses is normalised to ``+00:00`` for
+    ``fromisoformat``.
+    """
+    if isinstance(value, dt.datetime):
+        return value.date()
+    if isinstance(value, dt.date):
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        try:
+            return dt.datetime.fromisoformat(s.replace("Z", "+00:00")).date()
+        except ValueError:
+            try:
+                return dt.date.fromisoformat(s)
+            except ValueError:
+                raise ValueError(f"unparseable timestamp: {value!r}") from None
+    raise ValueError(
+        f"timestamp must be a date/datetime/ISO string, got "
+        f"{type(value).__name__}: {value!r}"
+    )
+
+
+_TIMESTAMPED_STATUSES = {"in_progress", "done"}
+
+
+def check_started_at_present(tasks: list[dict]) -> None:
+    """(e) every in_progress or done task carries started_at."""
+    missing = [
+        t["id"]
+        for t in tasks
+        if t.get("status") in _TIMESTAMPED_STATUSES and not t.get("started_at")
+    ]
+    if missing:
+        raise ValueError(f"in_progress/done tasks missing started_at: {missing}")
+
+
+def check_timestamps_parse(tasks: list[dict]) -> None:
+    """(g) started_at / completed_at, where present, parse as ISO dates."""
+    bad: list[str] = []
+    for t in tasks:
+        for field in ("started_at", "completed_at"):
+            value = t.get(field)
+            if value is None:
+                continue
+            try:
+                _to_date(value)
+            except ValueError:
+                bad.append(f"{t['id']}.{field}={value!r}")
+    if bad:
+        raise ValueError(f"unparseable timestamps: {bad}")
+
+
+def check_completed_after_started(tasks: list[dict]) -> None:
+    """(f) completed_at >= started_at (date ordering) where both present.
+
+    Parse failures are the concern of :func:`check_timestamps_parse`; this
+    check skips any value it cannot coerce so the two validators report
+    independent failures rather than masking each other.
+    """
+    violations: list[str] = []
+    for t in tasks:
+        started = t.get("started_at")
+        completed = t.get("completed_at")
+        if not started or not completed:
+            continue
+        try:
+            s = _to_date(started)
+            c = _to_date(completed)
+        except ValueError:
+            continue
+        if c < s:
+            violations.append(
+                f"{t['id']}: completed_at {completed} < started_at {started}"
+            )
+    if violations:
+        raise ValueError(f"completed_at precedes started_at: {violations}")
+
+
 def validate_priorities(data: dict) -> None:
     """Run every drift check. Raises the first ValueError encountered."""
     tasks = _tasks(data)
@@ -155,6 +254,9 @@ def validate_priorities(data: dict) -> None:
     check_references_resolve(tasks)
     check_single_in_progress(tasks)
     check_done_have_completed_at(tasks)
+    check_started_at_present(tasks)
+    check_timestamps_parse(tasks)
+    check_completed_after_started(tasks)
 
 
 # --------------------------------------------------------------------- #
@@ -285,6 +387,118 @@ class TestDoneHaveCompletedAt:
 
 
 # --------------------------------------------------------------------- #
+# (e) in_progress / done tasks carry started_at
+# --------------------------------------------------------------------- #
+
+class TestStartedAtPresent:
+    def test_in_progress_with_started_at_passes(self):
+        check_started_at_present(
+            [_task(status="in_progress", started_at="2026-06-28T21:30:00Z")]
+        )
+
+    def test_done_with_started_at_passes(self):
+        check_started_at_present(
+            [_task(status="done", started_at="2026-06-23", completed_at="2026-06-23")]
+        )
+
+    def test_in_progress_without_started_at_rejected(self):
+        with pytest.raises(ValueError, match=r"missing started_at.*X-5"):
+            check_started_at_present([_task(id="X-5", status="in_progress")])
+
+    def test_done_without_started_at_rejected(self):
+        with pytest.raises(ValueError, match=r"missing started_at.*X-6"):
+            check_started_at_present([_task(id="X-6", status="done", completed_at="2026-06-23")])
+
+    def test_ready_blocked_without_started_at_tolerated(self):
+        check_started_at_present([_task(status="ready"), _task(id="X-2", status="blocked")])
+
+
+# --------------------------------------------------------------------- #
+# (f) completed_at >= started_at
+# --------------------------------------------------------------------- #
+
+class TestCompletedAfterStarted:
+    def test_completed_after_started_passes(self):
+        check_completed_after_started(
+            [_task(status="done", started_at="2026-06-23T10:00:00Z", completed_at="2026-06-24")]
+        )
+
+    def test_same_day_completion_passes(self):
+        # The common case: claimed and finished the same day (datetime vs date).
+        check_completed_after_started(
+            [_task(status="done", started_at="2026-06-23T17:17:12Z", completed_at="2026-06-23")]
+        )
+
+    def test_completed_before_started_rejected(self):
+        with pytest.raises(ValueError, match=r"X-8.*completed_at.*< started_at"):
+            check_completed_after_started(
+                [_task(id="X-8", status="done", started_at="2026-06-24", completed_at="2026-06-23")]
+            )
+
+    def test_only_started_at_tolerated(self):
+        check_completed_after_started([_task(status="in_progress", started_at="2026-06-23T00:00:00Z")])
+
+    def test_neither_timestamp_tolerated(self):
+        check_completed_after_started([_task(status="ready")])
+
+
+# --------------------------------------------------------------------- #
+# (g) timestamps parse
+# --------------------------------------------------------------------- #
+
+class TestTimestampsParse:
+    def test_iso_string_forms_pass(self):
+        check_timestamps_parse(
+            [_task(status="done", started_at="2026-06-23T17:17:12Z", completed_at="2026-06-23")]
+        )
+
+    def test_native_date_and_datetime_pass(self):
+        # The forms yaml.safe_load actually produces from the real file.
+        check_timestamps_parse(
+            [
+                _task(
+                    status="done",
+                    started_at=dt.datetime(2026, 6, 23, 17, 17, 12, tzinfo=dt.timezone.utc),
+                    completed_at=dt.date(2026, 6, 23),
+                )
+            ]
+        )
+
+    def test_unparseable_started_at_rejected(self):
+        with pytest.raises(ValueError, match=r"unparseable timestamps.*X-4.*started_at"):
+            check_timestamps_parse([_task(id="X-4", status="done", started_at="not-a-date")])
+
+    def test_unparseable_completed_at_rejected(self):
+        with pytest.raises(ValueError, match=r"unparseable timestamps.*X-4.*completed_at"):
+            check_timestamps_parse([_task(id="X-4", status="done", completed_at="2026-13-99")])
+
+    def test_missing_timestamps_tolerated(self):
+        check_timestamps_parse([_task(status="ready")])
+
+
+class TestToDate:
+    def test_datetime_to_date(self):
+        assert _to_date(dt.datetime(2026, 6, 23, 17, 0, tzinfo=dt.timezone.utc)) == dt.date(2026, 6, 23)
+
+    def test_date_passthrough(self):
+        assert _to_date(dt.date(2026, 6, 23)) == dt.date(2026, 6, 23)
+
+    def test_iso_datetime_with_z(self):
+        assert _to_date("2026-06-23T17:17:12Z") == dt.date(2026, 6, 23)
+
+    def test_iso_date_string(self):
+        assert _to_date("2026-06-23") == dt.date(2026, 6, 23)
+
+    def test_bad_string_raises(self):
+        with pytest.raises(ValueError, match="unparseable timestamp"):
+            _to_date("nope")
+
+    def test_wrong_type_raises(self):
+        with pytest.raises(ValueError, match="date/datetime/ISO string"):
+            _to_date(12345)
+
+
+# --------------------------------------------------------------------- #
 # Integrity extras (satisfied by the committed file; valuable to hold)
 # --------------------------------------------------------------------- #
 
@@ -337,3 +551,12 @@ class TestRealPriorities:
 
     def test_all_references_resolve(self):
         check_references_resolve(_tasks(load_priorities()))
+
+    def test_in_progress_and_done_have_started_at(self):
+        check_started_at_present(_tasks(load_priorities()))
+
+    def test_timestamps_parse(self):
+        check_timestamps_parse(_tasks(load_priorities()))
+
+    def test_completion_not_before_start(self):
+        check_completed_after_started(_tasks(load_priorities()))
