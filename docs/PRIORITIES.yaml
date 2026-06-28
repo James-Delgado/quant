@@ -2415,7 +2415,8 @@ tasks:
     title: "E1-M1 follow-up: export freshness stamp for the UI (kept out of the idempotency surface)"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T20:30:00Z
     depends_on: [E1-M1]
     blocks: []
     deliverable:
