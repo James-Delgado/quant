@@ -565,8 +565,9 @@ tasks:
     title: "C1-M3: Freshness monitor + alert (cron)"
     project: C
     sub_project: C1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T01:58:07Z
+    completed_at: 2026-06-28
     depends_on: [C1-M2]
     blocks: []
     deliverable:
@@ -1190,6 +1191,42 @@ tasks:
       gate functions) so the C1-M2 gate run is recorded in data/ledger.yaml for
       audit symmetry with the Phase 4A / B1 runner integrations. Optional per the
       PRD ("may"); intentionally NOT in C-CLOSE.depends_on. Low priority.
+
+  - id: C1-M3-SLA-DOC-DRIFT
+    rank: 45
+    title: "Close the code-vs-doc §6 gap: machine-readable SLA table or doc-parse drift test for the freshness monitor"
+    project: C
+    sub_project: C1
+    status: ready
+    depends_on: [C1-M3]
+    blocks: []
+    deliverable:
+      file: tests/test_monitor_freshness.py
+    references:
+      primary: scripts/monitor_freshness.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C1-M3 post-task review (commit of
+      scripts/monitor_freshness.py + tests/test_monitor_freshness.py). METHODOLOGY
+      §6 wants code-vs-config drift contracts in both directions; the reference
+      implementation (tests/test_catalog.py) compares code against a
+      MACHINE-READABLE catalog.yaml. The freshness SLA values are pinned as module
+      constants (scripts/monitor_freshness.py::SOURCE_SLAS) and asserted against
+      literal values in tests/test_monitor_freshness.py
+      (test_pinned_sla_constants_match_frozen_contract,
+      test_monitored_set_is_exactly_the_c1m1_table), which trips CI on a CODE edit
+      — but the C1-M1 contract (docs/concepts/data-freshness-slas.md) is a
+      human-readable Markdown TABLE, so nothing asserts code == the DOC. The doc
+      and code could silently diverge (only the C1-M1 "Update protocol" social
+      contract keeps them in lock-step). Close the gap by either (a) extracting the
+      SLA table to a small machine-readable file (YAML) consumed by both the
+      monitor and a drift test mirroring test_catalog.py, or (b) parsing the
+      Markdown SLA table in the test and asserting it matches SOURCE_SLAS. Doc/test
+      hardening only; the values themselves are correct and pinned. Non-gating;
+      low priority — mirrors the C1-M1-MEASURE / B2-FULLPANEL-AGREEMENT precedent of
+      a non-MVP confirmation intentionally NOT added to C-CLOSE.depends_on so an
+      unrun hardening task cannot deadlock closeout.
 
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
