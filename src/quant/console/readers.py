@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from quant.backtest.metrics import compute_metrics
+from quant.backtest.regimes import VIXThresholdDetector
 from quant.backtest.statistics import expected_max_sharpe
 from quant.console import viewmodels as vm
 from quant.console.sources import (
@@ -48,9 +49,22 @@ _STRESS_WINDOWS: tuple[tuple[str, str, str], ...] = (
     ("2022 rate selloff", "2022-01-01", "2022-10-31"),
 )
 
-# Live-computable condition axes.
+# Market-level, live-computable condition axes (E1-M1-CONDITIONS-MARKET-AXIS).
+# The volatility axis is the market VIX bucketed by VIXThresholdDetector's pinned
+# thresholds; the rates axis is the trailing change in the 10-year Treasury yield.
 _VOL_CONDITIONS = ["low_vol", "mid_vol", "high_vol"]
-_TREND_CONDITIONS = ["uptrend", "downtrend"]
+_RATES_CONDITIONS = ["rates_falling", "rates_steady", "rates_rising"]
+
+# FRED series ids backing the two market axes (pinned; METHODOLOGY §1).
+VIX_SERIES_ID = "VIXCLS"
+RATES_SERIES_ID = "DGS10"
+
+# Rates-axis tunables (pinned; METHODOLOGY §1). The 10-year yield's trailing
+# change over ~one trading quarter classifies the rate environment; a deadband
+# keeps small wobbles in the neutral "steady" bucket. Point-in-time: the change
+# uses only past observations, so labelling date D never peeks past D.
+RATES_CHANGE_WINDOW = 63  # bars (≈ one quarter)
+RATES_DEADBAND = 0.25  # percentage points (±25 bps) around zero = "steady"
 
 
 # ── Small helpers ────────────────────────────────────────────────────────────
@@ -325,6 +339,66 @@ def load_strategy(
 # ── 3. Conditions ────────────────────────────────────────────────────────────
 
 
+def _by_date(series: pd.Series) -> pd.Series:
+    """Re-index a series by calendar date (midnight), dropping intraday time.
+
+    The OOS return index is tz-naive UTC with the NY-close instant preserved
+    (e.g. ``2006-01-02 05:00``). Market (FRED) series carry midnight-UTC calendar
+    dates. Normalising both to midnight lets them align by *date* — the documented
+    NY↔UTC alignment care (project_lake_tz_alignment) — without an off-by-one from
+    comparing a 05:00 close against a 00:00 observation.
+    """
+    out = series.copy()
+    out.index = pd.DatetimeIndex(out.index).normalize()
+    return out
+
+
+def _align_market(series: pd.Series, dates: pd.DatetimeIndex) -> pd.Series:
+    """Carry a market series forward onto ``dates`` (point-in-time ffill).
+
+    Forward-fill is the only honest direction here: a date inherits the most
+    recent *prior* observation, never a future one. Dates before the series
+    begins stay NaN and are dropped by the labellers.
+    """
+    if series is None or series.empty or len(dates) == 0:
+        return pd.Series(dtype=float)
+    union = series.index.union(dates)
+    return series.reindex(union).sort_index().ffill().reindex(dates)
+
+
+def _vol_labels(vix_on_dates: pd.Series) -> pd.Series:
+    """Volatility-regime labels from the market VIX (reuses VIXThresholdDetector).
+
+    Delegates the bucketing — and its pinned ``low=15`` / ``high=25`` thresholds —
+    to the repo's :class:`VIXThresholdDetector`, so the console and the backtester
+    carve volatility identically (METHODOLOGY §4 — consume the contract).
+    """
+    vix = vix_on_dates.dropna()
+    if vix.empty:
+        return pd.Series(dtype=object)
+    detector = VIXThresholdDetector(vix)
+    return detector.label(pd.DatetimeIndex(vix.index))
+
+
+def _rates_labels(dgs10_on_dates: pd.Series) -> pd.Series:
+    """Rate-environment labels from the trailing change in the 10-year yield.
+
+    ``rates_rising`` / ``rates_falling`` when the trailing ``RATES_CHANGE_WINDOW``
+    change clears ±``RATES_DEADBAND``; ``rates_steady`` inside the deadband.
+    Point-in-time: the change references only past observations.
+    """
+    rates = dgs10_on_dates.dropna()
+    if rates.empty:
+        return pd.Series(dtype=object)
+    change = (rates - rates.shift(RATES_CHANGE_WINDOW)).dropna()
+    if change.empty:
+        return pd.Series(dtype=object)
+    labels = pd.Series("rates_steady", index=change.index, dtype=object)
+    labels[change >= RATES_DEADBAND] = "rates_rising"
+    labels[change <= -RATES_DEADBAND] = "rates_falling"
+    return labels
+
+
 def _aggregate_returns(per_strategy: dict[str, pd.Series]) -> pd.Series:
     """Equal-weight mean across strategies, aligned by date (outer join)."""
     if not per_strategy:
@@ -333,75 +407,82 @@ def _aggregate_returns(per_strategy: dict[str, pd.Series]) -> pd.Series:
     return frame.mean(axis=1, skipna=True).dropna()
 
 
-def _vol_labels(returns: pd.Series, window: int = 21) -> pd.Series:
-    """Tercile volatility-regime labels from the series' own rolling vol."""
-    vol = returns.rolling(window).std(ddof=1).dropna()
-    if vol.empty:
-        return pd.Series(dtype=object)
-    lo, hi = vol.quantile(1 / 3), vol.quantile(2 / 3)
-    labels = pd.Series("mid_vol", index=vol.index, dtype=object)
-    labels[vol <= lo] = "low_vol"
-    labels[vol >= hi] = "high_vol"
-    return labels
-
-
-def _trend_labels(returns: pd.Series, window: int = 200) -> pd.Series:
-    """Trend labels: equity above/below its rolling mean."""
-    equity = _equity_curve(returns)
-    ma = equity.rolling(window).mean()
-    valid = ma.dropna().index
-    labels = pd.Series(index=valid, dtype=object)
-    labels[equity.loc[valid] >= ma.loc[valid]] = "uptrend"
-    labels[equity.loc[valid] < ma.loc[valid]] = "downtrend"
-    return labels
-
-
 def _sharpe_under(returns: pd.Series, labels: pd.Series, condition: str) -> tuple[float, int]:
-    mask = labels[labels == condition].index
+    """Aggregate Sharpe of ``returns`` on the dates labelled ``condition``."""
+    if labels.empty:
+        return 0.0, 0
+    mask = labels.index[labels == condition]
     sub = returns.reindex(mask).dropna()
     if sub.empty:
         return 0.0, 0
     return _sharpe(sub), int(len(sub))
 
 
+# (axis_name, ordered condition labels, per-date label Series) for one market axis.
+_MarketAxis = tuple[str, list[str], pd.Series]
+
+
+def _market_axes(sources: ConsoleSources, dates: pd.DatetimeIndex) -> list[_MarketAxis]:
+    """Build the available market-level condition axes over ``dates``.
+
+    An axis is included only when its backing FRED series is present and yields
+    at least one label after alignment — otherwise it is omitted (not faked),
+    so an unconfigured/absent feed degrades honestly (METHODOLOGY §9).
+    """
+    fn = sources.market_series_fn
+    if fn is None or len(dates) == 0:
+        return []
+    axes: list[_MarketAxis] = []
+    vix = fn(VIX_SERIES_ID)
+    if vix is not None:
+        vol_labels = _vol_labels(_align_market(_by_date(vix), dates))
+        if not vol_labels.empty:
+            axes.append(("volatility", list(_VOL_CONDITIONS), vol_labels))
+    rates = fn(RATES_SERIES_ID)
+    if rates is not None:
+        rates_labels = _rates_labels(_align_market(_by_date(rates), dates))
+        if not rates_labels.empty:
+            axes.append(("rates", list(_RATES_CONDITIONS), rates_labels))
+    return axes
+
+
 def load_conditions(sources: ConsoleSources | None = None) -> vm.ConditionsView:
-    """Sharpe-by-condition + strategy×condition heatmap + named stress windows."""
+    """Sharpe by *market* condition + strategy×condition heatmap + stress windows.
+
+    Attribution axes are live-computable, point-in-time market conditions
+    (volatility from the VIX, rates from the 10-year yield) aligned to the OOS
+    calendar — not the strategy's own returns. The labels are global (one per
+    date), so the heatmap measures each strategy within the same market regimes.
+    """
     sources = sources or ConsoleSources.default()
     per_strategy: dict[str, pd.Series] = {}
     for ck in discover_strategies(sources):
-        per_strategy[ck.id] = read_oos_returns(ck.path / "oos_returns.parquet")
+        per_strategy[ck.id] = _by_date(read_oos_returns(ck.path / "oos_returns.parquet"))
 
     aggregate = _aggregate_returns(per_strategy)
-    vol_labels = _vol_labels(aggregate)
-    trend_labels = _trend_labels(aggregate)
+    master_dates = (
+        pd.DatetimeIndex(aggregate.index) if not aggregate.empty else pd.DatetimeIndex([])
+    )
+    market_axes = _market_axes(sources, master_dates)
 
-    axes = [
-        vm.ConditionAxis(name="volatility", conditions=list(_VOL_CONDITIONS)),
-        vm.ConditionAxis(name="trend", conditions=list(_TREND_CONDITIONS)),
-    ]
+    axes = [vm.ConditionAxis(name=name, conditions=list(conds)) for name, conds, _ in market_axes]
 
     by_condition: list[vm.ConditionStat] = []
-    for cond in _VOL_CONDITIONS:
-        sharpe, n = _sharpe_under(aggregate, vol_labels, cond)
-        by_condition.append(vm.ConditionStat("volatility", cond, sharpe, n))
-    for cond in _TREND_CONDITIONS:
-        sharpe, n = _sharpe_under(aggregate, trend_labels, cond)
-        by_condition.append(vm.ConditionStat("trend", cond, sharpe, n))
+    for name, conds, labels in market_axes:
+        for cond in conds:
+            sharpe, n = _sharpe_under(aggregate, labels, cond)
+            by_condition.append(vm.ConditionStat(name, cond, sharpe, n))
 
-    cond_labels = _VOL_CONDITIONS + _TREND_CONDITIONS
+    cond_labels = [cond for _, conds, _ in market_axes for cond in conds]
     strategy_ids = sorted(per_strategy)
     values: list[list[float | None]] = []
     for sid in strategy_ids:
         row: list[float | None] = []
         s_returns = per_strategy[sid]
-        s_vol_labels = _vol_labels(s_returns)
-        s_trend_labels = _trend_labels(s_returns)
-        for cond in _VOL_CONDITIONS:
-            sharpe, n = _sharpe_under(s_returns, s_vol_labels, cond)
-            row.append(sharpe if n > 0 else None)
-        for cond in _TREND_CONDITIONS:
-            sharpe, n = _sharpe_under(s_returns, s_trend_labels, cond)
-            row.append(sharpe if n > 0 else None)
+        for _, conds, labels in market_axes:
+            for cond in conds:
+                sharpe, n = _sharpe_under(s_returns, labels, cond)
+                row.append(sharpe if n > 0 else None)
         values.append(row)
     heatmap = vm.ConditionHeatmap(
         strategies=strategy_ids, conditions=cond_labels, values=values

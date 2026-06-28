@@ -6,6 +6,7 @@ is ≥80% on ``src/quant/console`` (METHODOLOGY §15/§16).
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import json
 from pathlib import Path
@@ -29,6 +30,27 @@ def _returns(seed: int, start: str = "2006-01-01", periods: int = 4500) -> pd.Se
     rng = np.random.default_rng(seed)
     idx = pd.date_range(start=start, periods=periods, freq="B", tz="America/New_York")
     return pd.Series(rng.normal(0.0003, 0.01, size=periods), index=idx, name="oos_returns")
+
+
+# Synthetic market series matching the OOS calendar (naive business days — the
+# date set the NY-close return index normalises onto). VIX spans the 15/25
+# thresholds and the 10-year wanders enough to exercise every rates bucket.
+_OOS_DATES = pd.date_range("2006-01-01", periods=4500, freq="B")
+
+
+def _synthetic_market() -> tuple[pd.Series, pd.Series]:
+    rng = np.random.default_rng(2024)
+    n = len(_OOS_DATES)
+    vix = 20.0 + 7.0 * np.sin(np.linspace(0, 24 * np.pi, n)) + rng.normal(0, 2.0, n)
+    vix = np.clip(vix, 9.0, 60.0)
+    dgs10 = np.clip(3.0 + np.cumsum(rng.normal(0, 0.03, n)), 0.5, 7.0)
+    return (
+        pd.Series(vix, index=_OOS_DATES, name="VIXCLS"),
+        pd.Series(dgs10, index=_OOS_DATES, name="DGS10"),
+    )
+
+
+_VIX_SERIES, _DGS10_SERIES = _synthetic_market()
 
 
 def _write_checkpoint(
@@ -223,6 +245,9 @@ def sources(tmp_path: Path) -> ConsoleSources:
     def fake_market(series_id: str) -> float | None:
         return {"VIXCLS": 15.4, "DGS10": 4.47, "DFF": 3.62}.get(series_id)
 
+    def fake_market_series(series_id: str) -> pd.Series | None:
+        return {"VIXCLS": _VIX_SERIES, "DGS10": _DGS10_SERIES}.get(series_id)
+
     def fake_monitor(name: str) -> dict | None:
         return {
             "ret_1d": {"coverage": 0.99, "mean": 0.0, "std": 0.01, "stability": "stable"},
@@ -242,6 +267,7 @@ def sources(tmp_path: Path) -> ConsoleSources:
         ),
         latest_timestamp_fn=fake_latest,
         market_value_fn=fake_market,
+        market_series_fn=fake_market_series,
         feature_monitor_fn=fake_monitor,
         now_fn=lambda: fixed_now,
     )
@@ -345,14 +371,64 @@ def test_calmar_none_when_no_drawdown():
 
 def test_load_conditions_shape(sources):
     cond = readers.load_conditions(sources)
-    assert [a.name for a in cond.axes] == ["volatility", "trend"]
-    assert len(cond.by_condition) == 5  # 3 vol + 2 trend
+    # Market-level axes: VIX volatility + 10-year rates (the equity-trend proxy
+    # is retired — E1-M1-CONDITIONS-MARKET-AXIS).
+    assert [a.name for a in cond.axes] == ["volatility", "rates"]
+    assert len(cond.by_condition) == 6  # 3 vol + 3 rates
     assert cond.heatmap.strategies == ["arima", "signed"]
-    assert cond.heatmap.conditions == ["low_vol", "mid_vol", "high_vol", "uptrend", "downtrend"]
+    assert cond.heatmap.conditions == [
+        "low_vol",
+        "mid_vol",
+        "high_vol",
+        "rates_falling",
+        "rates_steady",
+        "rates_rising",
+    ]
     assert len(cond.heatmap.values) == 2
-    assert all(len(row) == 5 for row in cond.heatmap.values)
+    assert all(len(row) == 6 for row in cond.heatmap.values)
     names = {w.name for w in cond.stress_windows}
     assert "COVID crash" in names
+    # Both market axes surface at least one populated bucket on the fixture.
+    populated = {c.condition for c in cond.by_condition if c.n_bars > 0}
+    assert populated & set(readers._VOL_CONDITIONS)
+    assert populated & set(readers._RATES_CONDITIONS)
+
+
+def test_vol_labels_reuse_vix_thresholds():
+    dates = pd.date_range("2020-01-01", periods=5, freq="D")
+    vix = pd.Series([10.0, 15.0, 20.0, 25.0, 40.0], index=dates)
+    labels = readers._vol_labels(vix)
+    # VIXThresholdDetector: <=15 → low, >=25 → high, else mid (boundaries inclusive).
+    assert list(labels) == ["low_vol", "low_vol", "mid_vol", "high_vol", "high_vol"]
+
+
+def test_rates_labels_classify_direction():
+    n = readers.RATES_CHANGE_WINDOW
+    dates = pd.date_range("2020-01-01", periods=n + 3, freq="B")
+    rising = pd.Series(np.linspace(2.0, 5.0, n + 3), index=dates)
+    assert set(readers._rates_labels(rising).iloc[-3:]) == {"rates_rising"}
+    falling = pd.Series(np.linspace(5.0, 2.0, n + 3), index=dates)
+    assert set(readers._rates_labels(falling).iloc[-3:]) == {"rates_falling"}
+    flat = pd.Series(np.full(n + 3, 3.0), index=dates)
+    assert set(readers._rates_labels(flat)) == {"rates_steady"}
+
+
+def test_align_market_forward_fills_point_in_time():
+    series = pd.Series([1.0, 2.0], index=pd.to_datetime(["2020-01-01", "2020-01-05"]))
+    dates = pd.DatetimeIndex(pd.to_datetime(["2020-01-01", "2020-01-03", "2020-01-05", "2020-01-06"]))
+    out = readers._align_market(readers._by_date(series), dates)
+    assert list(out) == [1.0, 1.0, 2.0, 2.0]  # carries the last prior obs forward
+
+
+def test_conditions_degrade_without_market_series(sources):
+    """No market series → axes omitted (not faked); stress windows still render."""
+    bare = dataclasses.replace(sources, market_series_fn=None)
+    cond = readers.load_conditions(bare)
+    assert cond.axes == []
+    assert cond.by_condition == []
+    assert cond.heatmap.conditions == []
+    assert cond.heatmap.strategies == ["arima", "signed"]
+    assert any(w.sharpe is not None for w in cond.stress_windows)
 
 
 def test_conditions_empty_when_no_strategies(tmp_path):
@@ -364,6 +440,7 @@ def test_conditions_empty_when_no_strategies(tmp_path):
     )
     cond = readers.load_conditions(empty)
     assert cond.heatmap.strategies == []
+    assert cond.axes == []
     assert all(w.sharpe is None for w in cond.stress_windows)
 
 

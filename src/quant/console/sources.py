@@ -58,6 +58,11 @@ MARKET_SERIES = {
 LatestTimestampFn = Callable[[str, str], "dt.datetime | None"]
 # A function returning the latest value for a FRED series (or None).
 MarketValueFn = Callable[[str], "float | None"]
+# A function returning the full history of a FRED series as a date-indexed
+# (normalized, tz-naive) float Series, or None when the series is unavailable.
+# Distinct from ``MarketValueFn`` (latest scalar) — the Conditions panel needs
+# the whole series to label the OOS calendar by market regime.
+MarketSeriesFn = Callable[[str], "pd.Series | None"]
 # A function returning monitoring stats for a feature, or None if unavailable.
 FeatureMonitorFn = Callable[[str], "dict | None"]
 # A clock, injectable for deterministic age computation in tests.
@@ -80,6 +85,7 @@ class ConsoleSources:
     registry_path: Path | None = None
     latest_timestamp_fn: LatestTimestampFn | None = None
     market_value_fn: MarketValueFn | None = None
+    market_series_fn: MarketSeriesFn | None = None
     feature_monitor_fn: FeatureMonitorFn | None = None
     now_fn: NowFn | None = None
 
@@ -101,6 +107,9 @@ class ConsoleSources:
         def _market(series_id: str) -> float | None:
             return _latest_fred_value(storage_catalog, series_id)
 
+        def _market_series(series_id: str) -> pd.Series | None:
+            return _fred_series(storage_catalog, series_id)
+
         return cls(
             data_root=data_root,
             ledger_path=data_root / "ledger.yaml",
@@ -109,6 +118,7 @@ class ConsoleSources:
             registry_path=Path(DEFAULT_REGISTRY_PATH),
             latest_timestamp_fn=_latest,
             market_value_fn=_market,
+            market_series_fn=_market_series,
             feature_monitor_fn=None,  # live lake monitor wired in a follow-up
             now_fn=lambda: dt.datetime.now(dt.timezone.utc),
         )
@@ -135,6 +145,36 @@ def _latest_fred_value(storage_catalog, series_id: str) -> float | None:
     if df.empty or pd.isna(df.iloc[0]["value"]):
         return None
     return float(df.iloc[0]["value"])
+
+
+def _fred_series(storage_catalog, series_id: str) -> pd.Series | None:
+    """Full history of a FRED series as a date-indexed (tz-naive) float Series.
+
+    Dates are extracted timezone-independently — ``to_datetime(..., utc=True)``
+    then ``normalize()`` — never a SQL ``CAST(timestamp AS DATE)``, which DuckDB
+    evaluates in the *session* timezone and would shift every observation back a
+    calendar day on a US-timezone machine (the FRED publication-lag pitfall
+    documented in ``features/engineering._load_fred_wide`` / nb07). The returned
+    index carries midnight-UTC calendar dates with the tz dropped so it aligns
+    by date with the OOS return calendar in :mod:`quant.console.readers`.
+    """
+    try:
+        sql = (
+            f"SELECT timestamp, value FROM {storage_catalog.table('macro_fred')} "
+            f"WHERE series_id = '{series_id}' ORDER BY timestamp"
+        )
+        df = storage_catalog.query(sql)
+    except Exception:
+        return None
+    if df.empty:
+        return None
+    dates = pd.to_datetime(df["timestamp"], utc=True).dt.normalize().dt.tz_localize(None)
+    series = pd.Series(
+        pd.to_numeric(df["value"], errors="coerce").to_numpy(),
+        index=pd.DatetimeIndex(dates),
+    )
+    series = series[~series.index.duplicated(keep="last")].sort_index().dropna()
+    return series if not series.empty else None
 
 
 # ── Low-level checkpoint readers ─────────────────────────────────────────────
