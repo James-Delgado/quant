@@ -29,6 +29,8 @@ inflating the deflation `N` — `N` is the sum and they contribute nothing.
 from __future__ import annotations
 
 import json
+import math
+import statistics
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -58,6 +60,14 @@ class LedgerEntry(BaseModel):
     preregistration: str
     config_hash: str
     n_comparisons: int = Field(ge=0)
+    # Headline annualised Sharpe of this trial's strategy arm (project convention,
+    # `compute_metrics`). OPTIONAL and back-compat: older entries and infrastructure
+    # milestones omit it (default None / absent in YAML). When present across trials,
+    # `observed_sharpe_std` reads it to estimate the empirical cross-trial dispersion
+    # V̂[{SR_n}] the Bailey-López de Prado expected-max benchmark deflates against —
+    # the data-driven alternative to the pinned `statistics.DEFAULT_SHARPE_STD` scalar
+    # (METHODOLOGY §13).
+    sharpe: float | None = None
     started_at: datetime
     completed_at: datetime
     verdict: Literal["gate_passed", "gate_failed", "inconclusive"]
@@ -76,6 +86,12 @@ class LedgerEntry(BaseModel):
         if self.completed_at < self.started_at:
             raise ValueError(
                 f"{self.id}: completed_at ({self.completed_at}) precedes started_at ({self.started_at})"
+            )
+        # A NaN/Inf Sharpe would silently poison the empirical dispersion estimate;
+        # reject it loudly (METHODOLOGY §9) rather than record an unusable value.
+        if self.sharpe is not None and not math.isfinite(self.sharpe):
+            raise ValueError(
+                f"{self.id}: sharpe must be a finite number, got {self.sharpe!r}"
             )
         return self
 
@@ -136,8 +152,15 @@ def load_ledger(path: Path | str = DEFAULT_LEDGER_PATH) -> list[LedgerEntry]:
 
 
 def _dump_entry_fragment(entry: LedgerEntry) -> str:
-    """Serialize one entry as a one-item YAML list fragment (`- id: ...`)."""
-    payload = entry.model_dump(mode="json")
+    """Serialize one entry as a one-item YAML list fragment (`- id: ...`).
+
+    ``exclude_none`` keeps the optional ``sharpe`` field out of the YAML when it
+    was not recorded, so sharpe-less entries serialize byte-identically to the
+    pre-``sharpe`` format — the append-only git-history drift test stays green.
+    Every required field has a non-None default (``artifacts=[]``, ``notes=""``),
+    so this only ever drops ``sharpe``.
+    """
+    payload = entry.model_dump(mode="json", exclude_none=True)
     return yaml.safe_dump(
         [payload], sort_keys=False, default_flow_style=False, allow_unicode=True
     )
@@ -199,6 +222,52 @@ def cumulative_trial_count(
     return sum(e.n_comparisons for e in entries)
 
 
+def observed_sharpe_std(
+    entries: Sequence[LedgerEntry] | None = None,
+    path: Path | str = DEFAULT_LEDGER_PATH,
+    *,
+    sample: bool = True,
+    min_trials: int = 2,
+) -> float | None:
+    """Empirical cross-trial Sharpe dispersion V̂[{SR_n}]^(1/2) from the ledger.
+
+    Computes the standard deviation of the recorded per-trial ``sharpe`` values —
+    the data-driven estimate of the cross-trial Sharpe spread the Bailey-López de
+    Prado expected-max benchmark deflates against (METHODOLOGY §13). Entries with
+    no ``sharpe`` (the field is optional; older / infrastructure entries omit it)
+    are skipped.
+
+    Returns ``None`` when fewer than ``min_trials`` entries carry a ``sharpe`` — a
+    standard deviation over <2 points is undefined/unreliable. The caller (e.g.
+    ``regime_metrics.dsr_aware_gate_report``) is expected to fall back to the pinned
+    ``statistics.DEFAULT_SHARPE_STD`` scalar in that case; check ``is None``
+    explicitly rather than truthiness, because a genuine zero-dispersion ledger
+    (every recorded Sharpe identical) returns ``0.0``, not ``None``.
+
+    Parameters
+    ----------
+    entries:
+        Pre-loaded ledger to measure; ``None`` loads the default ledger from
+        ``path``.
+    sample:
+        ``True`` (default) uses the unbiased sample std (ddof=1, the V̂ estimator);
+        ``False`` uses the population std (ddof=0).
+    min_trials:
+        Minimum number of sharpe-carrying entries required to return a value.
+
+    Returns
+    -------
+    The std as a float, or ``None`` if too few trials carry a Sharpe.
+    """
+    if entries is None:
+        entries = load_ledger(path)
+    sharpes = [e.sharpe for e in entries if e.sharpe is not None]
+    if len(sharpes) < min_trials:
+        return None
+    std = statistics.stdev(sharpes) if sample else statistics.pstdev(sharpes)
+    return float(std)
+
+
 def next_ledger_id(date: str, entries: Sequence[LedgerEntry]) -> str:
     """Return the next free `ledger-<date>-NNNN` id for `date` (``YYYY-MM-DD``).
 
@@ -227,6 +296,7 @@ def record_run(
     entry_id: str | None = None,
     artifacts: Sequence[str] | None = None,
     notes: str = "",
+    sharpe: float | None = None,
     path: Path | str = DEFAULT_LEDGER_PATH,
     skip_if_exists: bool = True,
 ) -> LedgerEntry | None:
@@ -241,6 +311,11 @@ def record_run(
     `n_comparisons`, `verdict`) are supplied by the caller because they are not
     knowable from run mechanics alone — in particular `verdict` is decided by
     the gate, which runs *after* the arm produces its returns.
+
+    The optional `sharpe` (the trial's headline annualised Sharpe) defaults to the
+    metadata's `aggregate_sharpe` when the caller doesn't pass one; it is stored so
+    `observed_sharpe_std` can later estimate the empirical DSR dispersion. Runners
+    that record no Sharpe leave it None (back-compat).
 
     Idempotency: with `skip_if_exists=True` (default), if the ledger already
     contains an entry with the same `config_hash` this is a no-op returning
@@ -263,6 +338,18 @@ def record_run(
             "('finished_at' or 'completed_at')"
         )
 
+    # Pull the trial's headline Sharpe from metadata when the caller didn't pass
+    # one explicitly — `run_phase4a_arms.py` writes `aggregate_sharpe`. Optional
+    # and back-compat: runners that omit it leave `sharpe` None (METHODOLOGY §12).
+    # A non-finite metadata Sharpe (a runner writes float("nan") when an arm
+    # produced no returns) is treated as absent, not recorded — keeps `record_run`
+    # working for empty arms while the LedgerEntry validator still rejects an
+    # explicitly-passed NaN as caller error.
+    if sharpe is None:
+        meta_sharpe = metadata.get("aggregate_sharpe")
+        if meta_sharpe is not None and math.isfinite(meta_sharpe):
+            sharpe = float(meta_sharpe)
+
     path = Path(path)
     existing = load_ledger(path)
     if skip_if_exists and any(e.config_hash == config_hash for e in existing):
@@ -280,6 +367,7 @@ def record_run(
         preregistration=preregistration,
         config_hash=config_hash,
         n_comparisons=n_comparisons,
+        sharpe=sharpe,
         started_at=started_at,
         completed_at=completed_at,
         verdict=verdict,
