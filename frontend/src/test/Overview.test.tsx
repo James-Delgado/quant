@@ -63,6 +63,27 @@ describe("Overview panel", () => {
     expect(screen.getAllByText(/stale/).length).toBeGreaterThan(0);
   });
 
+  it("summarizes the deployment portfolio (in-use / idle counts) without faking P&L", async () => {
+    renderOverview();
+    const tile = await screen.findByRole("link", {
+      name: /Open Strategy Portfolio — 1 in use, 1 idle/,
+    });
+    // Honest counts from the registry view-model, plus the equal-weight framing...
+    expect(within(tile).getByText("In use")).toBeInTheDocument();
+    expect(within(tile).getByText("Idle")).toBeInTheDocument();
+    expect(within(tile).getByText(/equal-weight allocation/)).toBeInTheDocument();
+    // ...and no live-P&L claim anywhere in the tile (E3 territory, DECISIONS #5/#7).
+    expect(tile).not.toHaveTextContent(/P&L|live/i);
+  });
+
+  it("cross-links the portfolio summary tile to the Portfolio panel", async () => {
+    const user = userEvent.setup();
+    renderOverview();
+    const tile = await screen.findByRole("link", { name: /Open Strategy Portfolio/ });
+    await user.click(tile);
+    await waitFor(() => expect(screen.getByTestId("loc")).toHaveTextContent("/portfolio"));
+  });
+
   it("retrofits an inline ⓘ tooltip onto the Sharpe figure (E1-M5)", async () => {
     renderOverview();
     await screen.findByText(/Research mode\./);

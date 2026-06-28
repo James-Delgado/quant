@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28
+last_updated: 2026-06-28  # E1-OVERVIEW-PORTFOLIO-TILE done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2610,8 +2610,9 @@ tasks:
     title: "Project E: Overview cross-link / summary tile to the Strategy Portfolio panel"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T18:32:06Z
+    completed_at: 2026-06-28
     depends_on: [E-STRATEGIES-PANEL]
     blocks: []
     deliverable:
