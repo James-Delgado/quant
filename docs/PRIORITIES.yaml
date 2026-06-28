@@ -709,7 +709,8 @@ tasks:
     title: "Draft C6 (strategy registry + daily executor) PRD"
     project: C
     sub_project: C6
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T18:00:00Z
     depends_on: [C2-M2]
     blocks: [C6-M1]
     deliverable:
