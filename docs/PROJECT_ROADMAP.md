@@ -151,11 +151,12 @@ the "found edge in backtest, never shipped" failure mode.
 | **C3 — Position sizing + risk management** | Vol-targeted sizing replaces the simulator's 1-share-uniform; max-position caps; drawdown stops; live-mode position state |
 | **C4 — Confidence calibration** | Models emit prediction + calibrated confidence (conformal prediction or quantile regression); sizing logic consumes confidence |
 | **C5 — Monitoring + reconciliation** *(superseded by Project E3)* | Daily dashboard: positions, P&L, regime indicator, paper-vs-backtest delta, model output histogram. **Superseded by [Project E3 — Live Monitoring](#project-e--human-interface--observability)**: live monitoring + paper-vs-backtest reconciliation now ship in the console (`docs/project-e/E3-live-monitoring.prd.md`) on top of the E2 API. |
+| **C6 — Strategy registry & daily executor** *(added 2026-06-28)* | The deployment **spine** that composes C2/C3/C4: a registry of deployable strategies (each = `model + feature_set + target + universe + decision_rule + sizing_policy + confidence_gate + risk_limits + enabled + provenance`, referencing the existing feature/target catalogs) plus a daily cron executor (`trade_daily.py`) that runs the *enabled* subset, sizes each (confidence-weighted via C3×C4), nets per symbol, and places paper orders. Ranked **ahead of C3/C4** (contract-before-consumer, METHODOLOGY §4): the registry schema (C6-M1) is the contract C3 (sizing) and C4 (confidence) populate. Initial registry holds one enabled entry — the ARIMA placeholder, fully-invested equal-weight, `provenance: placeholder`. The portfolio (in-use + idle) is surfaced in the Project E console. |
 
 **Placeholder strategies that unblock C2 before any B verdict**:
 buy-and-hold-SPY (trivial), monthly-rebalance equal-weight Dow 30, or the
 Phase 4A ARIMA control (already in code). Any of these is enough to drive
-the C1→C5 build.
+the C1→C6 build.
 
 ### Project D — Continuous research agents (Phase 5)
 
@@ -423,6 +424,25 @@ Updates require a roadmap revision, not an in-PRD override.)*
    that clears its pre-committed gate; (b) B2's OOS attribution method is
    in code with B2-M3 catalog integration shipped. Either alone is
    insufficient.
+8. **C6 strategy registry & daily executor** *(ratified 2026-06-28)*:
+   execution becomes **multi-strategy and registry-driven**, not a
+   single hardcoded placeholder. A new sub-project **C6** adds (a) a
+   strategy registry — the deployment-side analog of the feature/target
+   catalogs, where each entry is the full pipeline spec (`model +
+   feature_set + target + universe + decision_rule + sizing_policy +
+   confidence_gate + risk_limits + enabled + provenance`) referencing the
+   existing catalogs, not duplicating them — and (b) a daily cron executor
+   (`trade_daily.py`) over the enabled subset. **C6 is ranked ahead of
+   C3/C4** (contract-before-consumer, METHODOLOGY §4): the registry schema
+   is the contract C3 (sizing) and C4 (confidence) populate, rather than
+   building them standalone and retrofitting. Confidence enters once, at
+   sizing; the allocator nets confidence-weighted sized positions per
+   symbol and clamps to risk caps. A **provenance gate** forbids
+   `enabled: true` without a passing gate verdict (the ARIMA placeholder is
+   the sanctioned `provenance: placeholder` exception). Paper only; the
+   `ExecutionBridge` already abstracts paper-vs-live. The strategy
+   portfolio (in-use + idle) is surfaced in the Project E console
+   (`E-STRATEGIES-PANEL`).
 
 ### Methodology and document-organization decisions (from same turn)
 
