@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-24
+last_updated: 2026-06-28
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -584,8 +584,9 @@ tasks:
     title: "Draft C2 (LEAN local + paper trading) PRD"
     project: C
     sub_project: C2
-    status: in_progress
+    status: done
     started_at: 2026-06-28T02:36:55Z
+    completed_at: 2026-06-28
     depends_on: [C1-PRD, C1-M2]
     blocks: [C2-M1, C2-M2, C2-M3]
     deliverable:
@@ -606,7 +607,7 @@ tasks:
     title: "C2-M1: LEAN local installed; hello-world algorithm runs"
     project: C
     sub_project: C2
-    status: blocked
+    status: ready
     depends_on: [C2-PRD]
     blocks: [C2-M2]
     deliverable:
