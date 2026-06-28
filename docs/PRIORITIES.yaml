@@ -626,21 +626,38 @@ tasks:
     title: "C2-M1: LEAN local installed; hello-world algorithm runs"
     project: C
     sub_project: C2
-    status: ready
+    status: done
+    started_at: 2026-06-28T05:00:25Z
+    completed_at: 2026-06-28
     depends_on: [C2-PRD]
     blocks: [C2-M2]
     deliverable:
       docs: docs/concepts/lean-setup.md
+      script: scripts/c2_hello_world.py
+      tests: tests/test_c2_hello_world.py
     references:
       primary: .claude/prds/c2-lean-paper.prd.md
     est_complexity: medium
+    notes: |
+      PLATFORM DECISION (recorded in docs/concepts/lean-setup.md): LEAN-local was
+      attempted (Docker native arm64 ✓, LEAN CLI 1.0.227 ✓) but blocked at
+      `lean init` — local data/live use is paywalled behind a paid QuantConnect
+      "Quant Researcher" seat. Per the ratified §8.3 fallback (LEAN-first; Alpaca
+      paper if friction > 2 days), C2 runs on **Alpaca paper trading** (pure-Python,
+      zero Docker; the .env keys already resolve to an Alpaca paper account, PA…).
+      LEAN preserved as a documented future swap behind the C2-M2 ExecutionBridge
+      Protocol. Hello-world placed one live paper order (BUY 1 SPY → ACCEPTED, then
+      cancelled); evidence in lean-setup.md §2. 14 unit tests, 99% module coverage.
+      Follow-up C2-DOC-PLATFORM-SYNC appended to sync the PRD/ROADMAP/M2-M3 wording.
 
   - id: C2-M2
     rank: 20
     title: "C2-M2: ARIMA(1,0,0) daily signal feeds LEAN paper account"
     project: C
     sub_project: C2
-    status: blocked
+    status: done
+    started_at: 2026-06-28T07:30:00Z
+    completed_at: 2026-06-28
     depends_on: [C2-M1]
     blocks: [C2-M3, C3-PRD, C4-PRD, E3-M1]
     deliverable:
@@ -648,14 +665,29 @@ tasks:
       tests: tests/test_lean_bridge.py
     references:
       primary: .claude/prds/c2-lean-paper.prd.md
+      platform_decision: docs/concepts/lean-setup.md
     est_complexity: large
+    notes: |
+      PLATFORM IS ALPACA PAPER, not LEAN — decided in C2-M1 (docs/concepts/
+      lean-setup.md): LEAN-local is paywalled, so the ratified §8.3 fallback was
+      taken. Build the `ExecutionBridge` Protocol with `AlpacaPaperBridge` as the
+      PRIMARY impl (the PRD frames it as the fallback; the decision promotes it to
+      primary), `LeanBridge` deferred as the future swap. Reuse the C2-M1 helpers
+      in scripts/c2_hello_world.py (build_paper_client / build_hello_order pattern).
+      Open module-name question (flagged in C2-DOC-PLATFORM-SYNC): the deliverable
+      path is `lean_bridge.py` but the module is now Alpaca-first — keep the
+      LEAN-agnostic ExecutionBridge name or rename to e.g. execution/bridge.py;
+      resolve before committing. The title still says "LEAN paper account" pending
+      the C2-DOC-PLATFORM-SYNC wording sweep.
 
   - id: C2-M3
     rank: 21
     title: "C2-M3: Backtest-vs-paper reconciliation harness (>1% delta = investigate)"
     project: C
     sub_project: C2
-    status: blocked
+    status: done
+    started_at: 2026-06-28T16:30:00Z
+    completed_at: 2026-06-28
     depends_on: [C2-M2]
     blocks: []
     deliverable:
@@ -665,29 +697,157 @@ tasks:
       primary: .claude/prds/c2-lean-paper.prd.md
     est_complexity: medium
 
+  # ------ C6 — Strategy registry & daily executor (the deployment spine) ------
+  # The missing layer that composes C2 (bridge) + C3 (sizing) + C4 (confidence):
+  # a registry of deployable strategies + a daily cron executor over the ENABLED
+  # subset. Ranked AHEAD of C3/C4 (contract-before-consumer, METHODOLOGY §4) — the
+  # registry schema (C6-M1) is what C3/C4 populate, so it lands first. Captured
+  # 2026-06-28 from the multi-model / confidence-sizing design discussion.
+
+  - id: C6-PRD
+    rank: 22
+    title: "Draft C6 (strategy registry + daily executor) PRD"
+    project: C
+    sub_project: C6
+    status: done
+    started_at: 2026-06-28T18:00:00Z
+    completed_at: 2026-06-28
+    depends_on: [C2-M2]
+    blocks: [C6-M1]
+    deliverable:
+      file: .claude/prds/c6-strategy-registry.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+      execution_bridge: src/quant/execution/lean_bridge.py
+      daily_runner: scripts/reconcile_paper_backtest.py
+      feature_catalog: src/quant/features/catalog.yaml
+      target_catalog: src/quant/features/targets.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Use /plan-prd. Pre-commits (METHODOLOGY §1) the design settled 2026-06-28:
+        - STRATEGY = full pipeline spec, not just a model. Schema fields: id,
+          display_name, description (human-readable, for the UI), model_ref
+          (→ src/quant/models/), feature_set_ref (→ features/catalog.yaml subset),
+          target_ref (→ TARGET_CATALOG in features/targets.py), universe,
+          decision_rule (forecast→position; the C2 sign() parity rule),
+          sizing_policy (C3 fills), confidence_gate (C4 fills), risk_limits (C3:
+          max position, drawdown stop), cadence (daily, fixed), broker
+          (ExecutionBridge selector; paper now), enabled, provenance,
+          created/enabled timestamps. REFERENCES the existing catalogs — does NOT
+          duplicate them (DRY / §4). It is the DEPLOYMENT-side subset of Project
+          B's research (target,model,universe) portfolio, promoted-to-live.
+        - PROVENANCE GATE (methodology guardrail): a strategy may not be
+          enabled:true without provenance pointing at a passing gate verdict
+          (ledger entry / DSR-aware gate). arima_placeholder is the one sanctioned
+          exception (provenance: placeholder, n_comparisons=0 — infra, not an edge
+          claim). Carries "no edge without a pre-committed gate" into deployment.
+        - DAILY ALLOCATOR (pinned): each cron run, for every ENABLED strategy:
+          predict → size (C3×C4) → signed target positions; combine across
+          strategies by (a) equal-weight CAPITAL BUDGET per enabled strategy (1/N;
+          one config field, later swappable for confidence/track-record weighting),
+          (b) confidence enters ONCE at sizing — a high-confidence strategy already
+          deploys a larger position, no separate weighting, (c) NET the signed
+          sized positions per symbol and clamp to the per-symbol risk cap. Opposed
+          signals net to a residual.
+        - INITIAL STATE: exactly one enabled entry (arima_placeholder) → 100% of
+          the (1/N=1) budget → FULLY-INVESTED EQUAL-WEIGHT-WITHIN-UNIVERSE sizing
+          (until C3), so the portfolio/sizing/netting path is exercised end-to-end
+          and the C2-M2-SIZING-PARITY gap is closed here. P&L stays uninteresting
+          (ARIMA on a few names) by design.
+        - UI CONTRACT (Project E): the registry exposes UI-presentable fields + a
+          documented serializable view-model (in-use AND idle strategies) the
+          console export consumes. The panel itself is E-STRATEGIES-PANEL
+          (depends_on C6-M1) — coordinate with the Project E owner.
+        - PAPER ONLY: broker=alpaca_paper; ExecutionBridge already abstracts paper
+          vs live, so live is a later config flag, out of scope here.
+
+  - id: C6-M1
+    rank: 23
+    title: "C6-M1: Strategy registry schema + loader + drift test"
+    project: C
+    sub_project: C6
+    status: done
+    started_at: 2026-06-28T16:57:08Z
+    completed_at: 2026-06-28
+    depends_on: [C6-PRD]
+    blocks: [C6-M2, C3-PRD, C4-PRD, E-STRATEGIES-PANEL]
+    deliverable:
+      file: src/quant/execution/strategy_registry.py
+      registry: src/quant/execution/strategy_registry.yaml
+      tests: tests/test_strategy_registry.py
+    references:
+      primary: .claude/prds/c6-strategy-registry.prd.md
+      pattern: src/quant/features/catalog.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      The contract C3/C4 + the daily executor + the E console all consume. Mirror
+      the features/catalog.{py,yaml} pattern: a YAML registry + a typed loader + a
+      code-vs-config drift test in BOTH directions (METHODOLOGY §6). Validate that
+      refs resolve (model_ref → models/, feature_set_ref → catalog, target_ref →
+      TARGET_CATALOG) and enforce the provenance gate (enabled ⇒ provenance
+      present; placeholder exempt). Expose a serializable view-model for the E
+      console. Seed one entry: arima_placeholder (enabled, provenance: placeholder).
+
+  - id: C6-M2
+    rank: 24
+    title: "C6-M2: Daily cron executor (trade_daily.py) over the enabled registry"
+    project: C
+    sub_project: C6
+    status: done
+    started_at: 2026-06-28T19:05:00Z
+    completed_at: 2026-06-28
+    depends_on: [C6-M1, C1-M3, C2-M2]
+    blocks: []
+    deliverable:
+      file: scripts/trade_daily.py
+      tests: tests/test_trade_daily.py
+    references:
+      primary: .claude/prds/c6-strategy-registry.prd.md
+      bridge: src/quant/execution/lean_bridge.py
+      freshness: scripts/monitor_freshness.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      THE "runs continually" deliverable. One idempotent entrypoint for the daily
+      cron: ingest (quant.flows.daily) → freshness gate (monitor_freshness) → for
+      each ENABLED strategy: daily_signal via its model → fully-invested
+      equal-weight sizing (placeholder until C3) → NET per symbol → place_target
+      via AlpacaPaperBridge → persist position state. Exits non-zero on any failure
+      (cron mail-on-stderr); re-runnable same-day (position-state round-trip). Cron
+      doc: run after the parity-safe Tiingo T+1 bar (~12:00 UTC), weekdays. Paper
+      only.
+
   # ------ C3 / C4 / C5 — PRD drafting and milestones (sketch) ------
 
   - id: C3-PRD
-    rank: 22
+    rank: 71
     title: "Draft C3 (position sizing + risk management) PRD"
     project: C
     sub_project: C3
-    status: blocked
-    depends_on: [C2-M2]
+    status: ready
+    depends_on: [C2-M2, C6-M1]
     blocks: [E3-M1]
     deliverable:
       file: .claude/prds/c3-sizing-risk.prd.md
     references:
       primary: docs/PROJECT_ROADMAP.md
     est_complexity: small
+    notes: |
+      Re-pointed at C6-M1 (the strategy-registry contract) on 2026-06-28: C3's
+      sizing_policy + risk_limits are FIELDS the registry holds, so C3 is drafted
+      against the contract rather than standalone (contract-before-consumer, §4).
+      Re-ranked to 71 behind the C6 spine; still a high-priority C-execution PRD —
+      re-prioritize (bump rank back into the C band) once C6-M1 lands.
 
   - id: C4-PRD
-    rank: 23
+    rank: 72
     title: "Draft C4 (confidence calibration) PRD"
     project: C
     sub_project: C4
-    status: blocked
-    depends_on: [C2-M2]
+    status: ready
+    depends_on: [C2-M2, C6-M1]
     blocks: []
     deliverable:
       file: .claude/prds/c4-confidence.prd.md
@@ -695,6 +855,10 @@ tasks:
       primary: docs/PROJECT_ROADMAP.md
     est_complexity: small
     notes: |
+      Re-pointed at C6-M1 (the strategy-registry contract) on 2026-06-28: C4's
+      confidence_gate is a FIELD the registry holds (contract-before-consumer, §4).
+      Re-ranked to 72 behind the C6 spine; re-prioritize once C6-M1 lands.
+
       Boundary with Project E (reconciled during Project E task generation):
       live CALIBRATION-drift monitoring (a 90% interval no longer covering 90%
       on live data) is C4's scope — the live extension of C4-M3's per-regime
@@ -704,7 +868,7 @@ tasks:
       PROJECT_ROADMAP §7 (C4 sketch boundary note + the C5-superseded note).
 
   - id: C5-PRD
-    rank: 24
+    rank: 73
     title: "Draft C5 (monitoring + reconciliation dashboard) PRD — SKIPPED (superseded by Project E3/E4)"
     project: C
     sub_project: C5
@@ -1274,6 +1438,164 @@ tasks:
       a non-MVP confirmation intentionally NOT added to C-CLOSE.depends_on so an
       unrun hardening task cannot deadlock closeout.
 
+  - id: C2-DOC-PLATFORM-SYNC
+    rank: 66
+    title: "Sync the LEAN→Alpaca platform decision across the C2 PRD, ROADMAP §7, and C2-M2/M3 task wording"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M1]
+    blocks: []
+    deliverable:
+      file: .claude/prds/c2-lean-paper.prd.md
+    references:
+      primary: docs/concepts/lean-setup.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M1 (commit of docs/concepts/lean-setup.md +
+      scripts/c2_hello_world.py). The C2-M1 platform decision record selected the
+      ratified §8.3 Alpaca-paper fallback over LEAN-local (the LEAN CLI's local
+      data/live is paywalled behind a paid QuantConnect seat). Several surfaces
+      still describe LEAN as the platform: ROADMAP §7 C2 table ("feeds LEAN paper
+      account"), the C2 PRD prose (LEAN-first framing, AlpacaPaperBridge as
+      "fallback" not primary), and the C2-M2/C2-M3 task TITLES here ("...feeds LEAN
+      paper account"). Update those to reflect Alpaca-paper as the chosen platform
+      with LEAN preserved as the documented future swap (lean-setup.md Appendix A),
+      and resolve the C2-M2 module-name question (deliverable path is
+      src/quant/execution/lean_bridge.py but the module is now Alpaca-first — keep
+      the LEAN-agnostic ExecutionBridge name, or rename to e.g.
+      execution/bridge.py). Doc/wording sync only; do NOT change any pinned gate
+      threshold (G1=0 mismatches, G2≤1% relative, G3≥5 cycles). Non-gating; mirrors
+      the A-METH-*-SYNC precedent. Intentionally NOT added to C-CLOSE.depends_on —
+      doc-hardening, like the C1-M*-* follow-ups, must not deadlock closeout.
+
+  - id: C2-M2-SIZING-PARITY
+    rank: 67
+    title: "Match the bridge's placeholder sizing to the backtest simulator's cash-fraction sizing (G2 prerequisite)"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M2]
+    blocks: [C-CLOSE]
+    deliverable:
+      file: src/quant/execution/lean_bridge.py
+    references:
+      primary: .claude/prds/c2-lean-paper.prd.md
+      simulator: src/quant/backtest/simulator.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M2 post-task review (commit of
+      src/quant/execution/lean_bridge.py). C2-M2's placeholder trades a FIXED 1
+      share (PLACEHOLDER_QTY); the Phase 1 simulator (backtest/simulator.py) sizes
+      a position as `int(cash / entry_fill)` capped by liquidity — i.e. deploys
+      ~all available capital, not a fixed share. G1 (direction/sign parity) is
+      sizing-independent, so this does NOT affect C2-M2. But C2-M3's G2
+      (backtest⇔paper per-period total-return reconciliation, ≤1%) CANNOT hold
+      until the paper bridge's sizing matches the simulator's cash-fraction rule
+      (or the PRD's "fixed notional" is pinned to the simulator's full-notional
+      deployment). M3 must resolve this — either match the bridge sizing to the
+      simulator before measuring G2, or treat the sizing difference as a NAMED
+      residual component in the G2 decomposition (METHODOLOGY §9, no unexplained
+      gap). Sizing logic proper (vol-targeting/caps) remains C3; this is only the
+      placeholder-vs-simulator parity needed for an honest G2. Added to
+      C-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary (the C deployment
+      substrate's G2 verdict depends on it). Non-gating for C2-M2.
+
+  - id: C2-M2-G1-HARNESS-EXACT
+    rank: 68
+    title: "Strengthen G1 to exercise the actual harness signal-derivation path (not a reimplementation)"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M2]
+    blocks: [C-CLOSE]
+    deliverable:
+      file: tests/test_lean_bridge.py
+    references:
+      primary: src/quant/backtest/harness.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M2 post-task review (DECLARED DEVIATION, METHODOLOGY
+      §9). The G1 gate compares `derive_target_position` against
+      `backtest_path_target_position`, but the latter REIMPLEMENTS the backtest's
+      `np.sign(raw_pred).astype(int)` step (backtest/harness.py:~359) rather than
+      calling the running harness code. So G1 proves two independently-coded
+      mappings agree, not that the bridge agrees with the EXACT harness path — a
+      reimplementation could drift from the harness without G1 catching it.
+      Close the gap by feeding identical forecasts through the actual harness
+      per-symbol signal-derivation (e.g. a tiny fixture model whose predict()
+      returns pinned forecasts, run through run_portfolio_backtest, asserting the
+      derived signals equal the bridge's target positions), so G1 reconciles
+      against the real engine. Mirrors B2-M2-G2-NB08 ("exact reproduction" of the
+      published statistic vs a proxy). Non-gating for C2-M2 (the mappings are
+      verified equal on 500+ finite forecasts + 125 real-data pairs); added to
+      C-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  # ------ C6-M2 follow-ups (discovered during the daily-executor build) ------
+
+  - id: C6-M2-MODEL-DISPATCH
+    rank: 78
+    title: "Generalize trade_daily._strategy_signal beyond the ARIMA placeholder"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-M2]
+    blocks: []
+    deliverable:
+      file: scripts/trade_daily.py
+      tests: tests/test_trade_daily.py
+    references:
+      primary: .claude/prds/c6-strategy-registry.prd.md
+      model_registry: src/quant/execution/strategy_registry.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-M2 (commit of scripts/trade_daily.py). The cycle's
+      signal step (_strategy_signal) dispatches ONLY on model_ref == "arima_baseline"
+      (it routes to lean_bridge.daily_signal, which fits ARIMA on the label series);
+      any other model_ref raises NotImplementedError by design (the documented C6
+      extension point, METHODOLOGY §9 — no silent fallback). A second DEPLOYABLE
+      strategy (a B-model that clears its gate) needs a real signal path here:
+      resolve_model_class(spec.model_ref) → build the feature row
+      (lean_bridge.build_feature_row, the reader→features seam) → score → sign. This
+      is future deployment work, triggered only when a gated B-model is registered;
+      it is intentionally NON-GATING and NOT added to C-CLOSE.depends_on (it would
+      deadlock the closeout on indefinitely-deferred work — mirrors the B3/B4 and
+      C6-DD exclusion precedents). Low priority.
+
+  - id: C6-M2-LIVE-ACCRUAL
+    rank: 79
+    title: "Live ≥5-session paper-loop accrual for trade_daily (G3 runbook)"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-M2]
+    blocks: []
+    deliverable:
+      runbook: scripts/trade_daily.py
+      evidence: data/c6/position_state.json
+    references:
+      primary: .claude/prds/c6-strategy-registry.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-M2 (commit of scripts/trade_daily.py) — a DECLARED §9
+      deviation. The C6 G3 gate is "≥5 consecutive clean daily cycles with state
+      round-trip + non-zero exit on failure". The GATEABLE half (the loop runs
+      end-to-end with state that round-trips across cycles, and aborts non-zero on a
+      stale feed) is unit-tested deterministically through a fake bridge
+      (tests/test_trade_daily.py::test_run_trading_loop_state_round_trips_five_cycles
+      and ::test_run_trading_cycle_aborts_on_stale_feed). The LIVE ≥5-session accrual
+      against the real Alpaca paper account spans five real market days and cannot run
+      in one session; run it via the cron runbook in the trade_daily.py module
+      docstring (~12:30 UTC weekdays, after the Tiingo T+1 bar) and record the
+      result. Mirrors C2-M3's live ≥5-cycle accrual (the lean-setup.md runbook).
+      Operational; NON-GATING and intentionally NOT added to C-CLOSE.depends_on
+      (it spans real days — same treatment as C2-M3's live accrual). Low priority.
+
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
   - id: B-CLOSE
@@ -1320,7 +1642,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C3-PRD, C4-PRD]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C6-REGISTRY-CONCEPT-DOC]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
@@ -1574,7 +1896,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -2245,3 +2567,174 @@ tasks:
       can't be promoted by mistake. CONDITIONAL / non-MVP — intentionally NOT in
       E1-CLOSE.depends_on so an unbuilt optional enhancement cannot deadlock
       closeout (mirrors B2-FULLPANEL-AGREEMENT). Low priority.
+
+  # ------ Cross-project tasks merged from main 2026-06-28 (C6 registry + Project C) ------
+  # Project ownership on merge: E* rows are authoritative on this branch; C*/A*/B*
+  # rows are authoritative on main. E-STRATEGIES-PANEL (sub_project E1) is wired
+  # into E1-CLOSE.depends_on per its C6-author note + AGENT_OPERATION Step 7.
+
+  # ------ Cross-project: strategy portfolio in the console (C6 → Project E) ------
+
+  - id: E-STRATEGIES-PANEL
+    rank: 74
+    title: "Project E: strategy-portfolio panel (in-use + idle strategies) from the C6 registry"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [C6-M1]
+    blocks: []
+    deliverable:
+      file: docs/project-e/E-STRATEGIES-PANEL.md
+    references:
+      primary: src/quant/execution/strategy_registry.py
+      roadmap: docs/PROJECT_ROADMAP.md
+    est_complexity: small
+    notes: |
+      Discovered during C6 design (2026-06-28). The user wants the strategy
+      portfolio — ENABLED (in-use) AND disabled (idle) strategies, each with its
+      human-readable display_name/description, model/target/universe, status,
+      allocation %, and provenance — rendered in the Project E console. C6-M1
+      exposes the registry + a serializable view-model; this task wires it into the
+      console export (src/quant/console/) and adds the panel to the React SPA. The
+      static portfolio view is E1 (buildable over the registry artifact); LIVE
+      per-strategy P&L is E3 (live monitoring), separate. COORDINATE WITH THE
+      PROJECT E OWNER (another agent is actively building E1): slot it into the
+      right E1 panel and add this id to E1-CLOSE.depends_on — left untouched here
+      to avoid a cross-agent PRIORITIES merge conflict in the active E1 region.
+
+  - id: C2-M3-RECON-CORE-LIFT
+    rank: 69
+    title: "Lift the reconciliation core (G2 gate + residual decomposition) to src/quant/execution/reconciliation.py for E3 console reuse"
+    project: E
+    sub_project: E3
+    status: ready
+    depends_on: [C2-M3]
+    blocks: []
+    deliverable:
+      file: src/quant/execution/reconciliation.py
+      tests: tests/test_reconciliation.py
+    references:
+      primary: scripts/reconcile_paper_backtest.py
+      roadmap: docs/PROJECT_ROADMAP.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M3 post-task review (commit of
+      scripts/reconcile_paper_backtest.py). The reconciliation arithmetic
+      (equity_curve / growth_multiple / relative_delta / decompose_residual /
+      g2_reconciliation_gate_report) currently lives in the scripts/ deliverable
+      (the pinned C2-M3 path) and is tested by import, matching repo precedent
+      (scripts/c2_hello_world.py, scripts/run_b1_arms.py). ROADMAP §4 Project E
+      says E3 (Live Monitoring — SUPERSEDES C5) ships "paper-vs-backtest
+      reconciliation" in the console over a tested Python service layer
+      (src/quant/console/ + reused execution/ logic). When E3-M3 (reconciliation)
+      is built, lift the pure functions to src/quant/execution/reconciliation.py
+      so both the script and the console import one tested implementation (no
+      duplicated arithmetic). Tagged project E (the consumer) so it does NOT gate
+      C-CLOSE — C2-M3's script deliverable is complete and correct standalone; the
+      lift is a forward refactor for the console, not a gap in C. Non-gating; do
+      now or when E3 lands.
+
+  - id: C2-M3-LIVE-REPLAY
+    rank: 70
+    title: "Non-vacuous G2 unexplained-residual: reconcile against a genuine independent engine replay (live Alpaca / LEAN), not a second simulate() config"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M3]
+    blocks: []
+    deliverable:
+      file: scripts/reconcile_paper_backtest.py
+      tests: tests/test_reconciliation.py
+    references:
+      primary: scripts/reconcile_paper_backtest.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      Discovered during C2-M3 (DECLARED DEVIATION, METHODOLOGY §9, stated in the
+      module docstring + review). The G2 gate's "fully decomposed, no-unexplained
+      residual" predicate is currently structurally satisfied (unexplained ~1e-16):
+      both the backtest and paper equity curves come from the SAME
+      backtest/simulator.py under two cost configs, so the toggled-parameter
+      decomposition closes the gap exactly by construction. The `unexplained` guard
+      is a *forward drift contract* — it only bites when the paper multiple is
+      sourced from a genuinely independent engine (the `paper_multiple_override`
+      hook, exercised in test_g2_gate_fails_on_unexplained_residual). To make the
+      guard load-bearing, replay the daily signals through a real independent engine
+      — a live Alpaca paper historical fill log, or a LEAN backtest — and feed its
+      growth multiple as the override; any execution mechanic the cost-model
+      decomposition cannot name then surfaces as a real unexplained residual.
+      NON-GATING for C-CLOSE and deliberately NOT added to C-CLOSE.depends_on
+      (mirrors the C5-PRD removal precedent — avoid deadlocking closeout on
+      infrastructure we lack: Alpaca paper cannot replay history and LEAN-local is
+      paywalled, docs/concepts/lean-setup.md). The PRD's pre-committed
+      merge-blocking gate is the deterministic simulate()-vs-simulate() replay,
+      which PASSED (data/c2/reconciliation/, ledger-2026-06-28-0001); this task is a
+      strengthening beyond C2's pinned scope. Low priority.
+
+  - id: C6-REGISTRY-CONCEPT-DOC
+    rank: 76
+    title: "Concept doc for the strategy registry (docs/concepts/strategy-registry.md)"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-M1]
+    blocks: [C-CLOSE]
+    deliverable:
+      file: docs/concepts/strategy-registry.md
+    references:
+      primary: src/quant/execution/strategy_registry.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-M1 post-task review (commit of
+      src/quant/execution/strategy_registry.{py,yaml}). Every registry/label
+      family in the repo has a companion concept doc (features/catalog.yaml <->
+      docs/concepts/feature-glossary.md; features/targets.py <-> the queued
+      B1-TARGETS-CONCEPT-DOC). The strategy registry has none. Write
+      docs/concepts/strategy-registry.md mirroring that pattern: the StrategySpec
+      field set + what each references (model_ref -> MODEL_REGISTRY,
+      feature_set_ref -> feature catalog, target_ref -> known_targets() =
+      {next_bar_return} ∪ TARGET_CATALOG), the provenance gate rule (enabled ⇒
+      placeholder | ledger-<id> resolving to gate_passed), the placeholder
+      sub-models that C3/C4 extend (fully_invested_equal_weight / always_pass /
+      permissive risk_limits), the equal-weight 1/N capital budget + the
+      view-model contract the E console consumes, and the next_bar_return builtin
+      target rationale. Doc-only; do NOT change any pinned rule or constant.
+      Non-gating; low priority. Added to C-CLOSE.depends_on per AGENT_OPERATION
+      Step 7 corollary (mirrors the B1-TARGETS-CONCEPT-DOC -> B-CLOSE precedent).
+
+  - id: C6-REGISTRY-HARDENING
+    rank: 77
+    title: "Harden the registry G1 gate: resolve universe symbols + validate ISO timestamps"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-M1]
+    blocks: []
+    deliverable:
+      file: src/quant/execution/strategy_registry.py
+      tests: tests/test_strategy_registry.py
+    references:
+      primary: src/quant/execution/strategy_registry.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-M1 post-task review. Two resolution/validation gaps the
+      C6-M1 G1 gate deliberately left out of its pinned scope (PRD G1 lists only
+      model_ref/feature_set_ref/target_ref):
+        (a) UNIVERSE RESOLUTION. A strategy whose `universe` lists a symbol the
+            lake never ingests would pass G1 yet silently emit no signal at
+            execution time (C6-M2). Extend registry_drift_report to resolve each
+            universe symbol against the tradeable universe (settings.equity_universe
+            or an injected set — kept injectable to avoid coupling the gate to
+            credential-loaded Settings, which raises without .env).
+        (b) TIMESTAMP VALIDATION. created_at/enabled_at are stored as free strings;
+            the loader does not assert they parse as ISO-8601 (mirrors the gap
+            A-PRIORITIES-TEST-TS closed for PRIORITIES.yaml). Add a field validator
+            + a negative test.
+      Both are strengthenings beyond C6-M1's pinned merge-blocking gate, which
+      PASSED (G1 = 0 unresolved / 0 provenance violations on the seeded registry).
+      NON-GATING and deliberately NOT added to C-CLOSE.depends_on (mirrors the
+      C2-M3-LIVE-REPLAY strengthening-beyond-scope precedent — closeout is not
+      gated on optional hardening). Low priority.

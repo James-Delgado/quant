@@ -250,3 +250,16 @@
   - data/b2/slice/
   notes: B2-M2 OOS-attribution validation (G1 permutation vs ablation; G2 port; G3
     IS-vs-OOS).
+- id: ledger-2026-06-28-0001
+  prd: c2
+  milestone: C2-M3
+  agent: human
+  preregistration: .claude/prds/c2-lean-paper.prd.md#pre-committed-gate
+  config_hash: 7913024e2845715652b9de65266d5dad034ed16402bceac62286d99bfab12b20
+  n_comparisons: 0
+  started_at: '2026-06-28T15:31:00.055624Z'
+  completed_at: '2026-06-28T15:31:01.971104Z'
+  verdict: gate_passed
+  artifacts:
+  - data/c2/reconciliation/reconciliation_report.md
+  notes: C2-M3 backtest↔paper reconciliation (G2). Audit-only; no edge claim.
