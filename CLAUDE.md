@@ -27,8 +27,9 @@ Roadmap: [`docs/PROJECT_ROADMAP.md`](docs/PROJECT_ROADMAP.md). Backlog: [`docs/P
 |---|---|---|
 | **Project A** — Research substrate & methodology | ✅ Done / maintain. Future work: trial-count ledger (`A-LEDGER`), DSR-aware gates, OOS-attribution (B2). | `docs/PROJECT_ROADMAP.md` §4 + `docs/METHODOLOGY.md` |
 | **Project B** — Predictive research (post-4A) | 🟡 Active. B1 target reframing (4 candidate targets) + B2 OOS attribution method run in parallel after `A-LEDGER` lands. | `docs/PROJECT_ROADMAP.md` §4 Project B; PRDs to be drafted via `/plan-prd` |
-| **Project C** — Live execution & deployment infrastructure | 🟡 Active in parallel with B. C1 live data → C2 LEAN/paper (ARIMA placeholder) → C3 sizing → C4 confidence → C5 monitoring. | `docs/PROJECT_ROADMAP.md` §4 Project C |
+| **Project C** — Live execution & deployment infrastructure | 🟡 Active in parallel with B. C1 live data → C2 LEAN/paper (ARIMA placeholder) → C3 sizing → C4 confidence → ~~C5 monitoring~~ (**superseded by Project E3**). | `docs/PROJECT_ROADMAP.md` §4 Project C |
 | **Project D** — Continuous research agents (Phase 5) | 📋 Spec mature, **gated**. Both triggers required: any B sub-project clears its pre-committed gate AND B2's OOS attribution method shipped with catalog integration. | `docs/PHASE_5_AGENTS.md` + `docs/PROJECT_ROADMAP.md` §4 Project D / §8 decision 7 |
+| **Project E** — Human Interface & Observability | 🟡 Active. E1 (Research & Trust Console) buildable now over existing artifacts; then E2 (Console API, gated on C1) → E3 (Live Monitoring, supersedes C5; gated on C2/C3) / E4 (Data & Market Status, gated on C1). Two-layer: tested Python service layer (`src/quant/console/`) + disposable React SPA. | `docs/project-e/` (E1–E4 PRDs + mockup + `DECISIONS.md`); `docs/PROJECT_ROADMAP.md` §4 Project E |
 
 > **Phase 0–4A delivery narratives** — what each phase/milestone built, the
 > exit-gate numbers, and the full M1–M6 Phase 4A story — have moved to

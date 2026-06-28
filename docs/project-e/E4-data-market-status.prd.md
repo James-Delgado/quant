@@ -19,8 +19,12 @@ This overlaps Project C1's freshness-monitor intent and consumes its live data.
 **Goals**
 - **Live feed health** — per-ingestor freshness measured against a pinned SLA, with
   gap detection over the lake.
-- **Alerting** — staleness / gap / drift breaches raise an alert (channel TBD: log,
-  email, or push), so a data problem is seen before it corrupts a prediction.
+- **Alerting** — staleness / gap / drift / **regime-change** breaches raise an alert
+  (channel TBD: log, email, or push), so a data or market-environment shift is seen
+  before it corrupts a prediction. *(Regime-change alerting is folded in from the
+  superseded roadmap §C5; E4 owns the alert because it owns the alerting channel and
+  the live market-environment computation below — E3 owns the regime-indicator
+  display.)*
 - **Live market environment** — vol/trend/rates regimes, breadth, curve, computed live.
 - **Live feature-drift monitor** — extends the E1 catalog's coverage/μ/σ/drift stats to
   a live, alerting surface.
@@ -40,7 +44,7 @@ This overlaps Project C1's freshness-monitor intent and consumes its live data.
 | # | Milestone | Deliverable | Acceptance |
 |---|---|---|---|
 | **M1** | Live feed health + gaps | per-feed freshness vs SLA + lake gap detection | health reflects real freshness; a seeded gap is detected and surfaced |
-| **M2** | Alerting | staleness / gap / drift breach → alert (pinned thresholds) | a breach raises an alert via the chosen channel; thresholds pre-committed in code |
+| **M2** | Alerting | staleness / gap / drift / regime-change breach → alert (pinned thresholds) | a breach raises an alert via the chosen channel; thresholds pre-committed in code; a seeded regime transition raises a regime-change alert |
 | **M3** | Live market + feature drift | live vol/trend/rates + breadth + curve; live feature-drift monitor | market env matches the condition machinery; drift monitor flags a seeded distribution shift |
 | **E4-CLOSE** | Closeout (rule 21) | end-to-end validation (live status + a fired alert on seeded breach) + one-page report | `depends_on` all E4 tasks; report states delivered + deferred scope |
 

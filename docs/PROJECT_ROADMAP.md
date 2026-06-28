@@ -56,8 +56,11 @@ remaining three are largely untouched.
 | Confidence calibration | ❌ Not built | Models emit point predictions only |
 | Continuous-agent harness | ❌ Vision spec only | `PHASE_5_AGENTS.md` |
 | OOS-only feature attribution method | ❌ Open question | M3 ρ = −0.074 finding |
+| Human-visible console / observability layer | ❌ Not built (spec mature) | Project E — `docs/project-e/` (PRDs + mockup + `DECISIONS.md`) |
 
-The research substrate is mature. The deployment substrate is empty.
+The research substrate is mature. The deployment substrate is empty. The
+human-interface layer (Project E) is specified and buildable over existing
+artifacts.
 
 ---
 
@@ -147,7 +150,7 @@ the "found edge in backtest, never shipped" failure mode.
 | **C2 — Execution layer (LEAN local + paper)** | LEAN local installed; placeholder algorithm consumes model predictions from outside LEAN; paper-trading runs daily; results reconcile with the Phase 1 backtest |
 | **C3 — Position sizing + risk management** | Vol-targeted sizing replaces the simulator's 1-share-uniform; max-position caps; drawdown stops; live-mode position state |
 | **C4 — Confidence calibration** | Models emit prediction + calibrated confidence (conformal prediction or quantile regression); sizing logic consumes confidence |
-| **C5 — Monitoring + reconciliation** | Daily dashboard: positions, P&L, regime indicator, paper-vs-backtest delta, model output histogram |
+| **C5 — Monitoring + reconciliation** *(superseded by Project E3)* | Daily dashboard: positions, P&L, regime indicator, paper-vs-backtest delta, model output histogram. **Superseded by [Project E3 — Live Monitoring](#project-e--human-interface--observability)**: live monitoring + paper-vs-backtest reconciliation now ship in the console (`docs/project-e/E3-live-monitoring.prd.md`) on top of the E2 API. |
 
 **Placeholder strategies that unblock C2 before any B verdict**:
 buy-and-hold-SPY (trivial), monthly-rebalance equal-weight Dow 30, or the
@@ -176,6 +179,39 @@ surfaces work for both. Universe selection is shared across both. This
 matches the portfolio-of-tuples design intent in §3.4.
 
 Until both triggers are met, Phase 5 stays a spec.
+
+### Project E — Human Interface & Observability
+
+A **human-interface and observability layer** that makes the platform's
+results, models, and data human-visible — both a daily-driver analytical
+console for the operator and a credible surface that shows a knowledgeable
+quant that the data, data preparation, and models can be trusted (conveyed
+through substance, never self-description). Full PRDs, the consensus mockup,
+and the decision log live in [`docs/project-e/`](project-e/)
+([`DECISIONS.md`](project-e/DECISIONS.md) is the rationale of record).
+
+Decomposed into four sub-projects with different dependencies, chained
+**E1 → E2 → E3/E4**. Bundling them would recreate the confounding the
+methodology exists to avoid and would block the immediately-valuable E1 on
+infrastructure that does not exist yet.
+
+| Sub-project | Outcome | Gated on |
+|---|---|---|
+| **E1 — Research & Trust Console** | Two-layer build (tested Python service layer in `src/quant/console/` + disposable React/TS SPA) reading existing artifacts; 8 panels at mockup parity; static-JSON export (no server); in-UI "Report an issue" button → `feedback` GitHub issue + `PRIORITIES.yaml` promotion path | **Buildable now** (existing artifacts only) |
+| **E2 — Console API** | FastAPI service wrapping the *same* E1 service-layer readers (no duplicated logic); read endpoints at export-schema parity; real `POST /feedback`; freshness/health + on-demand re-export; React data source swaps static↔API behind a flag | **Project C1** (live data) + E1 service layer |
+| **E3 — Live Monitoring** | Lights up E1's live tiles — live P&L / positions / exposure, per-strategy live performance, live regime indicator, and a paper-vs-backtest reconciliation panel with a pre-committed delta threshold. **Supersedes C5.** | **E2** + **C2/C3** (paper execution + sizing) |
+| **E4 — Data & Market Status** | Live feed health vs SLA + gap detection, staleness/gap/drift alerting (pinned thresholds), live market-environment view, and a live feature-drift monitor (dynamic counterpart to E1's catalog stats) | **E2** + **C1** (live data + freshness SLA) |
+
+**Conventions that bind every E build agent** (from
+[`DECISIONS.md`](project-e/DECISIONS.md)): the mockup is the frozen scope +
+visual + interaction contract (new asks become `feedback` issues → tasks, not
+silent additions); reuse the existing `storage/` + `features/` modules with
+**no new datastore**; never *say* "trust" (convey it through substance); no
+internal file paths in the UI; regimes are presented as live-computable
+**conditions** with named episodes demoted to a stress-windows view; the
+issue tracker is engineer/agent-visible only (no user-facing tracker panel).
+Binds methodology rules 15–21; every sub-project ends with a `*-CLOSE`
+end-to-end validation + one-page closeout report.
 
 ---
 
@@ -223,6 +259,12 @@ A (substrate) ── done ──┐
                                                        └─ feeds D triggers
 
 D (Phase 5 agents) ── gated on both: B-cycle artifact AND B2 (OOS attribution) in code
+
+E (human interface & observability)
+   E1 (console over existing artifacts) ── buildable now
+        └──> E2 (console API) ── gated on C1
+               ├──> E3 (live monitoring; supersedes C5) ── also gated on C2/C3
+               └──> E4 (data & market status) ── also gated on C1
 ```
 
 **Ratified sequencing (decision 1 in §8)**: parallel across B and C, but
@@ -305,7 +347,31 @@ These are *sketches*, not PRDs. Each becomes a full PRD via the same
 | M2 | Models emit calibrated intervals | `BacktestResult` extended with `oos_prediction_intervals`; sizing logic can read them |
 | M3 | Calibration audit | Per-regime coverage tests: 90% intervals actually contain 90% of OOS realizations |
 
-### C5 — Monitoring + reconciliation
+> **Boundary with Project E4**: live *calibration*-drift monitoring (coverage
+> decaying below target on live data) is C4's scope — the live extension of M3
+> — and is *surfaced* in the console (E3/E4) but *computed* by C4's calibration
+> machinery. E4 owns *feature/data*-distribution drift, which is a different
+> signal. Keep the two distinct when C4-PRD and E4 are drafted.
+
+### C5 — Monitoring + reconciliation *(superseded by Project E3)*
+
+> **Superseded by [Project E3 — Live Monitoring](#project-e--human-interface--observability)**
+> (`docs/project-e/E3-live-monitoring.prd.md`). The monitoring dashboard and
+> paper-vs-backtest reconciliation now ship in the console on top of the E2
+> API rather than as a standalone C5 dashboard. C5's scope redistributes
+> cleanly. **Dashboard** (C5-M1): positions / P&L / exposure + paper-vs-backtest
+> delta + the live regime indicator + the **model-output (signal-distribution)
+> histogram** → **E3**. **Alerting** (C5-M2): paper-backtest divergence → E3;
+> **regime-change alert** + feed staleness + gap detection + feature-distribution
+> drift → **E4** (`docs/project-e/E4-data-market-status.prd.md`). The
+> model-output histogram and regime-change alert were the two C5 elements not
+> already in the E3/E4 PRDs and were folded into them.
+> **Calibration drift stays with C4** — it is the live extension of C4-M3's
+> per-regime calibration audit (does a 90% interval still cover 90% live?),
+> *distinct* from E4's feature-distribution drift monitor; the console surfaces
+> it but C4's calibration machinery computes it. Retained here for the
+> dependency record; the `C5-PRD` task's disposition is open (see
+> `PRIORITIES.yaml`).
 
 | # | Milestone | Outcome |
 |---|---|---|
@@ -316,6 +382,14 @@ These are *sketches*, not PRDs. Each becomes a full PRD via the same
 
 Already specified in [`PHASE_5_AGENTS.md`](PHASE_5_AGENTS.md). Begins only
 when both triggers in §4 are met.
+
+### E — Human interface & observability
+
+Already specified in full PRDs under [`docs/project-e/`](project-e/) (E1–E4 +
+the consensus mockup + [`DECISIONS.md`](project-e/DECISIONS.md)) — more
+detailed than the sketches above, so not re-sketched here. A clear-context
+agent translates each PRD's milestone table into `PRIORITIES.yaml` tasks (E1
+buildable now; E2–E4 gated per §4). E3 supersedes C5.
 
 ---
 
