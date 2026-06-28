@@ -1129,7 +1129,8 @@ tasks:
     title: "Store per-trial Sharpe in the ledger; compute empirical sharpe_std for the DSR benchmark"
     project: A
     sub_project: methodology-upgrade-13
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T22:30:00Z
     depends_on: [A-LEDGER, A-DSR-GATE]
     blocks: [A-CLOSE]
     deliverable:
