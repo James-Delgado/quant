@@ -1522,8 +1522,9 @@ tasks:
     title: "E1-M5: Explanations panel + tooltips + a11y/responsive polish"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T16:49:13Z
+    completed_at: 2026-06-28
     depends_on: [E1-M3, E1-M4]
     blocks: [E1-M6, E1-CLOSE]
     deliverable:
@@ -1543,7 +1544,7 @@ tasks:
     title: "E1-M6: Issue reporting button + GitHub-issue submission + feedback->PRIORITIES promotion"
     project: E
     sub_project: E1
-    status: blocked
+    status: ready
     depends_on: [E1-M5]
     blocks: [E1-CLOSE]
     deliverable:
@@ -1571,7 +1572,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -2128,3 +2129,62 @@ tasks:
       additional `.lin` row in the Provenance run-config (skip when null). Blocks
       E1-CLOSE so closeout certifies full Provenance parity. Added to
       E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  # ------ E1-M5 discovered follow-ups (post-task review of E1-M5) ------
+
+  - id: E1-M5-OVERVIEW-CONDITION-TIPS
+    rank: 108
+    title: "E1-M5 follow-up: move Breadth + yield-curve ⓘ tips onto the Overview conditions-now axis once it lands"
+    project: E
+    sub_project: E1
+    status: blocked
+    depends_on: [E1-M1-CONDITIONS-MARKET-AXIS]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: small
+    notes: |
+      Discovered in E1-M5 (declared deviation, METHODOLOGY §9). The frozen mockup
+      places the Breadth and Yield-curve (2s10s) ⓘ tooltips in the Overview
+      "Conditions now" list, but the real Overview diverged in E1-M3 to a Market
+      snapshot (VIX / 10Y / Fed funds) with no Breadth/yield-curve rows — so those
+      two tips were retrofitted onto the Data & Market panel's pending Breadth/2s10s
+      tiles instead (where the labels actually render). When
+      E1-M1-CONDITIONS-MARKET-AXIS adds the market-level conditions axis to the
+      Overview, add (or move) the Breadth + yield-curve InfoTips there too, matching
+      the mockup placement. The reusable InfoTip (src/components/ui/InfoTip.tsx) and
+      the verbatim tip copy already exist; this is a placement-parity follow-up only.
+      Blocks E1-CLOSE so closeout certifies tooltip placement against the mockup.
+      Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  - id: E1-M5-TABLE-SCROLL-AFFORDANCE
+    rank: 109
+    title: "E1-M5 follow-up: visible horizontal-scroll affordance on the dense-table scroll regions"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M5]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M5 post-task review. The a11y/responsive pass wrapped the
+      dense `.panel.flush` tables in a focusable `.table-scroll` region
+      (src/components/ui/TableScroll.tsx) so no column is hidden at 320px and the
+      page never overflows (verified at 320/768/1024/1440). Keyboard users get the
+      shared focus ring, but mouse/touch users have NO visual cue that the table
+      scrolls horizontally when columns overflow. Add a discoverability affordance
+      (e.g. an edge fade/shadow that appears only while `scrollWidth > clientWidth`,
+      or a subtle "← scroll →" hint) so the off-screen columns are obviously
+      reachable. Pure CSS/markup polish; the scroll itself already works. Blocks
+      E1-CLOSE so closeout certifies the responsive treatment is discoverable, not
+      just functional. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7
+      corollary.

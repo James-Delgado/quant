@@ -1,6 +1,8 @@
+import type { ReactNode } from "react";
 import { dataClient } from "@/lib/dataClient";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { ErrorState, Loading } from "@/components/ui/StatePanel";
+import { InfoTip } from "@/components/ui/InfoTip";
 import type { DataStatusView, FeedStatus, MarketSnapshot } from "@/types/viewmodels";
 
 /** Feed status string -> pill variant (honest: stale/lag reads as warn). */
@@ -25,7 +27,7 @@ function MarketTile({
   sub,
   pending,
 }: {
-  label: string;
+  label: ReactNode;
   value: string;
   sub?: string;
   pending?: boolean;
@@ -81,8 +83,34 @@ function DataMarketBody({
           label="Fed funds"
           value={market.fed_funds != null ? `${market.fed_funds}%` : "—"}
         />
-        <MarketTile label="Breadth > MA200" value="—" sub="lands with E4" pending />
-        <MarketTile label="2s10s" value="—" sub="lands with E4" pending />
+        <MarketTile
+          label={
+            <>
+              Breadth &gt; MA200
+              <InfoTip
+                label="Breadth"
+                tip="Share of the universe trading above its 200-day moving average — a gauge of how broad the uptrend is."
+              />
+            </>
+          }
+          value="—"
+          sub="lands with E4"
+          pending
+        />
+        <MarketTile
+          label={
+            <>
+              2s10s
+              <InfoTip
+                label="Yield curve"
+                tip="2s10s: the 10-year minus 2-year Treasury yield. Negative (inverted) has historically preceded recessions; positive here."
+              />
+            </>
+          }
+          value="—"
+          sub="lands with E4"
+          pending
+        />
       </div>
       {market.notes?.length ? <p className="note">{market.notes[0]}</p> : null}
       <p className="note">

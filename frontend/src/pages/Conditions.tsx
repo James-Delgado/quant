@@ -3,6 +3,7 @@ import { useAsyncData } from "@/hooks/useAsyncData";
 import { ErrorState, Loading } from "@/components/ui/StatePanel";
 import { ConditionBars } from "@/components/charts/ConditionBars";
 import { Heatmap } from "@/components/charts/Heatmap";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { fixed, signClass, yearSpan } from "@/lib/format";
 
 /** Render an export condition key for display: "low_vol" -> "low-vol". */
@@ -63,6 +64,7 @@ export function Conditions() {
             <span className="ln" />
           </div>
           <div className="panel flush">
+            <TableScroll label="Stress windows by Sharpe">
             <table>
               <thead>
                 <tr>
@@ -85,6 +87,7 @@ export function Conditions() {
                 ))}
               </tbody>
             </table>
+            </TableScroll>
           </div>
         </>
       )}

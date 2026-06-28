@@ -62,4 +62,13 @@ describe("Overview panel", () => {
     expect(await screen.findByText("Daily equity bars")).toBeInTheDocument();
     expect(screen.getAllByText(/stale/).length).toBeGreaterThan(0);
   });
+
+  it("retrofits an inline ⓘ tooltip onto the Sharpe figure (E1-M5)", async () => {
+    renderOverview();
+    await screen.findByText(/Research mode\./);
+    // The reusable InfoTip is a focusable button carrying the tip on aria-label.
+    const tip = screen.getByRole("button", { name: /Sharpe: Risk-adjusted return/ });
+    expect(tip).toHaveClass("info");
+    expect(tip.getAttribute("data-tip")).toContain("annualized");
+  });
 });

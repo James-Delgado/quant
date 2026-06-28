@@ -2,6 +2,8 @@ import { useNavigate } from "react-router-dom";
 import { dataClient } from "@/lib/dataClient";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { Figure } from "@/components/ui/Figure";
+import { InfoTip } from "@/components/ui/InfoTip";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { ErrorState, Loading } from "@/components/ui/StatePanel";
 import { LineChart, type StressBand } from "@/components/charts/LineChart";
 import { Sparkline, type Tone } from "@/components/charts/Sparkline";
@@ -103,13 +105,29 @@ export function Overview() {
                   sub={candidate.name}
                 />
                 <Figure
-                  label="Sharpe"
+                  label={
+                    <>
+                      Sharpe
+                      <InfoTip
+                        label="Sharpe"
+                        tip="Risk-adjusted return: average return over its volatility, annualized. Higher is better — above ~1 is strong for a daily strategy."
+                      />
+                    </>
+                  }
                   value={signedFixed(candidate.sharpe)}
                   valueClass={signClass(candidate.sharpe)}
                   sub="net of costs"
                 />
                 <Figure
-                  label="Max drawdown"
+                  label={
+                    <>
+                      Max drawdown
+                      <InfoTip
+                        label="Max drawdown"
+                        tip="The largest peak-to-trough drop in equity over the period. A measure of worst-case pain an allocator would have lived through."
+                      />
+                    </>
+                  }
                   value={signedPct(candidate.max_drawdown)}
                   valueClass="loss"
                 />
@@ -194,6 +212,7 @@ export function Overview() {
         <span className="ln" />
       </div>
       <div className="panel flush">
+        <TableScroll label="Strategies by Sharpe and return">
         <table>
           <thead>
             <tr>
@@ -237,6 +256,7 @@ export function Overview() {
             ))}
           </tbody>
         </table>
+        </TableScroll>
       </div>
     </section>
   );

@@ -9,14 +9,16 @@ import { Provenance } from "@/pages/Provenance";
 import { FeatureCatalog } from "@/pages/FeatureCatalog";
 import { Ledger } from "@/pages/Ledger";
 import { DataMarket } from "@/pages/DataMarket";
+import { Explanations } from "@/pages/Explanations";
 import { NAV_ITEMS, DEFAULT_PATH } from "@/nav";
 
 /**
  * Route table. The shell wraps every panel; each nav slug renders a panel body.
  * E1-M3 landed the Monitor panels (Overview, Strategies, Conditions); E1-M4
  * lands the Evidence panels (Provenance, Feature Catalog, Trial Registry) plus
- * Data & Market. Only the Explanations slug stays a scaffold placeholder until
- * E1-M5 — without touching the shell.
+ * Data & Market; E1-M5 lands the Explanations reference panel. Every nav slug
+ * now maps to a real page — the Placeholder remains only as the defensive
+ * fallback for an unmapped slug.
  */
 const PANELS: Record<string, ComponentType> = {
   overview: Overview,
@@ -26,6 +28,7 @@ const PANELS: Record<string, ComponentType> = {
   provenance: Provenance,
   catalog: FeatureCatalog,
   ledger: Ledger,
+  explain: Explanations,
 };
 
 export function App() {
