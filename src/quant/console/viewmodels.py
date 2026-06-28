@@ -60,6 +60,11 @@ class StrategyCard:
     status: str  # ledger verdict: passed | gate_failed | inconclusive | unknown
     driver: str  # plain-language one-liner ("why")
     sparkline: list[float]  # downsampled equity curve (growth of 1)
+    # SPY buy-and-hold growth-of-1 over the SAME OOS span, downsampled to the
+    # same point count so it overlays index-for-index on the Overview hero
+    # (E1-M3-OVERVIEW-BENCHMARK). Empty when the benchmark price is unavailable
+    # or does not fully cover the span — an honest "no overlay", never faked (§9).
+    benchmark_sparkline: list[float]
     n_folds: int
     oos_start: str | None
     oos_end: str | None

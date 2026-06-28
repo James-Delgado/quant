@@ -191,6 +191,36 @@ def _description_for(meta: dict) -> str:
 # ── 1. Strategies ────────────────────────────────────────────────────────────
 
 
+def _benchmark_sparkline(price: pd.Series | None, returns: pd.Series) -> list[float]:
+    """SPY buy-and-hold growth-of-1 aligned to one strategy's OOS dates.
+
+    Reindexes the benchmark price point-in-time (ffill) onto the strategy's exact
+    return dates — same length, same order — then normalises to growth-of-1 and
+    downsamples to ``SPARKLINE_POINTS``. Because it is sampled at the identical
+    positions as the strategy ``sparkline``, the two curves overlay
+    index-for-index on the Overview hero (both grow from 1.0, so the shared
+    y-domain keeps them comparable).
+
+    Returns ``[]`` when the benchmark is unavailable, or when it does not fully
+    cover the OOS span (a leading gap) — an honest "no overlay" rather than a
+    partial, misaligned line (METHODOLOGY §9).
+    """
+    if price is None or price.empty or returns.empty:
+        return []
+    idx = pd.DatetimeIndex(returns.index)
+    if idx.tz is not None:
+        idx = idx.tz_convert("UTC").tz_localize(None)
+    dates = idx.normalize()
+    aligned = _align_market(_by_date(price), dates)
+    if aligned.isna().any():
+        return []
+    first = float(aligned.iloc[0])
+    if first == 0.0 or not math.isfinite(first):
+        return []
+    growth = aligned / first
+    return [float(v) for v in _downsample(growth, SPARKLINE_POINTS).to_numpy()]
+
+
 def load_strategies(sources: ConsoleSources | None = None) -> list[vm.StrategyCard]:
     """Roster of strategies — one per non-smoke checkpoint with a return series."""
     sources = sources or ConsoleSources.default()
@@ -200,6 +230,12 @@ def load_strategies(sources: ConsoleSources | None = None) -> list[vm.StrategyCa
         ledger_entries = load_ledger_entries(sources.ledger_path)
     except FileNotFoundError:
         ledger_entries = []
+
+    # Benchmark price loaded once (it is the same SPY series for every arm); each
+    # card aligns it to its own OOS dates (E1-M3-OVERVIEW-BENCHMARK).
+    benchmark_price = (
+        sources.benchmark_price_fn() if sources.benchmark_price_fn else None
+    )
 
     cards: list[vm.StrategyCard] = []
     for ck in discover_strategies(sources):
@@ -220,6 +256,7 @@ def load_strategies(sources: ConsoleSources | None = None) -> list[vm.StrategyCa
                 status=verdict,
                 driver=_driver_text(metrics, verdict),
                 sparkline=spark,
+                benchmark_sparkline=_benchmark_sparkline(benchmark_price, returns),
                 n_folds=int(ck.metadata.get("n_folds", 0) or 0),
                 oos_start=_iso_date(ck.metadata.get("oos_start")),
                 oos_end=_iso_date(ck.metadata.get("oos_end")),

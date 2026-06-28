@@ -101,6 +101,25 @@ describe("Overview panel", () => {
     );
   });
 
+  it("overlays the SPY benchmark on the hero when the export carries it (E1-M3-OVERVIEW-BENCHMARK)", async () => {
+    const { container } = renderOverview();
+    await screen.findByText(/Research mode\./);
+    const hero = container.querySelector(".hero .panel") as HTMLElement;
+    // candidate arima carries a benchmark_sparkline -> a dashed bench line is
+    // drawn alongside the portfolio line...
+    expect(hero.querySelector("path.ln-port")).toBeInTheDocument();
+    expect(hero.querySelector("path.ln-bench")).toBeInTheDocument();
+    // ...named in the legend, with the honest "same OOS span" caption (no faked
+    // overlay note).
+    expect(within(hero).getByText(/SPY · buy & hold/)).toBeInTheDocument();
+    expect(
+      within(hero).getByText(
+        /SPY buy-and-hold over the same out-of-sample span/,
+      ),
+    ).toBeInTheDocument();
+    expect(hero).not.toHaveTextContent(/it is not fabricated here/);
+  });
+
   it("retrofits an inline ⓘ tooltip onto the Sharpe figure (E1-M5)", async () => {
     renderOverview();
     await screen.findByText(/Research mode\./);

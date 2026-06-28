@@ -308,6 +308,52 @@ def test_load_strategies_verdict_from_ledger(sources):
     assert "gate failed" in signed.driver.lower()
 
 
+# ── benchmark overlay (E1-M3-OVERVIEW-BENCHMARK) ─────────────────────────────
+
+
+def _benchmark_prices(start: str = "2005-06-01", periods: int = 5200) -> pd.Series:
+    """A SPY-like adjusted-close series (steady drift) on naive business days."""
+    idx = pd.date_range(start=start, periods=periods, freq="B")
+    return pd.Series(100.0 * (1.0002 ** np.arange(periods)), index=idx, name="SPY")
+
+
+def test_load_strategies_benchmark_overlays_aligned(sources):
+    src = dataclasses.replace(sources, benchmark_price_fn=_benchmark_prices)
+    arima = next(c for c in readers.load_strategies(src) if c.id == "arima")
+    # Same point count as the strategy sparkline → overlays index-for-index.
+    assert len(arima.benchmark_sparkline) == len(arima.sparkline)
+    # Buy-and-hold growth-of-1 starts at 1.0 and rises (positive drift).
+    assert arima.benchmark_sparkline[0] == pytest.approx(1.0, abs=1e-6)
+    assert arima.benchmark_sparkline[-1] > arima.benchmark_sparkline[0]
+    assert all(v > 0 for v in arima.benchmark_sparkline)
+
+
+def test_load_strategies_benchmark_empty_without_price(sources):
+    # The default fixture wires no benchmark_price_fn → honest "no overlay".
+    cards = readers.load_strategies(sources)
+    assert cards and all(c.benchmark_sparkline == [] for c in cards)
+
+
+def test_load_strategies_benchmark_incomplete_coverage_degrades(sources):
+    # A benchmark that begins AFTER the OOS start leaves a leading gap → []
+    # (no partial / misaligned overlay; METHODOLOGY §9).
+    late = _benchmark_prices(start="2015-01-01", periods=1000)
+    src = dataclasses.replace(sources, benchmark_price_fn=lambda: late)
+    cards = readers.load_strategies(src)
+    assert cards and all(c.benchmark_sparkline == [] for c in cards)
+
+
+def test_benchmark_sparkline_edge_cases():
+    rets = _returns(1, periods=60)
+    assert readers._benchmark_sparkline(None, rets) == []
+    assert readers._benchmark_sparkline(pd.Series(dtype=float), rets) == []
+    # empty returns → nothing to align onto
+    assert readers._benchmark_sparkline(_benchmark_prices(), pd.Series(dtype=float)) == []
+    # a zero starting price cannot normalise to growth-of-1 → []
+    zeros = pd.Series(np.zeros(400), index=pd.date_range("2005-12-01", periods=400, freq="B"))
+    assert readers._benchmark_sparkline(zeros, rets) == []
+
+
 # ── load_portfolio (C6 registry) ─────────────────────────────────────────────
 
 
@@ -658,6 +704,35 @@ def test_load_feature_panel_returns_none_without_lake(monkeypatch):
     # No usable bars → None, without ever touching build_features.
     monkeypatch.setattr(sources_mod, "_load_prices_for_panel", lambda *a, **k: {})
     assert sources_mod._load_feature_panel() is None
+
+
+def _spy_rows() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2020-01-02", "2020-01-03", "2020-01-03"]),
+            "adjClose": [300.0, 303.0, 303.0],
+        }
+    )
+
+
+def test_benchmark_price_series_normalizes_and_dedups():
+    series = sources_mod._benchmark_price_series(_FakeStorageCatalog(_spy_rows()), "SPY")
+    assert series is not None
+    assert series.index.tz is None  # tz dropped, date-aligned
+    assert list(series.index) == list(pd.to_datetime(["2020-01-02", "2020-01-03"]))
+    assert series.iloc[-1] == 303.0  # duplicate date kept once (last)
+
+
+def test_benchmark_price_series_degrades_to_none():
+    assert sources_mod._benchmark_price_series(_FakeStorageCatalog(), "SPY") is None
+    assert (
+        sources_mod._benchmark_price_series(_FakeStorageCatalog(pd.DataFrame()), "SPY")
+        is None
+    )
+    assert (
+        sources_mod._benchmark_price_series(_FakeStorageCatalog(raises=True), "SPY")
+        is None
+    )
 
 
 def test_feature_monitor_feeds_load_catalog(tmp_path):
