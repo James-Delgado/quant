@@ -697,29 +697,151 @@ tasks:
       primary: .claude/prds/c2-lean-paper.prd.md
     est_complexity: medium
 
+  # ------ C6 — Strategy registry & daily executor (the deployment spine) ------
+  # The missing layer that composes C2 (bridge) + C3 (sizing) + C4 (confidence):
+  # a registry of deployable strategies + a daily cron executor over the ENABLED
+  # subset. Ranked AHEAD of C3/C4 (contract-before-consumer, METHODOLOGY §4) — the
+  # registry schema (C6-M1) is what C3/C4 populate, so it lands first. Captured
+  # 2026-06-28 from the multi-model / confidence-sizing design discussion.
+
+  - id: C6-PRD
+    rank: 22
+    title: "Draft C6 (strategy registry + daily executor) PRD"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C2-M2]
+    blocks: [C6-M1]
+    deliverable:
+      file: .claude/prds/c6-strategy-registry.prd.md
+    references:
+      primary: docs/PROJECT_ROADMAP.md
+      execution_bridge: src/quant/execution/lean_bridge.py
+      daily_runner: scripts/reconcile_paper_backtest.py
+      feature_catalog: src/quant/features/catalog.yaml
+      target_catalog: src/quant/features/targets.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Use /plan-prd. Pre-commits (METHODOLOGY §1) the design settled 2026-06-28:
+        - STRATEGY = full pipeline spec, not just a model. Schema fields: id,
+          display_name, description (human-readable, for the UI), model_ref
+          (→ src/quant/models/), feature_set_ref (→ features/catalog.yaml subset),
+          target_ref (→ TARGET_CATALOG in features/targets.py), universe,
+          decision_rule (forecast→position; the C2 sign() parity rule),
+          sizing_policy (C3 fills), confidence_gate (C4 fills), risk_limits (C3:
+          max position, drawdown stop), cadence (daily, fixed), broker
+          (ExecutionBridge selector; paper now), enabled, provenance,
+          created/enabled timestamps. REFERENCES the existing catalogs — does NOT
+          duplicate them (DRY / §4). It is the DEPLOYMENT-side subset of Project
+          B's research (target,model,universe) portfolio, promoted-to-live.
+        - PROVENANCE GATE (methodology guardrail): a strategy may not be
+          enabled:true without provenance pointing at a passing gate verdict
+          (ledger entry / DSR-aware gate). arima_placeholder is the one sanctioned
+          exception (provenance: placeholder, n_comparisons=0 — infra, not an edge
+          claim). Carries "no edge without a pre-committed gate" into deployment.
+        - DAILY ALLOCATOR (pinned): each cron run, for every ENABLED strategy:
+          predict → size (C3×C4) → signed target positions; combine across
+          strategies by (a) equal-weight CAPITAL BUDGET per enabled strategy (1/N;
+          one config field, later swappable for confidence/track-record weighting),
+          (b) confidence enters ONCE at sizing — a high-confidence strategy already
+          deploys a larger position, no separate weighting, (c) NET the signed
+          sized positions per symbol and clamp to the per-symbol risk cap. Opposed
+          signals net to a residual.
+        - INITIAL STATE: exactly one enabled entry (arima_placeholder) → 100% of
+          the (1/N=1) budget → FULLY-INVESTED EQUAL-WEIGHT-WITHIN-UNIVERSE sizing
+          (until C3), so the portfolio/sizing/netting path is exercised end-to-end
+          and the C2-M2-SIZING-PARITY gap is closed here. P&L stays uninteresting
+          (ARIMA on a few names) by design.
+        - UI CONTRACT (Project E): the registry exposes UI-presentable fields + a
+          documented serializable view-model (in-use AND idle strategies) the
+          console export consumes. The panel itself is E-STRATEGIES-PANEL
+          (depends_on C6-M1) — coordinate with the Project E owner.
+        - PAPER ONLY: broker=alpaca_paper; ExecutionBridge already abstracts paper
+          vs live, so live is a later config flag, out of scope here.
+
+  - id: C6-M1
+    rank: 23
+    title: "C6-M1: Strategy registry schema + loader + drift test"
+    project: C
+    sub_project: C6
+    status: blocked
+    depends_on: [C6-PRD]
+    blocks: [C6-M2, C3-PRD, C4-PRD, E-STRATEGIES-PANEL]
+    deliverable:
+      file: src/quant/execution/strategy_registry.py
+      registry: src/quant/execution/strategy_registry.yaml
+      tests: tests/test_strategy_registry.py
+    references:
+      primary: .claude/prds/c6-strategy-registry.prd.md
+      pattern: src/quant/features/catalog.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      The contract C3/C4 + the daily executor + the E console all consume. Mirror
+      the features/catalog.{py,yaml} pattern: a YAML registry + a typed loader + a
+      code-vs-config drift test in BOTH directions (METHODOLOGY §6). Validate that
+      refs resolve (model_ref → models/, feature_set_ref → catalog, target_ref →
+      TARGET_CATALOG) and enforce the provenance gate (enabled ⇒ provenance
+      present; placeholder exempt). Expose a serializable view-model for the E
+      console. Seed one entry: arima_placeholder (enabled, provenance: placeholder).
+
+  - id: C6-M2
+    rank: 24
+    title: "C6-M2: Daily cron executor (trade_daily.py) over the enabled registry"
+    project: C
+    sub_project: C6
+    status: blocked
+    depends_on: [C6-M1, C1-M3, C2-M2]
+    blocks: []
+    deliverable:
+      file: scripts/trade_daily.py
+      tests: tests/test_trade_daily.py
+    references:
+      primary: .claude/prds/c6-strategy-registry.prd.md
+      bridge: src/quant/execution/lean_bridge.py
+      freshness: scripts/monitor_freshness.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      THE "runs continually" deliverable. One idempotent entrypoint for the daily
+      cron: ingest (quant.flows.daily) → freshness gate (monitor_freshness) → for
+      each ENABLED strategy: daily_signal via its model → fully-invested
+      equal-weight sizing (placeholder until C3) → NET per symbol → place_target
+      via AlpacaPaperBridge → persist position state. Exits non-zero on any failure
+      (cron mail-on-stderr); re-runnable same-day (position-state round-trip). Cron
+      doc: run after the parity-safe Tiingo T+1 bar (~12:00 UTC), weekdays. Paper
+      only.
+
   # ------ C3 / C4 / C5 — PRD drafting and milestones (sketch) ------
 
   - id: C3-PRD
-    rank: 22
+    rank: 71
     title: "Draft C3 (position sizing + risk management) PRD"
     project: C
     sub_project: C3
-    status: ready
-    depends_on: [C2-M2]
+    status: blocked
+    depends_on: [C2-M2, C6-M1]
     blocks: [E3-M1]
     deliverable:
       file: .claude/prds/c3-sizing-risk.prd.md
     references:
       primary: docs/PROJECT_ROADMAP.md
     est_complexity: small
+    notes: |
+      Re-pointed at C6-M1 (the strategy-registry contract) on 2026-06-28: C3's
+      sizing_policy + risk_limits are FIELDS the registry holds, so C3 is drafted
+      against the contract rather than standalone (contract-before-consumer, §4).
+      Re-ranked to 71 behind the C6 spine; still a high-priority C-execution PRD —
+      re-prioritize (bump rank back into the C band) once C6-M1 lands.
 
   - id: C4-PRD
-    rank: 23
+    rank: 72
     title: "Draft C4 (confidence calibration) PRD"
     project: C
     sub_project: C4
-    status: ready
-    depends_on: [C2-M2]
+    status: blocked
+    depends_on: [C2-M2, C6-M1]
     blocks: []
     deliverable:
       file: .claude/prds/c4-confidence.prd.md
@@ -727,6 +849,10 @@ tasks:
       primary: docs/PROJECT_ROADMAP.md
     est_complexity: small
     notes: |
+      Re-pointed at C6-M1 (the strategy-registry contract) on 2026-06-28: C4's
+      confidence_gate is a FIELD the registry holds (contract-before-consumer, §4).
+      Re-ranked to 72 behind the C6 spine; re-prioritize once C6-M1 lands.
+
       Boundary with Project E (reconciled during Project E task generation):
       live CALIBRATION-drift monitoring (a 90% interval no longer covering 90%
       on live data) is C4's scope — the live extension of C4-M3's per-regime
@@ -736,7 +862,7 @@ tasks:
       PROJECT_ROADMAP §7 (C4 sketch boundary note + the C5-superseded note).
 
   - id: C5-PRD
-    rank: 24
+    rank: 73
     title: "Draft C5 (monitoring + reconciliation dashboard) PRD — SKIPPED (superseded by Project E3/E4)"
     project: C
     sub_project: C5
@@ -1448,7 +1574,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
@@ -1979,7 +2105,34 @@ tasks:
       the Phase 5 milestone backlog (which gets appended to this file at that
       time, not before — Phase 5's design depends on what B and C surfaced).
 
-  # ------ Discovered follow-ups (C2-M3 post-task review) ------
+  # ------ Cross-project: strategy portfolio in the console (C6 → Project E) ------
+
+  - id: E-STRATEGIES-PANEL
+    rank: 74
+    title: "Project E: strategy-portfolio panel (in-use + idle strategies) from the C6 registry"
+    project: E
+    sub_project: E1
+    status: blocked
+    depends_on: [C6-M1]
+    blocks: []
+    deliverable:
+      file: docs/project-e/E-STRATEGIES-PANEL.md
+    references:
+      primary: src/quant/execution/strategy_registry.py
+      roadmap: docs/PROJECT_ROADMAP.md
+    est_complexity: small
+    notes: |
+      Discovered during C6 design (2026-06-28). The user wants the strategy
+      portfolio — ENABLED (in-use) AND disabled (idle) strategies, each with its
+      human-readable display_name/description, model/target/universe, status,
+      allocation %, and provenance — rendered in the Project E console. C6-M1
+      exposes the registry + a serializable view-model; this task wires it into the
+      console export (src/quant/console/) and adds the panel to the React SPA. The
+      static portfolio view is E1 (buildable over the registry artifact); LIVE
+      per-strategy P&L is E3 (live monitoring), separate. COORDINATE WITH THE
+      PROJECT E OWNER (another agent is actively building E1): slot it into the
+      right E1 panel and add this id to E1-CLOSE.depends_on — left untouched here
+      to avoid a cross-agent PRIORITIES merge conflict in the active E1 region.
 
   - id: C2-M3-RECON-CORE-LIFT
     rank: 69
