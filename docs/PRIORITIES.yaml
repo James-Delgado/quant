@@ -1522,7 +1522,8 @@ tasks:
     title: "E1-M5: Explanations panel + tooltips + a11y/responsive polish"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T16:49:13Z
     depends_on: [E1-M3, E1-M4]
     blocks: [E1-M6, E1-CLOSE]
     deliverable:
