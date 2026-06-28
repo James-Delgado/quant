@@ -905,7 +905,8 @@ tasks:
     title: "Draft B3 (alternative data — options-implied surfaces) PRD"
     project: B
     sub_project: B3
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T18:22:23Z
     depends_on: [B1-M3]
     blocks: []
     deliverable:
