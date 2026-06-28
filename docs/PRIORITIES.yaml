@@ -130,7 +130,10 @@ projects:
     description: |
       Built in parallel with Project B. Sub-projects C1 (live data),
       C2 (LEAN local + paper), C3 (sizing + risk), C4 (confidence
-      calibration), C5 (monitoring).
+      calibration), C5 (monitoring — SUPERSEDED by Project E3; live
+      monitoring + paper-vs-backtest reconciliation now ship in the console.
+      The C5-PRD task is retained pending a closeout reconciliation rather
+      than skipped, to avoid deadlocking C-CLOSE.depends_on).
     roadmap_section: docs/PROJECT_ROADMAP.md#project-c--live-execution--deployment-infrastructure
   D:
     name: Continuous research agents (Phase 5)
@@ -142,6 +145,22 @@ projects:
       Vision spec: docs/PHASE_5_AGENTS.md. Begins only when both triggers
       above are met. Until then, every D-prefixed task in this file is
       `blocked` and unpickable.
+  E:
+    name: Human Interface & Observability
+    status: active
+    description: |
+      Makes the platform's results, models, and data human-visible. Four
+      sub-projects chained E1 -> E2 -> E3/E4, each with different
+      dependencies: E1 (Research & Trust Console — buildable now over existing
+      artifacts), E2 (Console API — gated on C1), E3 (Live Monitoring — gated
+      on E2 + C2/C3; SUPERSEDES C5), E4 (Data & Market Status — gated on
+      E2 + C1). Two-layer architecture: a tested Python service layer
+      (src/quant/console/) the API later reuses, plus a disposable React/TS
+      SPA. No new datastore — reads existing storage/ + features/ artifacts.
+      Full PRDs + consensus mockup + rationale live in docs/project-e/
+      (DECISIONS.md is the decision log of record). Binds METHODOLOGY rules
+      15-21; every sub-project ends with a *-CLOSE end-to-end validation.
+    roadmap_section: docs/PROJECT_ROADMAP.md#project-e--human-interface--observability
 
 # -----------------------------------------------------------------------------
 # Tasks (ranked; lowest rank = next up)
@@ -551,7 +570,7 @@ tasks:
     started_at: 2026-06-27T23:55:00Z
     completed_at: 2026-06-28
     depends_on: [C1-M1]
-    blocks: [C1-M3, C2-PRD]
+    blocks: [C1-M3, C2-PRD, E2-M1]
     deliverable:
       file: src/quant/storage/realtime.py
       tests: tests/test_realtime.py
@@ -569,7 +588,7 @@ tasks:
     started_at: 2026-06-28T01:58:07Z
     completed_at: 2026-06-28
     depends_on: [C1-M2]
-    blocks: []
+    blocks: [E4-M1]
     deliverable:
       file: scripts/monitor_freshness.py
       cron_doc: docs/concepts/freshness-monitor.md
@@ -623,7 +642,7 @@ tasks:
     sub_project: C2
     status: blocked
     depends_on: [C2-M1]
-    blocks: [C2-M3, C3-PRD, C4-PRD]
+    blocks: [C2-M3, C3-PRD, C4-PRD, E3-M1]
     deliverable:
       file: src/quant/execution/lean_bridge.py
       tests: tests/test_lean_bridge.py
@@ -655,7 +674,7 @@ tasks:
     sub_project: C3
     status: blocked
     depends_on: [C2-M2]
-    blocks: []
+    blocks: [E3-M1]
     deliverable:
       file: .claude/prds/c3-sizing-risk.prd.md
     references:
@@ -675,20 +694,45 @@ tasks:
     references:
       primary: docs/PROJECT_ROADMAP.md
     est_complexity: small
+    notes: |
+      Boundary with Project E (reconciled during Project E task generation):
+      live CALIBRATION-drift monitoring (a 90% interval no longer covering 90%
+      on live data) is C4's scope — the live extension of C4-M3's per-regime
+      calibration audit — and is SURFACED in the console (E3/E4) but COMPUTED
+      by C4's calibration machinery. E4 owns FEATURE/DATA-distribution drift,
+      a different signal. Do not duplicate calibration-drift logic in E4. See
+      PROJECT_ROADMAP §7 (C4 sketch boundary note + the C5-superseded note).
 
   - id: C5-PRD
     rank: 24
-    title: "Draft C5 (monitoring + reconciliation dashboard) PRD"
+    title: "Draft C5 (monitoring + reconciliation dashboard) PRD — SKIPPED (superseded by Project E3/E4)"
     project: C
     sub_project: C5
-    status: blocked
+    status: skipped
     depends_on: [C2-M3]
     blocks: []
     deliverable:
       file: .claude/prds/c5-monitoring.prd.md
     references:
       primary: docs/PROJECT_ROADMAP.md
+      superseded_by: docs/project-e/E3-live-monitoring.prd.md
     est_complexity: small
+    notes: |
+      SKIPPED — Project E3 (Live Monitoring) + E4 (Data & Market Status)
+      supersede C5; no standalone C5 PRD is needed. C5's scope was relocated
+      during Project E task generation (see PROJECT_ROADMAP §7 C5-superseded
+      note for the full redistribution):
+        - dashboard (positions / P&L / exposure / paper-vs-backtest delta /
+          live regime indicator / model-output histogram) -> E3
+        - paper-backtest divergence alerting -> E3 (E3-M3 reconciliation)
+        - regime-change alert + feed staleness + gap + feature-drift -> E4
+        - calibration-drift monitoring -> C4 (live extension of C4-M3)
+      The two C5 elements not already in the E3/E4 PRDs — the model-output
+      (signal-distribution) histogram and regime-change alerting — were folded
+      into the E3 and E4 PRDs respectively as part of this skip.
+      Removed from C-CLOSE.depends_on (skipped != done would deadlock the
+      closeout's "all deps done" gate). If C5 is ever revived, redraft this PRD
+      and re-add it to C-CLOSE.depends_on.
 
   # ------ Conditional follow-on B sub-projects (queued) ------
 
@@ -1276,7 +1320,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C3-PRD, C4-PRD, C5-PRD]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C3-PRD, C4-PRD]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
@@ -1299,8 +1343,489 @@ tasks:
       integration defect the notebook surfaces becomes a new task and keeps
       C-CLOSE open (AGENT_OPERATION Step 7 corollary). depends_on is the current
       enumerated C task set; per the Step 7 corollary, every C task appended
-      later (e.g. C3/C4/C5 milestones) must be added to this depends_on.
+      later (e.g. C3/C4 milestones) must be added to this depends_on. C5-PRD is
+      intentionally EXCLUDED: it is `skipped` (C5 superseded by Project E3/E4),
+      and a `skipped` dependency can never satisfy the all-`done` closeout gate.
 
+  # ------ Project E — Human Interface & Observability ------
+  # Generated from the E1-E4 PRD milestone tables (docs/project-e/). One task
+  # per milestone + each sub-project's *-CLOSE. Chain E1 -> E2 -> E3/E4 with
+  # cross-project gates E2->C1, E3->C2/C3, E4->C1. E1-M1 is `ready` (buildable
+  # now over existing artifacts); everything downstream is `blocked` per the
+  # schema (ready == all deps done). Ranks 46-65 append after the current
+  # backlog — rank is a hint, depends_on is the hard ordering constraint
+  # (E1-M1 is pickable now regardless of its rank). The four PRDs already
+  # exist (committed 678099d), so there are no E*-PRD drafting tasks.
+
+  # ---- E1 — Research & Trust Console (buildable now) ----
+
+  - id: E1-M1
+    rank: 46
+    title: "E1-M1: Console service layer + static JSON export"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: []
+    blocks: [E1-M2, E1-CLOSE]
+    deliverable:
+      file: src/quant/console/
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+      decisions: docs/project-e/DECISIONS.md
+    est_complexity: medium
+    notes: |
+      PRD §7 M1. Pure readers over existing artifacts (per-arm checkpoints +
+      metadata.json, data/ledger.yaml, features/catalog.yaml, the lake via
+      storage/catalog.py + storage/lake.py) returning frozen view-model
+      dataclasses, plus an idempotent `console export` step serializing them to
+      src/quant/console/export/*.json. No business logic outside the service
+      layer; NO new datastore (DECISIONS.md). Acceptance: reader unit tests
+      >=80% coverage (METHODOLOGY §15/§16); export idempotent from real
+      artifacts; export JSON validates against documented schemas under a drift
+      check (METHODOLOGY §6 — the export contract is reused verbatim by E2).
+
+  - id: E1-M2
+    rank: 47
+    title: "E1-M2: Frontend scaffold (Vite + React + TS + Tailwind/shadcn shell)"
+    project: E
+    sub_project: E1
+    status: blocked
+    depends_on: [E1-M1]
+    blocks: [E1-M3, E1-M4, E1-CLOSE]
+    deliverable:
+      app: frontend/
+      references: docs/project-e/mockups/console.css
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: medium
+    notes: |
+      PRD §7 M2. Vite + React + TypeScript SPA with Tailwind + shadcn/ui;
+      design tokens from docs/project-e/mockups/console.css (IBM Plex family,
+      color-only-in-data); layout shell, sidebar nav (group is "Evidence", not
+      "Trust" — DECISIONS.md), routing, and a thin static data client reading
+      the M1 export/*.json. Acceptance: app builds; shell + nav match the
+      mockup at 320/768/1024/1440; keyboard nav + reduced-motion + visible
+      focus. CONVENTION DECISION (AGENT_OPERATION "new directory" pause): the
+      exact frontend directory location is a build-time decision for this, the
+      first frontend task — `frontend/` is a placeholder; pick and document the
+      real path here.
+
+  - id: E1-M3
+    rank: 48
+    title: "E1-M3: Monitor panels — Overview, Strategies (roster->detail), Conditions"
+    project: E
+    sub_project: E1
+    status: blocked
+    depends_on: [E1-M2]
+    blocks: [E1-M5, E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: medium
+    notes: |
+      PRD §7 M3 (∥ E1-M4 per PRD §11 build order: M1->M2->(M3 ∥ M4)->M5).
+      Overview (portfolio hero vs benchmark, stress-shaded; strategies table +
+      sparkline + plain-language driver; conditions-now + data-status; honest
+      research-mode banner — NO faked live P&L), Strategies (roster ->
+      detail), Conditions (Sharpe-by-condition with live-computable vol/trend/
+      rates as the PRIMARY axis; strategy x condition heatmap; named-episode
+      stress table). Charts via the chosen lib (Plotly default; ECharts
+      acceptable — DECIDE THE CHARTING LIB HERE per DECISIONS.md "still open")
+      fed neutral chart-ready series from the service layer. Acceptance: render
+      from export/*.json at mockup parity; one consistent instrument style.
+
+  - id: E1-M4
+    rank: 49
+    title: "E1-M4: Evidence panels — Provenance, Feature Catalog, Trial Registry, Data & Market"
+    project: E
+    sub_project: E1
+    status: blocked
+    depends_on: [E1-M2]
+    blocks: [E1-M5, E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: medium
+    notes: |
+      PRD §7 M4 (∥ E1-M3). Provenance (run config; GitHub commit link ->
+      github.com/James-Delgado/quant; leakage controls as quiet enforced-status
+      — NO war stories; self-tests; data lineage ONE PER LINE), Feature Catalog
+      (health summary + per-feature coverage, distribution mini, mu/sigma,
+      stability drift/staleness status, OOS status), Trial Registry (data/
+      ledger.yaml shown as "Trial Registry" — NO internal file paths;
+      deflation "luck bar"; per-run table with project + verdict + commit
+      link), Data & Market (per-feed freshness/gaps; market snapshot). All
+      conventions from DECISIONS.md: no "trust" language, no file paths in UI.
+
+  - id: E1-M5
+    rank: 50
+    title: "E1-M5: Explanations panel + tooltips + a11y/responsive polish"
+    project: E
+    sub_project: E1
+    status: blocked
+    depends_on: [E1-M3, E1-M4]
+    blocks: [E1-M6, E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      PRD §7 M5. Serif explanation reading cards + reusable inline (i) tooltips
+      (hover + click-to-pin) reused across panels; accessibility +
+      responsiveness pass. Acceptance: tooltips work on hover AND touch;
+      contrast + keyboard audited; no overflow at 320/768/1024/1440.
+
+  - id: E1-M6
+    rank: 51
+    title: "E1-M6: Issue reporting button + GitHub-issue submission + feedback->PRIORITIES promotion"
+    project: E
+    sub_project: E1
+    status: blocked
+    depends_on: [E1-M5]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: src/quant/console/feedback.py
+      script: console feedback promote
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      PRD §6 + §7 M6. UI surface = the "Report an issue" button + modal ONLY;
+      NO user-facing tracker panel (DECISIONS.md decision 11). Modal collects
+      {title, type, severity, description} and auto-captures {panel, build_sha,
+      timestamp, app_version}; submission creates a `feedback`-labeled GitHub
+      issue in James-Delgado/quant (E1: pre-filled issues/new URL or gh/REST if
+      a token is local). A documented + scripted promotion path
+      (`console feedback promote <issue>`) appends a task to PRIORITIES.yaml
+      with a back-link. Acceptance: a submitted report creates a labeled issue
+      carrying context; promotion creates a PRIORITIES task linking the issue;
+      no tracker panel in the UI.
+
+  - id: E1-CLOSE
+    rank: 52
+    title: "E1-CLOSE: E1 closeout — E2E build+render from fresh real artifacts + closeout report"
+    project: E
+    sub_project: E1
+    status: blocked
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6]
+    blocks: [E2-M1]
+    deliverable:
+      report: docs/project-e/E1_CLOSEOUT.md
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      PRD §7 E1-CLOSE / METHODOLOGY §21. End-to-end validation that the console
+      builds and renders ALL eight panels from freshly exported real artifacts
+      (export -> static fetch -> panels), plus a one-page closeout report
+      stating delivered scope + deferred items (E3/E4 live tiles). Any
+      integration defect the validation surfaces becomes a new task and keeps
+      E1-CLOSE open (AGENT_OPERATION Step 7 corollary). For a UI project the
+      validation artifact is a scripted build+render check rather than a Jupyter
+      notebook; document the chosen form in the report.
+
+  # ---- E2 — Console API (gated on C1) ----
+
+  - id: E2-M1
+    rank: 53
+    title: "E2-M1: FastAPI scaffold + read endpoints at export-schema parity"
+    project: E
+    sub_project: E2
+    status: blocked
+    depends_on: [E1-CLOSE, C1-M2]
+    blocks: [E2-M2, E2-CLOSE]
+    deliverable:
+      file: src/quant/console/api/
+      tests: tests/test_console_api.py
+    references:
+      primary: docs/project-e/E2-console-api.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      PRD §4 M1. CROSS-PROJECT GATE E2->C1: depends on C1-M2 (the same-day PIT
+      reader = "live data") plus E1-CLOSE (the service layer must be complete).
+      FastAPI app serving the E1 view-models from the SAME src/quant/console/
+      readers — no new business logic, no duplicated computation. Acceptance:
+      each endpoint returns the same schema as the matching export/*.json;
+      shared schema tests pass against BOTH directions (METHODOLOGY §6 — one
+      Pydantic schema, drift-tested export<->API).
+
+  - id: E2-M2
+    rank: 54
+    title: "E2-M2: POST /feedback endpoint (server-side issue + promotion trigger)"
+    project: E
+    sub_project: E2
+    status: blocked
+    depends_on: [E2-M1]
+    blocks: [E2-M3, E2-CLOSE]
+    deliverable:
+      file: src/quant/console/api/
+      tests: tests/test_console_api.py
+    references:
+      primary: docs/project-e/E2-console-api.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      PRD §4 M2. `POST /feedback` creates a `feedback`-labeled GitHub issue with
+      full context server-side (same payload schema as E1-M6) and can trigger
+      the feedback->PRIORITIES promotion. Acceptance: a posted report appears as
+      a feedback issue with context; promotion creates a PRIORITIES task. GitHub
+      token is server-side env/secret manager only, NEVER in the client.
+
+  - id: E2-M3
+    rank: 55
+    title: "E2-M3: Freshness/health endpoint + authenticated on-demand re-export"
+    project: E
+    sub_project: E2
+    status: blocked
+    depends_on: [E2-M2]
+    blocks: [E2-M4, E2-CLOSE]
+    deliverable:
+      file: src/quant/console/api/
+      tests: tests/test_console_api.py
+    references:
+      primary: docs/project-e/E2-console-api.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      PRD §4 M3. `/health` (per-feed freshness vs SLA — consumes C1's SLA
+      definitions) + an authenticated on-demand re-export/recompute trigger.
+      Acceptance: health reflects real lake/feed state; recompute refreshes
+      view-models without a manual export step.
+
+  - id: E2-M4
+    rank: 56
+    title: "E2-M4: Frontend data-source swap behind a static<->api flag"
+    project: E
+    sub_project: E2
+    status: blocked
+    depends_on: [E2-M3]
+    blocks: [E2-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E2-console-api.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      PRD §4 M4. React data client reads the API behind a `static <-> api`
+      flag. Acceptance: the console runs identically against the API; NO view
+      or logic rewrite; static mode still works (the decoupling E1 paid for).
+
+  - id: E2-CLOSE
+    rank: 57
+    title: "E2-CLOSE: E2 closeout — console served live by the API + closeout report"
+    project: E
+    sub_project: E2
+    status: blocked
+    depends_on: [E2-M1, E2-M2, E2-M3, E2-M4]
+    blocks: [E3-M1, E4-M1]
+    deliverable:
+      report: docs/project-e/E2_CLOSEOUT.md
+    references:
+      primary: docs/project-e/E2-console-api.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      PRD §4 E2-CLOSE / METHODOLOGY §21. End-to-end validation that the console
+      is served live by the API at schema parity (the integration seam E1's
+      static export could not reach), plus a one-page closeout report. E2-CLOSE
+      is the gate that unblocks E3 and E4.
+
+  # ---- E3 — Live Monitoring (gated on E2 + C2/C3; supersedes C5) ----
+
+  - id: E3-M1
+    rank: 58
+    title: "E3-M1: Live portfolio + positions tiles (P&L, exposure, per-strategy live)"
+    project: E
+    sub_project: E3
+    status: blocked
+    depends_on: [E2-CLOSE, C2-M2, C3-PRD]
+    blocks: [E3-M2, E3-CLOSE]
+    deliverable:
+      app: frontend/
+      file: src/quant/console/
+    references:
+      primary: docs/project-e/E3-live-monitoring.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      PRD §4 M1. CROSS-PROJECT GATE E3->C2/C3: depends on E2-CLOSE (reads live
+      state through the API) + C2-M2 (paper execution = the source of live
+      P&L/positions). C3 (sizing) has no milestone tasks yet — only C3-PRD
+      exists — so C3-PRD is the RESOLVABLE PROXY for the C3 gate, mirroring how
+      C-CLOSE.depends_on uses C3-PRD/C4-PRD. Per the AGENT_OPERATION Step 7
+      corollary, when C3 sizing milestones (C3-M*) are created their ids MUST be
+      added to this depends_on. Replaces the E1 research-placeholder live tiles
+      with real values sourced from C2/C3 via E2. FOLDED FROM SUPERSEDED C5:
+      also include a per-strategy model-output (signal/prediction) distribution
+      histogram to catch model degeneration early (E3 PRD §2 Goals + §4 M1).
+
+  - id: E3-M2
+    rank: 59
+    title: "E3-M2: Live regime/condition indicator (vol/trend/rates)"
+    project: E
+    sub_project: E3
+    status: blocked
+    depends_on: [E3-M1]
+    blocks: [E3-M3, E3-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E3-live-monitoring.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      PRD §4 M2. Live vol/trend/rates condition indicator reusing the existing
+      condition machinery (backtest/regimes.py). Acceptance: matches the
+      condition machinery on the same as-of date.
+
+  - id: E3-M3
+    rank: 60
+    title: "E3-M3: Paper-vs-backtest reconciliation panel (pre-committed delta threshold)"
+    project: E
+    sub_project: E3
+    status: blocked
+    depends_on: [E3-M2]
+    blocks: [E3-CLOSE]
+    deliverable:
+      app: frontend/
+      file: src/quant/console/
+    references:
+      primary: docs/project-e/E3-live-monitoring.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      PRD §4 M3. Live paper-trading P&L vs the Phase-1 backtest for the same
+      period; deltas beyond a PRE-COMMITTED threshold are flagged (METHODOLOGY
+      §1 — threshold pinned in code BEFORE launch; §10 materiality before
+      significance). This is the reconciliation intent inherited from roadmap
+      §C5, which E3 SUPERSEDES. Acceptance: a > threshold delta is flagged with
+      drill-in.
+
+  - id: E3-CLOSE
+    rank: 61
+    title: "E3-CLOSE: E3 closeout — live tiles + reconciliation vs a real paper run + report"
+    project: E
+    sub_project: E3
+    status: blocked
+    depends_on: [E3-M1, E3-M2, E3-M3]
+    blocks: []
+    deliverable:
+      report: docs/project-e/E3_CLOSEOUT.md
+    references:
+      primary: docs/project-e/E3-live-monitoring.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      PRD §4 E3-CLOSE / METHODOLOGY §21. End-to-end validation (live tiles +
+      reconciliation against a real paper run) + one-page closeout report;
+      report records that roadmap §C5 is superseded by E3.
+
+  # ---- E4 — Data & Market Status (gated on E2 + C1) ----
+
+  - id: E4-M1
+    rank: 62
+    title: "E4-M1: Live feed health vs SLA + lake gap detection"
+    project: E
+    sub_project: E4
+    status: blocked
+    depends_on: [E2-CLOSE, C1-M3]
+    blocks: [E4-M2, E4-CLOSE]
+    deliverable:
+      app: frontend/
+      file: src/quant/console/
+    references:
+      primary: docs/project-e/E4-data-market-status.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      PRD §4 M1. CROSS-PROJECT GATE E4->C1: depends on E2-CLOSE (reads live
+      status through the API) + C1-M3 (the freshness monitor / SLA definitions
+      E4 monitors against; C1-M3 transitively covers C1-M1 SLA audit + C1-M2
+      live data). Per-ingestor freshness measured against the pinned SLA, with
+      lake gap detection. Acceptance: health reflects real freshness; a seeded
+      gap is detected and surfaced. E4 CONSUMES C1's SLA definitions rather
+      than redefining them (no overlap with the C1 monitor).
+
+  - id: E4-M2
+    rank: 63
+    title: "E4-M2: Staleness/gap/drift alerting (pinned thresholds)"
+    project: E
+    sub_project: E4
+    status: blocked
+    depends_on: [E4-M1]
+    blocks: [E4-M3, E4-CLOSE]
+    deliverable:
+      file: src/quant/console/
+    references:
+      primary: docs/project-e/E4-data-market-status.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      PRD §4 M2. Staleness / gap / drift / regime-change breaches raise an
+      alert. Acceptance: a breach raises an alert via the chosen channel;
+      thresholds PRE-COMMITTED in code (METHODOLOGY §1); §10 materiality before
+      significance + severity levels guard against alert fatigue. Alert channel
+      (log/email/push) is the open decision to make HERE per DECISIONS.md.
+      FOLDED FROM SUPERSEDED C5: regime-change alerting (C5-M2) lands here — E4
+      owns the alerting channel + the live market-env computation (E4-M3);
+      E3 owns the regime-indicator DISPLAY (E4 PRD §2 Goals + §4 M2).
+
+  - id: E4-M3
+    rank: 64
+    title: "E4-M3: Live market environment + live feature-drift monitor"
+    project: E
+    sub_project: E4
+    status: blocked
+    depends_on: [E4-M2]
+    blocks: [E4-CLOSE]
+    deliverable:
+      app: frontend/
+      file: src/quant/console/
+    references:
+      primary: docs/project-e/E4-data-market-status.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      PRD §4 M3. Live vol/trend/rates + breadth + curve computed live, plus a
+      live feature-drift monitor extending the E1 catalog's coverage/mu/sigma/
+      drift stats to a live, alerting surface. Acceptance: market env matches
+      the condition machinery; the drift monitor flags a seeded distribution
+      shift.
+
+  - id: E4-CLOSE
+    rank: 65
+    title: "E4-CLOSE: E4 closeout — live status + a fired alert on a seeded breach + report"
+    project: E
+    sub_project: E4
+    status: blocked
+    depends_on: [E4-M1, E4-M2, E4-M3]
+    blocks: []
+    deliverable:
+      report: docs/project-e/E4_CLOSEOUT.md
+    references:
+      primary: docs/project-e/E4-data-market-status.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      PRD §4 E4-CLOSE / METHODOLOGY §21. End-to-end validation (live status +
+      a fired alert on a seeded breach) + one-page closeout report.
 
   - id: D-GATE
     rank: 99

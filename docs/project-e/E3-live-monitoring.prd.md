@@ -23,6 +23,10 @@ regime indicator and a **paper-vs-backtest reconciliation** so divergence is cau
 - A **live regime/condition indicator** (reusing the condition machinery) updated daily/intraday.
 - A **reconciliation panel**: live paper-trading P&L vs the Phase-1 backtest for the same
   period; deltas beyond a pre-committed threshold are flagged.
+- A **live model-output monitor** — a per-strategy signal/prediction distribution
+  histogram — to catch model degeneration early (outputs collapsing to a constant,
+  drifting, or saturating against a cap). *(Folded in from the superseded roadmap
+  §C5 dashboard; C5's model-output histogram lands here.)*
 
 **Non-goals**
 - The execution layer itself — Project C (C2/C3) builds paper trading + sizing; E3 only
@@ -40,7 +44,7 @@ regime indicator and a **paper-vs-backtest reconciliation** so divergence is cau
 
 | # | Milestone | Deliverable | Acceptance |
 |---|---|---|---|
-| **M1** | Live portfolio + positions | Overview live tiles (P&L, positions, exposure, per-strategy live) from C2/C3 via E2 | research placeholders replaced by live values; reconciles to C2 state |
+| **M1** | Live portfolio + positions | Overview live tiles (P&L, positions, exposure, per-strategy live) + a per-strategy model-output (signal) distribution histogram, from C2/C3 via E2 | research placeholders replaced by live values; reconciles to C2 state; the model-output histogram renders from live signals and flags a seeded degenerate (constant) output |
 | **M2** | Live regime indicator | live vol/trend/rates condition indicator | matches the condition machinery on the same as-of date |
 | **M3** | Reconciliation | paper-vs-backtest P&L panel; pre-committed delta threshold flags divergence | a > threshold delta is flagged with drill-in; threshold pinned in code before launch |
 | **E3-CLOSE** | Closeout (rule 21) | end-to-end validation (live tiles + reconciliation against a real paper run) + one-page report | `depends_on` all E3 tasks; report states delivered + deferred scope |
