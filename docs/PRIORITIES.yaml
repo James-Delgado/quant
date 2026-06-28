@@ -584,7 +584,8 @@ tasks:
     title: "Draft C2 (LEAN local + paper trading) PRD"
     project: C
     sub_project: C2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T02:36:55Z
     depends_on: [C1-PRD, C1-M2]
     blocks: [C2-M1, C2-M2, C2-M3]
     deliverable:
