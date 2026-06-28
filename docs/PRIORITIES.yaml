@@ -905,10 +905,11 @@ tasks:
     title: "Draft B3 (alternative data — options-implied surfaces) PRD"
     project: B
     sub_project: B3
-    status: in_progress
+    status: done
     started_at: 2026-06-28T18:22:23Z
+    completed_at: 2026-06-28
     depends_on: [B1-M3]
-    blocks: []
+    blocks: [B3-M1, B3-M2, B3-M3]
     deliverable:
       file: .claude/prds/b3-options-implied.prd.md
     references:
@@ -917,6 +918,100 @@ tasks:
     notes: |
       Conditional: only draft if B1 verdict is "no extractable edge on any
       of the four targets with the current feature set."
+      ACTIVATED 2026-06-28: B1_REPORT.md §4 records a clean pre-committed NO-GO
+      on all four targets → the B3 skip-path fires (METHODOLOGY §5). PRD drafted
+      mirroring b1-target-reframing.prd.md. Scope pinned to FREE market-level Cboe
+      data (VIX term structure, SKEW, put-call ratios) as PIT-lagged panel columns;
+      paid per-symbol IV surfaces are a separate cost-gated PRD. Gate is an
+      INCREMENTAL feature-group ablation (augmented vs M6 equity-only) reusing the
+      B1 TARGET_CATALOG + b1_gate_report. Milestones B3-M1/M2/M3 appended below.
+
+  # ------ B3 execution milestones (appended 2026-06-28 when B3-PRD landed) ------
+  # Parked at ranks 80-82 (the "queued, re-rank when prioritized" convention used
+  # by C3-PRD/C4-PRD): B3 is the roadmap's "conditional, queued" alt-data thread,
+  # ranked behind the active C-execution spine. depends_on is the hard ordering;
+  # bump these into the active band when B3 execution is scheduled.
+
+  - id: B3-M1
+    rank: 80
+    title: "B3-M1: Cboe ingestor + options-implied feature group + catalog + b3_gate_report"
+    project: B
+    sub_project: B3
+    status: ready
+    depends_on: [B3-PRD]
+    blocks: [B3-M2, B-CLOSE]
+    deliverable:
+      file: src/quant/ingest/cboe.py
+      feature_columns: src/quant/features/engineering.py
+      catalog: src/quant/features/catalog.yaml
+      gate: src/quant/backtest/regime_metrics.py
+      tests: tests/test_cboe.py
+    references:
+      primary: .claude/prds/b3-options-implied.prd.md
+      methodology: docs/METHODOLOGY.md
+      ingestor_pattern: src/quant/ingest/fred_macro.py
+      gate_pattern: src/quant/backtest/regime_metrics.py
+    est_complexity: medium
+    notes: |
+      Contract-before-consumer (METHODOLOGY §2/§4). Free Cboe daily settle only:
+      VIX/VIX3M/VIX9D term structure, SKEW, equity/index/total put-call ratios,
+      pulled to the lake via storage/lake.write_processed with a pandera schema
+      (mirror ingest/fred_macro.py). Wire as PIT-LAGGED panel-constant columns in
+      build_features (the FRED_PUBLICATION_LAGS join pattern) + a frozen a-priori
+      transform set (vix_term_slope, vix_short_ratio, SKEW level, P/C z-score).
+      Catalog records under the bidirectional drift test (tests/test_catalog.py).
+      b3_gate_report wraps b1_gate_report with the comparison fixed to augmented-vs-
+      equity-only and the incremental thresholds pinned in the PRD; reads N via
+      quant.ledger.cumulative_trial_count(). MUST assert the options publication lag
+      (pinned lag 0; fall back to t+1) against backtest/CLAUDE.md invariants 3-4 and
+      report per-feature × per-regime coverage (VIX9D ~2011 / VIX3M ~2007 starts).
+
+  - id: B3-M2
+    rank: 81
+    title: "B3-M2: Options feature-group ablation matrix on 5-symbol × 8-year slice"
+    project: B
+    sub_project: B3
+    status: blocked
+    depends_on: [B3-M1]
+    blocks: [B3-M3, B-CLOSE]
+    deliverable:
+      notebook: notebooks/14_b3_options_ablation.ipynb
+    references:
+      primary: .claude/prds/b3-options-implied.prd.md
+      methodology: docs/METHODOLOGY.md
+      ablation_pattern: src/quant/backtest/ablation.py
+    est_complexity: medium
+    notes: |
+      Add-one feature-group ablation per the four B1 targets: {M6 equity-only base,
+      M6 + options group augmented} via backtest/ablation.make_add_one_sets. Verdict
+      via b3_gate_report on the INCREMENTAL delta; Borda composite across regimes.
+      Slice verdict is PROVISIONAL (METHODOLOGY §11); any target with incremental
+      per-regime edge carries to B3-M3.
+
+  - id: B3-M3
+    rank: 82
+    title: "B3-M3: Full-panel confirmation of slice-winners (compute-gated) + B3_REPORT"
+    project: B
+    sub_project: B3
+    status: blocked
+    depends_on: [B3-M2]
+    blocks: [B4-PRD, B-CLOSE]
+    deliverable:
+      runner: scripts/run_b3_arms.py
+      notebook: notebooks/16_b3_exit_gate.ipynb
+      report: docs/B3_REPORT.md
+    references:
+      primary: .claude/prds/b3-options-implied.prd.md
+      methodology: docs/METHODOLOGY.md
+      runner_pattern: scripts/run_b1_arms.py
+    est_complexity: large
+    notes: |
+      Mirror run_b1_arms.py: per-arm parquet checkpoints, idempotent, --smoke,
+      --log-ledger (one ledger entry per arm via quant.ledger.append_ledger_entry so
+      the deflation N stays current). notebooks/15 is checkpoint-only (METHODOLOGY
+      §7). docs/B3_REPORT.md is the binary verdict (the §20/§21 analog of
+      B1_REPORT.md). The B3 verdict is the gate that B4-PRD's conditional consumes
+      (B4 drafts only if B1 AND B3 both surface no edge).
 
   - id: B4-PRD
     rank: 26
@@ -924,7 +1019,7 @@ tasks:
     project: B
     sub_project: B4
     status: blocked
-    depends_on: [B1-M3, B3-PRD]
+    depends_on: [B1-M3, B3-M3]
     blocks: []
     deliverable:
       file: .claude/prds/b4-universe-shift.prd.md
@@ -933,7 +1028,9 @@ tasks:
     est_complexity: small
     notes: |
       Conditional: only draft if B1 + B3 do not surface edge. Lowest priority
-      in Project B.
+      in Project B. depends_on repointed B3-PRD -> B3-M3 on 2026-06-28 (B3-PRD
+      landing): B4's conditional is gated on B3's EXECUTION verdict (B3-M3), not the
+      B3 draft — mirrors B3-PRD itself depending on B1-M3 (the verdict), not B1-PRD.
 
   # ------ Methodology doc-sync follow-ups (discovered during PRD drafting) ------
 
@@ -1605,7 +1702,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B3-PRD, B3-M1, B3-M2, B3-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb
