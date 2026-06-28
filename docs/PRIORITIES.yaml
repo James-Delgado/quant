@@ -685,8 +685,9 @@ tasks:
     title: "C2-M3: Backtest-vs-paper reconciliation harness (>1% delta = investigate)"
     project: C
     sub_project: C2
-    status: in_progress
+    status: done
     started_at: 2026-06-28T16:30:00Z
+    completed_at: 2026-06-28
     depends_on: [C2-M2]
     blocks: []
     deliverable:
@@ -1977,3 +1978,75 @@ tasks:
       When both are met, this task generates the trigger report and unblocks
       the Phase 5 milestone backlog (which gets appended to this file at that
       time, not before — Phase 5's design depends on what B and C surfaced).
+
+  # ------ Discovered follow-ups (C2-M3 post-task review) ------
+
+  - id: C2-M3-RECON-CORE-LIFT
+    rank: 69
+    title: "Lift the reconciliation core (G2 gate + residual decomposition) to src/quant/execution/reconciliation.py for E3 console reuse"
+    project: E
+    sub_project: E3
+    status: ready
+    depends_on: [C2-M3]
+    blocks: []
+    deliverable:
+      file: src/quant/execution/reconciliation.py
+      tests: tests/test_reconciliation.py
+    references:
+      primary: scripts/reconcile_paper_backtest.py
+      roadmap: docs/PROJECT_ROADMAP.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M3 post-task review (commit of
+      scripts/reconcile_paper_backtest.py). The reconciliation arithmetic
+      (equity_curve / growth_multiple / relative_delta / decompose_residual /
+      g2_reconciliation_gate_report) currently lives in the scripts/ deliverable
+      (the pinned C2-M3 path) and is tested by import, matching repo precedent
+      (scripts/c2_hello_world.py, scripts/run_b1_arms.py). ROADMAP §4 Project E
+      says E3 (Live Monitoring — SUPERSEDES C5) ships "paper-vs-backtest
+      reconciliation" in the console over a tested Python service layer
+      (src/quant/console/ + reused execution/ logic). When E3-M3 (reconciliation)
+      is built, lift the pure functions to src/quant/execution/reconciliation.py
+      so both the script and the console import one tested implementation (no
+      duplicated arithmetic). Tagged project E (the consumer) so it does NOT gate
+      C-CLOSE — C2-M3's script deliverable is complete and correct standalone; the
+      lift is a forward refactor for the console, not a gap in C. Non-gating; do
+      now or when E3 lands.
+
+  - id: C2-M3-LIVE-REPLAY
+    rank: 70
+    title: "Non-vacuous G2 unexplained-residual: reconcile against a genuine independent engine replay (live Alpaca / LEAN), not a second simulate() config"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M3]
+    blocks: []
+    deliverable:
+      file: scripts/reconcile_paper_backtest.py
+      tests: tests/test_reconciliation.py
+    references:
+      primary: scripts/reconcile_paper_backtest.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      Discovered during C2-M3 (DECLARED DEVIATION, METHODOLOGY §9, stated in the
+      module docstring + review). The G2 gate's "fully decomposed, no-unexplained
+      residual" predicate is currently structurally satisfied (unexplained ~1e-16):
+      both the backtest and paper equity curves come from the SAME
+      backtest/simulator.py under two cost configs, so the toggled-parameter
+      decomposition closes the gap exactly by construction. The `unexplained` guard
+      is a *forward drift contract* — it only bites when the paper multiple is
+      sourced from a genuinely independent engine (the `paper_multiple_override`
+      hook, exercised in test_g2_gate_fails_on_unexplained_residual). To make the
+      guard load-bearing, replay the daily signals through a real independent engine
+      — a live Alpaca paper historical fill log, or a LEAN backtest — and feed its
+      growth multiple as the override; any execution mechanic the cost-model
+      decomposition cannot name then surfaces as a real unexplained residual.
+      NON-GATING for C-CLOSE and deliberately NOT added to C-CLOSE.depends_on
+      (mirrors the C5-PRD removal precedent — avoid deadlocking closeout on
+      infrastructure we lack: Alpaca paper cannot replay history and LEAN-local is
+      paywalled, docs/concepts/lean-setup.md). The PRD's pre-committed
+      merge-blocking gate is the deterministic simulate()-vs-simulate() replay,
+      which PASSED (data/c2/reconciliation/, ledger-2026-06-28-0001); this task is a
+      strengthening beyond C2's pinned scope. Low priority.
