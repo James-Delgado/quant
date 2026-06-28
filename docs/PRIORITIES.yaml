@@ -795,7 +795,8 @@ tasks:
     title: "C6-M2: Daily cron executor (trade_daily.py) over the enabled registry"
     project: C
     sub_project: C6
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T19:05:00Z
     depends_on: [C6-M1, C1-M3, C2-M2]
     blocks: []
     deliverable:
