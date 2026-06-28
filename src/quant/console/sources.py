@@ -70,6 +70,11 @@ MARKET_SERIES = {
     "DFF": "fed_funds",
 }
 
+# Benchmark symbol for the Overview hero overlay (E1-M3-OVERVIEW-BENCHMARK).
+# SPY buy-and-hold is the practically-relevant benchmark a model must beat
+# (mirrors models/buyandhold_baseline.py). Pinned per METHODOLOGY §1.
+BENCHMARK_SYMBOL = "SPY"
+
 
 # A function returning the most recent timestamp for a lake dataset (or None).
 LatestTimestampFn = Callable[[str, str], "dt.datetime | None"]
@@ -80,6 +85,11 @@ MarketValueFn = Callable[[str], "float | None"]
 # Distinct from ``MarketValueFn`` (latest scalar) — the Conditions panel needs
 # the whole series to label the OOS calendar by market regime.
 MarketSeriesFn = Callable[[str], "pd.Series | None"]
+# A function returning the benchmark (SPY) adjusted-close price history as a
+# date-indexed (normalized, tz-naive) float Series, or None when unavailable.
+# Nullary because the benchmark symbol is pinned (``BENCHMARK_SYMBOL``); the
+# Overview reader turns this into a buy-and-hold growth series.
+BenchmarkPriceFn = Callable[[], "pd.Series | None"]
 # A function returning monitoring stats for a feature, or None if unavailable.
 FeatureMonitorFn = Callable[[str], "dict | None"]
 # A clock, injectable for deterministic age computation in tests.
@@ -103,6 +113,7 @@ class ConsoleSources:
     latest_timestamp_fn: LatestTimestampFn | None = None
     market_value_fn: MarketValueFn | None = None
     market_series_fn: MarketSeriesFn | None = None
+    benchmark_price_fn: BenchmarkPriceFn | None = None
     feature_monitor_fn: FeatureMonitorFn | None = None
     now_fn: NowFn | None = None
 
@@ -127,6 +138,9 @@ class ConsoleSources:
         def _market_series(series_id: str) -> pd.Series | None:
             return _fred_series(storage_catalog, series_id)
 
+        def _benchmark_price() -> pd.Series | None:
+            return _benchmark_price_series(storage_catalog, BENCHMARK_SYMBOL)
+
         return cls(
             data_root=data_root,
             ledger_path=data_root / "ledger.yaml",
@@ -136,6 +150,7 @@ class ConsoleSources:
             latest_timestamp_fn=_latest,
             market_value_fn=_market,
             market_series_fn=_market_series,
+            benchmark_price_fn=_benchmark_price,
             # Lake-backed monitor (E1-M1-FEATURE-MONITOR). ``_load_feature_panel``
             # is invoked lazily on the first ``load_catalog`` call and memoized, so
             # constructing the sources stays cheap and a missing lake degrades to
@@ -192,6 +207,37 @@ def _fred_series(storage_catalog, series_id: str) -> pd.Series | None:
     dates = pd.to_datetime(df["timestamp"], utc=True).dt.normalize().dt.tz_localize(None)
     series = pd.Series(
         pd.to_numeric(df["value"], errors="coerce").to_numpy(),
+        index=pd.DatetimeIndex(dates),
+    )
+    series = series[~series.index.duplicated(keep="last")].sort_index().dropna()
+    return series if not series.empty else None
+
+
+def _benchmark_price_series(storage_catalog, symbol: str) -> pd.Series | None:
+    """Adjusted-close history for ``symbol`` as a date-indexed tz-naive Series.
+
+    Reads the Tiingo adjusted EOD table — the same ``adjClose`` column the Phase
+    4A arms trade — so the Overview benchmark is cost-consistent with the
+    strategies it overlays. Dates are extracted timezone-independently then
+    normalized to midnight-UTC calendar dates with the tz dropped (the same
+    NY↔UTC alignment care as :func:`_fred_series`), so the series aligns by date
+    with the OOS return calendar in :mod:`quant.console.readers`. Returns
+    ``None`` on any failure / empty result (honest degrade, METHODOLOGY §9).
+    """
+    safe_symbol = symbol.replace("'", "''")
+    try:
+        sql = (
+            f"SELECT timestamp, adjClose FROM {storage_catalog.table('equity_eod_tiingo')} "
+            f"WHERE symbol = '{safe_symbol}' ORDER BY timestamp"
+        )
+        df = storage_catalog.query(sql)
+    except Exception:
+        return None
+    if df.empty:
+        return None
+    dates = pd.to_datetime(df["timestamp"], utc=True).dt.normalize().dt.tz_localize(None)
+    series = pd.Series(
+        pd.to_numeric(df["adjClose"], errors="coerce").to_numpy(),
         index=pd.DatetimeIndex(dates),
     )
     series = series[~series.index.duplicated(keep="last")].sort_index().dropna()

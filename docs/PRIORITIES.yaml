@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-M2-EXPORT-DETAIL done
+last_updated: 2026-06-28  # E1-M3-OVERVIEW-BENCHMARK done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2546,10 +2546,11 @@ tasks:
     title: "E1-M3 follow-up: benchmark (SPY / buy-and-hold) series in the export for the Overview hero overlay"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T23:13:14Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1, E1-M3]
-    blocks: [E1-CLOSE]
+    blocks: [E1-CLOSE, E1-CONDITIONS-TREND-AXIS]
     deliverable:
       file: src/quant/console/readers.py
       app: frontend/
@@ -2722,7 +2723,7 @@ tasks:
     title: "E1-M1-CONDITIONS-MARKET-AXIS follow-up: market-level trend axis (third DECISIONS §6 axis) on the benchmark series"
     project: E
     sub_project: E1
-    status: blocked
+    status: ready  # unblocked 2026-06-28: E1-M3-OVERVIEW-BENCHMARK done (benchmark series now in export)
     depends_on: [E1-M3-OVERVIEW-BENCHMARK]
     blocks: [E1-CLOSE]
     deliverable:
@@ -3016,3 +3017,67 @@ tasks:
       from that summary without this flag. Gating closeout on gold-plating would
       needlessly block it. Re-add to E1-CLOSE.depends_on if a future decision makes
       an automated fan-out gate a closeout requirement.
+
+  - id: E1-M3-BENCHMARK-COST-NAME
+    rank: 118
+    title: "E1-M3-OVERVIEW-BENCHMARK follow-up: cost-consistent benchmark + carry the benchmark name in the export"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M3-OVERVIEW-BENCHMARK]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M3-OVERVIEW-BENCHMARK post-task review (commit of
+      src/quant/console/readers._benchmark_sparkline). TWO minor refinements, both
+      declared (METHODOLOGY §9), neither gating:
+        (a) COST CONSISTENCY. The overlaid benchmark is a GROSS SPY buy-and-hold
+            growth-of-1, while the strategy equity it overlays is cost-NET (the arms
+            run through backtest/simulator.py with commission + slippage). A single
+            buy-and-hold entry incurs ~one round-trip of cost (negligible vs. the
+            arms' per-bar trading), so the gross series very slightly flatters SPY.
+            Standard for a buy-and-hold benchmark, but for strict parity apply the
+            sim cost model to the single SPY entry (≈0 impact) so both sides are
+            cost-net.
+        (b) BENCHMARK NAME IN THE EXPORT. The legend label "SPY · buy & hold" is a
+            frontend constant; the export carries the benchmark_sparkline VALUES but
+            not the benchmark identity (BENCHMARK_SYMBOL lives only in sources.py).
+            If the pinned symbol ever changes, the legend would silently go stale.
+            Carry the benchmark name as an export field so the UI names whatever the
+            service layer actually computed. NON-GATING / NOT in E1-CLOSE.depends_on
+            (mirrors the E1-M1-EXPORT-FRESHNESS-STAMP non-gating precedent): the hero
+            already certifies the vs-benchmark overlay with the correct SPY series.
+
+  - id: E1-STRATEGY-DETAIL-BENCHMARK
+    rank: 119
+    title: "E1-M3-OVERVIEW-BENCHMARK follow-up: overlay the SPY benchmark on the per-strategy detail equity chart"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M3-OVERVIEW-BENCHMARK]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: small
+    notes: |
+      Discovered in E1-M3-OVERVIEW-BENCHMARK post-task review. The benchmark overlay
+      now lands on the Overview HERO (StrategyCard.benchmark_sparkline). The
+      per-strategy DETAIL view (StrategyDetail.equity, rendered in frontend/src/
+      pages/Strategies.tsx) still draws the strategy equity alone. For parity, add a
+      benchmark series to StrategyDetail — the SPY growth-of-1 aligned to that
+      strategy's OOS dates via the same readers._benchmark_sparkline helper, at
+      SERIES_POINTS resolution — and overlay it as an ln-bench line on the detail
+      equity chart. NON-GATING / NOT in E1-CLOSE.depends_on (mirrors the established
+      non-gating follow-up precedent): the task's pinned scope was the Overview hero,
+      which is delivered; the detail overlay is an additive enhancement.

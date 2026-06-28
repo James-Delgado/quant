@@ -5,7 +5,11 @@ import { Figure } from "@/components/ui/Figure";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ErrorState, Loading } from "@/components/ui/StatePanel";
-import { LineChart, type StressBand } from "@/components/charts/LineChart";
+import {
+  LineChart,
+  type ChartSeries,
+  type StressBand,
+} from "@/components/charts/LineChart";
 import { Sparkline, type Tone } from "@/components/charts/Sparkline";
 import { dateFraction } from "@/lib/chartGeometry";
 import { signClass, signedFixed, signedPct, yearSpan } from "@/lib/format";
@@ -94,6 +98,19 @@ export function Overview() {
           )
       : [];
 
+  // Overlay the SPY buy-and-hold benchmark when the export carries it (same OOS
+  // span, downsampled to the same points so it aligns index-for-index). When it
+  // is absent the hero stays candidate-only with an honest note — never faked.
+  const hasBenchmark = (candidate?.benchmark_sparkline?.length ?? 0) > 0;
+  const heroSeries: ChartSeries[] = candidate
+    ? [
+        { values: candidate.sparkline, className: "ln-port" },
+        ...(hasBenchmark
+          ? [{ values: candidate.benchmark_sparkline, className: "ln-bench" }]
+          : []),
+      ]
+    : [];
+
   return (
     <section>
       {banner}
@@ -151,13 +168,17 @@ export function Overview() {
               </div>
               <LineChart
                 height={200}
-                series={[{ values: candidate.sparkline, className: "ln-port" }]}
+                series={heroSeries}
                 stressBands={bands}
                 xTicks={[
                   { at: 0, label: candidate.oos_start?.slice(0, 4) ?? "" },
                   { at: 1, label: candidate.oos_end?.slice(0, 4) ?? "" },
                 ]}
-                ariaLabel={`Cumulative return of ${candidate.name}`}
+                ariaLabel={
+                  hasBenchmark
+                    ? `Cumulative return of ${candidate.name} versus SPY buy-and-hold`
+                    : `Cumulative return of ${candidate.name}`
+                }
               />
               <div className="legend">
                 <span>
@@ -167,6 +188,19 @@ export function Overview() {
                   />{" "}
                   {candidate.name}
                 </span>
+                {hasBenchmark ? (
+                  <span>
+                    <i
+                      className="swatch"
+                      style={{
+                        borderTop: "2px dashed var(--steel)",
+                        height: 0,
+                        width: 14,
+                      }}
+                    />{" "}
+                    SPY · buy &amp; hold
+                  </span>
+                ) : null}
                 <span>
                   <i
                     className="swatch band-stress"
@@ -175,10 +209,17 @@ export function Overview() {
                   stress window
                 </span>
               </div>
-              <p className="note">
-                Benchmark overlay (SPY / buy-and-hold) lands with the live-data
-                export; it is not fabricated here.
-              </p>
+              {hasBenchmark ? (
+                <p className="note">
+                  Benchmark is SPY buy-and-hold over the same out-of-sample span
+                  (growth of 1).
+                </p>
+              ) : (
+                <p className="note">
+                  Benchmark overlay (SPY / buy-and-hold) lands with the
+                  live-data export; it is not fabricated here.
+                </p>
+              )}
             </>
           ) : (
             <Loading label="No strategies exported yet" />
