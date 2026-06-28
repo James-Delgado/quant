@@ -2516,7 +2516,8 @@ tasks:
     title: "E1-M2 follow-up: ensure per-strategy + provenance export fan-out populates for M3/M4 panels"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T20:30:00Z
     depends_on: [E1-M1, E1-M2]
     blocks: [E1-CLOSE]
     deliverable:
