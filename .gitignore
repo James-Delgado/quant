@@ -25,3 +25,7 @@ __pycache__/
 
 # Notebooks
 .ipynb_checkpoints/
+
+# macOS Finder metadata (per-folder view settings; never project content)
+.DS_Store
+**/.DS_Store
