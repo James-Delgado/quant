@@ -1,6 +1,8 @@
 import { dataClient } from "@/lib/dataClient";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { Figure } from "@/components/ui/Figure";
+import { InfoTip } from "@/components/ui/InfoTip";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { ErrorState, Loading } from "@/components/ui/StatePanel";
 import { LuckBar } from "@/components/charts/LuckBar";
 import { fixed } from "@/lib/format";
@@ -58,7 +60,15 @@ function Registry({ data }: { data: LedgerView }) {
       <div className="figrow" style={{ margin: "20px 0 8px" }}>
         <Figure label="Trials to date" value={data.n_trials} sub={`${data.n_entries} registered runs`} />
         <Figure
-          label="Luck bar"
+          label={
+            <>
+              Luck bar
+              <InfoTip
+                label="Luck bar"
+                tip="The best Sharpe you'd expect from pure chance given how many strategies have been tried. A real result must clear this, and it rises as the trial count grows."
+              />
+            </>
+          }
           value={fixed(data.luck_bar, 2)}
           valueClass="ser"
           sub="under no-skill null"
@@ -97,6 +107,7 @@ function Registry({ data }: { data: LedgerView }) {
         <span className="ln" />
       </div>
       <div className="panel flush">
+        <TableScroll label="Registered comparison runs and verdicts">
         <table>
           <thead>
             <tr>
@@ -113,6 +124,7 @@ function Registry({ data }: { data: LedgerView }) {
             ))}
           </tbody>
         </table>
+        </TableScroll>
       </div>
       <p className="note">
         The trial count drives the multiple-testing bar: the more strategies tried, the

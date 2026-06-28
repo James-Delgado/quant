@@ -1,6 +1,8 @@
 import { dataClient } from "@/lib/dataClient";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { Figure } from "@/components/ui/Figure";
+import { InfoTip } from "@/components/ui/InfoTip";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { ErrorState, Loading } from "@/components/ui/StatePanel";
 import { DistMini } from "@/components/charts/DistMini";
 import { pct } from "@/lib/format";
@@ -67,13 +69,29 @@ function Catalog({ data }: { data: CatalogView }) {
           valueClass={monitoringPending ? "dim" : "gain"}
         />
         <Figure
-          label="Drifting"
+          label={
+            <>
+              Drifting
+              <InfoTip
+                label="Drifting"
+                tip="A feature whose recent distribution has shifted materially from the distribution the models were trained on. Worth review before trusting fresh predictions."
+              />
+            </>
+          }
           value={monitoringPending ? "—" : summary.drifting}
           valueClass={monitoringPending ? "dim" : ""}
         />
         <Figure label="Stale" value={monitoringPending ? "—" : summary.stale} valueClass="dim" />
         <Figure
-          label="Coverage"
+          label={
+            <>
+              Coverage
+              <InfoTip
+                label="Coverage"
+                tip="Share of symbol-days where the feature has a non-null value over the panel."
+              />
+            </>
+          }
           value={monitoringPending ? "—" : pct(summary.mean_coverage as number)}
           valueClass="dim"
         />
@@ -90,6 +108,7 @@ function Catalog({ data }: { data: CatalogView }) {
       )}
 
       <div className="panel flush" style={{ marginTop: 8 }}>
+        <TableScroll label="Registered features with coverage and stability">
         <table>
           <thead>
             <tr>
@@ -125,6 +144,7 @@ function Catalog({ data }: { data: CatalogView }) {
             })}
           </tbody>
         </table>
+        </TableScroll>
       </div>
       <p className="note">
         Distributions and coverage refresh nightly once the monitor lands. OOS evidence is

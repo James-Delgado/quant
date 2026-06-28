@@ -2,6 +2,7 @@ import { useSearchParams } from "react-router-dom";
 import { dataClient } from "@/lib/dataClient";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { ErrorState, Loading } from "@/components/ui/StatePanel";
+import { InfoTip } from "@/components/ui/InfoTip";
 import type { ProvenanceView, StrategyCard } from "@/types/viewmodels";
 
 /** Short 7-char commit for display; the full hash drives the link. */
@@ -49,7 +50,13 @@ function RunConfig({ p }: { p: ProvenanceView }) {
           </span>
         </li>
         <li>
-          <span className="k">embargo</span>
+          <span className="k">
+            embargo
+            <InfoTip
+              label="Embargo"
+              tip="Bars dropped between train and test to stop adjacent, serially-correlated samples from leaking into the test window."
+            />
+          </span>
           <span className="v">{c.embargo == null ? "—" : `${c.embargo} bars`}</span>
         </li>
         <li>

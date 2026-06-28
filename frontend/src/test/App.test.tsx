@@ -45,12 +45,13 @@ describe("App routing", () => {
     expect(screen.getByRole("link", { name: /Provenance/ })).toHaveClass("active");
   });
 
-  it("renders a scaffold placeholder for a not-yet-built panel", async () => {
-    // Explanations is the only remaining placeholder after E1-M3/M4 swapped the
-    // Monitor + Evidence panels to real pages.
+  it("renders the real Explanations panel for the last nav slug (no scaffold left)", async () => {
+    // E1-M5 swapped the final placeholder (explain) for the real reference panel,
+    // so every nav slug now maps to a real page.
     renderApp("/explain");
     // findBy* flushes the AppShell data-status fetch inside act().
     expect(await screen.findByText("Explanations", { selector: ".h1" })).toBeInTheDocument();
-    expect(screen.getByText(/scaffold/i)).toBeInTheDocument();
+    expect(screen.getByText("Purge & embargo")).toBeInTheDocument();
+    expect(screen.queryByText(/scaffold/i)).not.toBeInTheDocument();
   });
 });
