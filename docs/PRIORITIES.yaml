@@ -1223,8 +1223,9 @@ tasks:
     title: "Concept doc for backtest/target_eval.py (OOS-prediction collector + skill-z + directional-signal convention)"
     project: B
     sub_project: B1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T21:30:00Z
+    completed_at: 2026-06-28
     depends_on: [B1-M2]
     blocks: [B-CLOSE]
     deliverable:
