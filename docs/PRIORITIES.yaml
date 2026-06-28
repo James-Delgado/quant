@@ -1344,7 +1344,8 @@ tasks:
     title: "G2 exact reproduction: systematized ablation vs nb08's frozen best-regime lifts"
     project: B
     sub_project: B2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-28T21:30:00Z
     depends_on: [B2-M2]
     blocks: [B-CLOSE]
     deliverable:
