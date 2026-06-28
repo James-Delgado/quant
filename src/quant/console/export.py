@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import json
+import logging
 import math
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,8 @@ from typing import Any
 from quant.console import readers, schemas
 from quant.console import viewmodels as vm
 from quant.console.sources import ConsoleSources, discover_strategies
+
+_LOG = logging.getLogger(__name__)
 
 # Round floats so re-export is byte-stable regardless of trailing ULPs.
 FLOAT_PRECISION = 6
@@ -87,6 +90,59 @@ def build_export(sources: ConsoleSources | None = None) -> dict[str, Any]:
             export[f"provenance/{card.id}.json"] = _sanitize(prov)
 
     return export
+
+
+@dataclasses.dataclass(frozen=True)
+class FanoutCoverage:
+    """How completely the per-strategy detail/provenance fan-out populated.
+
+    ``build_export`` emits one ``strategy/<id>.json`` and one
+    ``provenance/<id>.json`` per discovered checkpoint. In a fresh clone the
+    gitignored ``data/phase4a/*`` checkpoints are absent, so ``strategies.json``
+    is ``[]`` and the M3 (Strategies-detail) / M4 (Provenance) panels have
+    nothing to render. This summary makes that state inspectable — and
+    ``write_export`` warns on it — instead of *silently* shipping empty panels
+    (METHODOLOGY §9, honest degrade).
+    """
+
+    n_strategies: int
+    n_detail: int
+    n_provenance: int
+
+    @property
+    def complete(self) -> bool:
+        """True iff every roster strategy has both a detail and a provenance file.
+
+        A zero-strategy export is deliberately treated as **incomplete**: no
+        checkpoints were discovered, so a closeout export must not certify the
+        detail/provenance panels from it (E1-CLOSE requires "ALL panels from
+        freshly exported real artifacts").
+        """
+        return (
+            self.n_strategies > 0
+            and self.n_detail == self.n_strategies
+            and self.n_provenance == self.n_strategies
+        )
+
+    def summary(self) -> str:
+        """One-line human summary for CLI output and warning messages."""
+        return (
+            f"{self.n_strategies} strategies, {self.n_detail} detail + "
+            f"{self.n_provenance} provenance files"
+        )
+
+
+def fanout_coverage(export: dict[str, Any]) -> FanoutCoverage:
+    """Count the per-strategy detail/provenance fan-out in a built export."""
+    roster = export.get("strategies.json")
+    n_strategies = len(roster) if isinstance(roster, list) else 0
+    n_detail = sum(1 for path in export if path.startswith("strategy/"))
+    n_provenance = sum(1 for path in export if path.startswith("provenance/"))
+    return FanoutCoverage(
+        n_strategies=n_strategies,
+        n_detail=n_detail,
+        n_provenance=n_provenance,
+    )
 
 
 def _schema_for_path(path: str) -> dict | None:
@@ -231,6 +287,21 @@ def write_export(
     if problems:
         lines = [f"  {path}: {errs}" for path, errs in sorted(problems.items())]
         raise ValueError("export failed schema validation:\n" + "\n".join(lines))
+
+    # Make an empty/partial detail+provenance fan-out LOUD (METHODOLOGY §9): a
+    # fresh clone with no data/phase4a/* checkpoints exports the 6 top-level
+    # panels fine but ships an empty Strategies-detail (M3) / Provenance (M4)
+    # surface. Warn rather than fail — the top-level panels are still valid — so
+    # a closeout export visibly flags the missing data-prep step.
+    coverage = fanout_coverage(export)
+    if not coverage.complete:
+        _LOG.warning(
+            "Per-strategy fan-out incomplete: %s. The Strategies-detail (M3) and "
+            "Provenance (M4) panels will be empty or partial. Regenerate the "
+            "strategy checkpoints before a closeout export "
+            '(see frontend/README.md § "Detail / provenance data prep").',
+            coverage.summary(),
+        )
 
     written: list[Path] = []
     for path in sorted(export):

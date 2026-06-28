@@ -48,12 +48,30 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "export":
         # Imported here so `--help` does not trigger settings/credential loading.
-        from quant.console.export import write_export
+        from quant.console.export import build_export, fanout_coverage, write_export
+        from quant.console.sources import ConsoleSources
 
-        written = write_export(out_dir=args.out)
+        # One sources instance shared by the write + the coverage probe. The
+        # lake-backed feature monitor memoizes its panel build per instance, so
+        # the second build_export() below reuses it instead of rebuilding the
+        # full feature panel (no double full-panel cost).
+        sources = ConsoleSources.default()
+        written = write_export(out_dir=args.out, sources=sources)
         print(f"Wrote {len(written)} export files:")
         for path in written:
             print(f"  {path}")
+
+        # Surface the per-strategy fan-out coverage so an empty/partial
+        # Strategies-detail (M3) / Provenance (M4) fan-out is visible at the CLI,
+        # not just in the warning log (E1-M2-EXPORT-DETAIL; METHODOLOGY §9).
+        coverage = fanout_coverage(build_export(sources))
+        print(f"Fan-out: {coverage.summary()}.")
+        if not coverage.complete:
+            print(
+                "  WARNING: Strategies-detail (M3) / Provenance (M4) will be "
+                "empty or partial — regenerate strategy checkpoints "
+                '(see frontend/README.md § "Detail / provenance data prep").'
+            )
         return 0
 
     if args.command == "feedback" and args.feedback_command == "promote":

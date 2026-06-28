@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import json
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -921,6 +922,62 @@ def test_export_rejects_invalid_payload(sources, tmp_path, monkeypatch):
 def test_validate_export_flags_unregistered_path():
     problems = export.validate_export({"mystery.json": {}})
     assert "mystery.json" in problems
+
+
+# ── fan-out coverage (E1-M2-EXPORT-DETAIL) ───────────────────────────────────
+
+
+def test_fanout_coverage_complete_with_checkpoints(sources):
+    # The fixture has two non-smoke checkpoints → roster of 2, each with a
+    # detail + provenance file → complete fan-out.
+    coverage = export.fanout_coverage(export.build_export(sources))
+    assert (coverage.n_strategies, coverage.n_detail, coverage.n_provenance) == (2, 2, 2)
+    assert coverage.complete is True
+    assert "2 strategies" in coverage.summary()
+
+
+def test_fanout_coverage_incomplete_without_checkpoints(sources, tmp_path):
+    # A fresh clone has no data/phase4a/* checkpoints: the roster is empty and
+    # no strategy/<id>.json or provenance/<id>.json fans out.
+    bare = dataclasses.replace(sources, strategy_roots=(tmp_path / "no_checkpoints",))
+    exp = export.build_export(bare)
+    assert exp["strategies.json"] == []
+    assert not any(p.startswith("strategy/") for p in exp)
+    assert not any(p.startswith("provenance/") for p in exp)
+    coverage = export.fanout_coverage(exp)
+    assert (coverage.n_strategies, coverage.n_detail, coverage.n_provenance) == (0, 0, 0)
+    # Zero strategies is deliberately INCOMPLETE — closeout must not certify the
+    # detail/provenance panels from a checkpoint-less export.
+    assert coverage.complete is False
+
+
+def test_write_export_warns_on_incomplete_fanout(sources, tmp_path, caplog):
+    bare = dataclasses.replace(sources, strategy_roots=(tmp_path / "no_checkpoints",))
+    with caplog.at_level(logging.WARNING, logger="quant.console.export"):
+        export.write_export(tmp_path / "out", bare)
+    assert "fan-out incomplete" in caplog.text.lower()
+    # The warning names the data-prep doc, never an internal data path (#5/#7).
+    assert "frontend/README.md" in caplog.text
+    assert "data/phase4a" not in caplog.text
+
+
+def test_write_export_quiet_when_fanout_complete(sources, tmp_path, caplog):
+    with caplog.at_level(logging.WARNING, logger="quant.console.export"):
+        export.write_export(tmp_path / "out", sources)
+    assert "fan-out incomplete" not in caplog.text.lower()
+
+
+def test_fanout_coverage_partial_roster_is_incomplete():
+    # Defensive: a roster larger than its detail/provenance fan-out is incomplete
+    # even though both counts are non-zero.
+    exp = {
+        "strategies.json": [{"id": "a"}, {"id": "b"}],
+        "strategy/a.json": {},
+        "provenance/a.json": {},
+    }
+    coverage = export.fanout_coverage(exp)
+    assert (coverage.n_strategies, coverage.n_detail, coverage.n_provenance) == (2, 1, 1)
+    assert coverage.complete is False
 
 
 # ── schema validator ─────────────────────────────────────────────────────────

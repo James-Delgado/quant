@@ -31,6 +31,37 @@ Regenerate the export from repo root before serving:
 PYTHONPATH=src .venv/bin/python -m quant.console export
 ```
 
+The CLI prints a fan-out coverage line, e.g. `Fan-out: 4 strategies, 4 detail +
+4 provenance files.`, and warns when that fan-out is empty or partial.
+
+### Detail / provenance data prep (closeout prerequisite)
+
+The export emits **6 top-level panels** (strategies / portfolio / conditions /
+catalog / ledger / data_status / market) unconditionally, plus a **per-strategy
+fan-out**: one `strategy/<id>.json` (M3 Strategies-detail) and one
+`provenance/<id>.json` (M4 Provenance) for every discovered checkpoint. That
+fan-out is driven by the **gitignored** `data/phase4a/*` checkpoints, so a fresh
+clone exports the 6 panels but an **empty** M3/M4 surface — `strategies.json` is
+`[]` and no detail/provenance files are written. `write_export` logs a warning
+and the M3/M4 panels render an honest "no strategies exported" empty-state rather
+than a blank frame (METHODOLOGY §9).
+
+Before a closeout (E1-CLOSE) export, regenerate the checkpoints from repo root so
+the detail/provenance panels populate from real artifacts:
+
+```bash
+# Each arm writes data/phase4a/<arm>/{metadata.json,oos_returns.parquet}.
+# The four Phase-4A arms back the four research strategies in the roster.
+for arm in arima signed vol_scaled triple_barrier; do
+  PYTHONPATH=src .venv/bin/python scripts/run_phase4a_arms.py --arm "$arm"
+done
+PYTHONPATH=src .venv/bin/python -m quant.console export   # now fans out 4 + 4
+```
+
+The GBM arms are multi-hour, full-panel runs (see the root `CLAUDE.md` runtimes);
+the ARIMA control arm is fast. A successful run prints
+`Fan-out: 4 strategies, 4 detail + 4 provenance files.` with no warning.
+
 ## Commands
 
 ```bash

@@ -45,4 +45,12 @@ describe("Provenance panel", () => {
     expect(items.length).toBe(3);
     expect(items[0].textContent).toContain("Alpaca daily OHLCV bars");
   });
+
+  it("shows an honest empty-state when the export has no runs", async () => {
+    // No strategy checkpoints → no runs roster, no provenance to inspect.
+    stubExportFetch({ "strategies.json": [] });
+    renderPanel();
+    expect(await screen.findByText(/no runs exported/i)).toBeInTheDocument();
+    expect(document.querySelectorAll(".rost").length).toBe(0);
+  });
 });
