@@ -291,6 +291,15 @@ become rules 15+ when answered.
 - **Materiality thresholds for non-Sharpe targets.** Classification
   metrics (accuracy, AUC, recall), expected-shortfall improvements,
   calibration errors. Set during Project B1 / C4 PRD drafting.
+  *B1 portion resolved (2026-06-28):* the B1 PRD pins the standing
+  materiality bars in its "Success Metrics" table
+  ([`../.claude/prds/b1-target-reframing.prd.md`](../.claude/prds/b1-target-reframing.prd.md)) —
+  **ΔAUC ≥ 0.02** per required regime for classification targets (T1
+  drawdown, T3/T4 directional) and **ΔMAE ≥ 5% relative reduction** for
+  the vol-regression target (T2), each vs. the better of its baselines.
+  These are reproduced verbatim in `b1_gate_report` as the source of
+  truth (§2). *Still open:* the C4 (confidence-calibration) portion —
+  calibration-error materiality — to be set during the C4 PRD.
 
 ---
 
