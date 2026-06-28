@@ -767,8 +767,9 @@ tasks:
     title: "C6-M1: Strategy registry schema + loader + drift test"
     project: C
     sub_project: C6
-    status: in_progress
+    status: done
     started_at: 2026-06-28T16:57:08Z
+    completed_at: 2026-06-28
     depends_on: [C6-PRD]
     blocks: [C6-M2, C3-PRD, C4-PRD, E-STRATEGIES-PANEL]
     deliverable:
@@ -794,7 +795,7 @@ tasks:
     title: "C6-M2: Daily cron executor (trade_daily.py) over the enabled registry"
     project: C
     sub_project: C6
-    status: blocked
+    status: ready
     depends_on: [C6-M1, C1-M3, C2-M2]
     blocks: []
     deliverable:
@@ -823,7 +824,7 @@ tasks:
     title: "Draft C3 (position sizing + risk management) PRD"
     project: C
     sub_project: C3
-    status: blocked
+    status: ready
     depends_on: [C2-M2, C6-M1]
     blocks: [E3-M1]
     deliverable:
@@ -843,7 +844,7 @@ tasks:
     title: "Draft C4 (confidence calibration) PRD"
     project: C
     sub_project: C4
-    status: blocked
+    status: ready
     depends_on: [C2-M2, C6-M1]
     blocks: []
     deliverable:
@@ -1577,7 +1578,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C6-REGISTRY-CONCEPT-DOC]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
@@ -2115,7 +2116,7 @@ tasks:
     title: "Project E: strategy-portfolio panel (in-use + idle strategies) from the C6 registry"
     project: E
     sub_project: E1
-    status: blocked
+    status: ready
     depends_on: [C6-M1]
     blocks: []
     deliverable:
@@ -2206,3 +2207,70 @@ tasks:
       merge-blocking gate is the deterministic simulate()-vs-simulate() replay,
       which PASSED (data/c2/reconciliation/, ledger-2026-06-28-0001); this task is a
       strengthening beyond C2's pinned scope. Low priority.
+
+  - id: C6-REGISTRY-CONCEPT-DOC
+    rank: 76
+    title: "Concept doc for the strategy registry (docs/concepts/strategy-registry.md)"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-M1]
+    blocks: [C-CLOSE]
+    deliverable:
+      file: docs/concepts/strategy-registry.md
+    references:
+      primary: src/quant/execution/strategy_registry.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-M1 post-task review (commit of
+      src/quant/execution/strategy_registry.{py,yaml}). Every registry/label
+      family in the repo has a companion concept doc (features/catalog.yaml <->
+      docs/concepts/feature-glossary.md; features/targets.py <-> the queued
+      B1-TARGETS-CONCEPT-DOC). The strategy registry has none. Write
+      docs/concepts/strategy-registry.md mirroring that pattern: the StrategySpec
+      field set + what each references (model_ref -> MODEL_REGISTRY,
+      feature_set_ref -> feature catalog, target_ref -> known_targets() =
+      {next_bar_return} ∪ TARGET_CATALOG), the provenance gate rule (enabled ⇒
+      placeholder | ledger-<id> resolving to gate_passed), the placeholder
+      sub-models that C3/C4 extend (fully_invested_equal_weight / always_pass /
+      permissive risk_limits), the equal-weight 1/N capital budget + the
+      view-model contract the E console consumes, and the next_bar_return builtin
+      target rationale. Doc-only; do NOT change any pinned rule or constant.
+      Non-gating; low priority. Added to C-CLOSE.depends_on per AGENT_OPERATION
+      Step 7 corollary (mirrors the B1-TARGETS-CONCEPT-DOC -> B-CLOSE precedent).
+
+  - id: C6-REGISTRY-HARDENING
+    rank: 77
+    title: "Harden the registry G1 gate: resolve universe symbols + validate ISO timestamps"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-M1]
+    blocks: []
+    deliverable:
+      file: src/quant/execution/strategy_registry.py
+      tests: tests/test_strategy_registry.py
+    references:
+      primary: src/quant/execution/strategy_registry.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-M1 post-task review. Two resolution/validation gaps the
+      C6-M1 G1 gate deliberately left out of its pinned scope (PRD G1 lists only
+      model_ref/feature_set_ref/target_ref):
+        (a) UNIVERSE RESOLUTION. A strategy whose `universe` lists a symbol the
+            lake never ingests would pass G1 yet silently emit no signal at
+            execution time (C6-M2). Extend registry_drift_report to resolve each
+            universe symbol against the tradeable universe (settings.equity_universe
+            or an injected set — kept injectable to avoid coupling the gate to
+            credential-loaded Settings, which raises without .env).
+        (b) TIMESTAMP VALIDATION. created_at/enabled_at are stored as free strings;
+            the loader does not assert they parse as ISO-8601 (mirrors the gap
+            A-PRIORITIES-TEST-TS closed for PRIORITIES.yaml). Add a field validator
+            + a negative test.
+      Both are strengthenings beyond C6-M1's pinned merge-blocking gate, which
+      PASSED (G1 = 0 unresolved / 0 provenance violations on the seeded registry).
+      NON-GATING and deliberately NOT added to C-CLOSE.depends_on (mirrors the
+      C2-M3-LIVE-REPLAY strengthening-beyond-scope precedent — closeout is not
+      gated on optional hardening). Low priority.
