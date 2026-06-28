@@ -696,9 +696,92 @@ def test_load_ledger(sources):
     assert led.luck_bar == pytest.approx(readers.expected_max_sharpe(7))
     assert led.best == pytest.approx(0.42)  # max checkpoint aggregate_sharpe
     by_id = {r.id: r for r in led.runs}
-    assert by_id["ledger-2026-06-13-0001"].commit_url.endswith(_GIT_SHA_A)
-    # 64-hex content hash is not link-eligible
-    assert by_id["ledger-2026-06-13-0002"].commit_url is None
+    # Entry 0001's config_hash IS a 40-hex git SHA → resolves directly.
+    row1 = by_id["ledger-2026-06-13-0001"]
+    assert row1.commit_url.endswith(_GIT_SHA_A)
+    assert row1.commit == _GIT_SHA_A[:12]
+    # Entry 0002's config_hash is a 64-hex CONTENT hash; the join surfaces the
+    # `signed` checkpoint's git_sha so the row now carries a resolvable link
+    # (E1-M1-LEDGER-COMMIT-LINKS) — the short hash matches the link target.
+    row2 = by_id["ledger-2026-06-13-0002"]
+    assert row2.commit_url.endswith(_GIT_SHA_A)
+    assert row2.commit == _GIT_SHA_A[:12]
+
+
+def test_checkpoint_git_sha_index_maps_content_hash_to_commit(sources):
+    index = sources_mod.checkpoint_git_sha_index(sources)
+    # The content-hash `signed` run maps to its checkpoint's 40-hex git SHA;
+    # the smoke run is included by the scan but is harmless (its hash matches
+    # no ledger entry). A 40-hex config_hash checkpoint (arima) self-maps.
+    assert index[_CONTENT_HASH] == _GIT_SHA_A
+
+
+def test_checkpoint_git_sha_index_missing_root_is_empty(tmp_path):
+    bare = ConsoleSources(
+        data_root=tmp_path / "absent",
+        ledger_path=tmp_path / "ledger.yaml",
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(tmp_path / "absent" / "phase4a",),
+    )
+    assert sources_mod.checkpoint_git_sha_index(bare) == {}
+
+
+def test_load_ledger_honest_degrade_without_git_sha(tmp_path):
+    """A content-hash run whose checkpoint recorded no git_sha shows no link."""
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    # Checkpoint with git_sha=None (mirrors the C2 audit run) — no link possible.
+    _write_checkpoint(
+        data_root, "audit", seed=9, config_hash=_CONTENT_HASH, git_sha=None
+    )
+    ledger_path = data_root / "ledger.yaml"
+    ledger_path.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "id": "ledger-2026-06-28-0001",
+                    "prd": "c2",
+                    "milestone": "C2-M3",
+                    "agent": "human",
+                    "preregistration": "x",
+                    "config_hash": _CONTENT_HASH,  # 64-hex, checkpoint has no git_sha
+                    "n_comparisons": 0,
+                    "started_at": "2026-06-28T15:31:00Z",
+                    "completed_at": "2026-06-28T15:31:01Z",
+                    "verdict": "gate_passed",
+                    "artifacts": ["data/phase4a/audit/"],
+                    "notes": "audit",
+                },
+                {
+                    "id": "ledger-2026-06-28-0002",
+                    "prd": "b1",
+                    "milestone": "B1-M3",
+                    "agent": "human",
+                    "preregistration": "x",
+                    "config_hash": "f" * 64,  # 64-hex matching no checkpoint
+                    "n_comparisons": 1,
+                    "started_at": "2026-06-28T16:00:00Z",
+                    "completed_at": "2026-06-28T16:10:00Z",
+                    "verdict": "gate_failed",
+                    "artifacts": ["data/b1/missing/"],
+                    "notes": "no checkpoint",
+                },
+            ]
+        )
+    )
+    src = ConsoleSources(
+        data_root=data_root,
+        ledger_path=ledger_path,
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(data_root / "phase4a",),
+    )
+    by_id = {r.id: r for r in readers.load_ledger(src).runs}
+    # git_sha: null → honest "—", not a fabricated/broken link.
+    assert by_id["ledger-2026-06-28-0001"].commit_url is None
+    assert by_id["ledger-2026-06-28-0001"].commit is None
+    # No matching checkpoint at all → also no link.
+    assert by_id["ledger-2026-06-28-0002"].commit_url is None
+    assert by_id["ledger-2026-06-28-0002"].commit is None
 
 
 # ── data_status ──────────────────────────────────────────────────────────────

@@ -15,11 +15,14 @@ describe("Trial Registry panel", () => {
     expect(screen.getByText("does not clear the bar")).toBeInTheDocument();
   });
 
-  it("links resolvable commits and shows a dash for content-hash runs", async () => {
+  it("links runs that carry a commit and dashes runs without one", async () => {
     const { container } = render(<Ledger />);
     await screen.findByText("Trials to date");
     const links = container.querySelectorAll('a[href*="github.com/James-Delgado/quant/commit/"]');
-    expect(links.length).toBe(1); // only the run carrying a commit_url
+    // The git-sha run and the content-hash run joined to its checkpoint commit
+    // both link; the audit run (no recorded git_sha) shows "—".
+    expect(links.length).toBe(2);
+    expect(container.querySelectorAll("td.mono .dim").length).toBe(1);
   });
 
   it("shows the trial count that drives the multiple-testing bar", async () => {
