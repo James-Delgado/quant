@@ -851,8 +851,9 @@ tasks:
     title: "Draft C4 (confidence calibration) PRD"
     project: C
     sub_project: C4
-    status: in_progress
+    status: done
     started_at: 2026-06-29T06:14:36Z
+    completed_at: 2026-06-29
     depends_on: [C2-M2, C6-M1]
     blocks: []
     deliverable:
