@@ -57,6 +57,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -97,6 +98,30 @@ BUILTIN_TARGETS: frozenset[str] = frozenset({"next_bar_return"})
 def known_targets() -> set[str]:
     """The resolvable target-ref set: built-ins ∪ the B1 target catalog keys."""
     return set(BUILTIN_TARGETS) | set(TARGET_CATALOG)
+
+
+def _validate_iso8601_utc(field: str, value: str) -> None:
+    """Assert *value* parses as a timezone-aware ISO-8601 instant.
+
+    Registry timestamps are documented as ISO-8601 UTC strings (mirroring the
+    ledger / position-state convention). Stored as free strings, an unparseable
+    or naive value would only surface downstream at execution time; validating at
+    load time fails fast — mirrors the ``A-PRIORITIES-TEST-TS`` check for
+    ``PRIORITIES.yaml`` and ``ledger._check_timestamps``'s tz-aware requirement.
+    A trailing ``Z`` is normalised to ``+00:00`` (``fromisoformat`` accepts ``Z``
+    natively only on Python ≥ 3.11, so the replace keeps it portable).
+    """
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(
+            f"{field} must be an ISO-8601 timestamp, got {value!r}"
+        ) from exc
+    if parsed.tzinfo is None:
+        raise ValueError(
+            f"{field} must be timezone-aware (ISO-8601 with offset, e.g. ...Z), "
+            f"got {value!r}"
+        )
 
 
 def resolve_model_class(ref: str) -> type:
@@ -215,6 +240,23 @@ class StrategySpec(BaseModel):
             raise ValueError("universe must list at least one symbol")
         return v
 
+    @field_validator("created_at")
+    @classmethod
+    def _created_at_iso8601(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("created_at must be a non-empty ISO-8601 string")
+        _validate_iso8601_utc("created_at", v)
+        return v
+
+    @field_validator("enabled_at")
+    @classmethod
+    def _enabled_at_iso8601(cls, v: str | None) -> str | None:
+        # None = never enabled (the documented default); only validate a value.
+        if v is None:
+            return v
+        _validate_iso8601_utc("enabled_at", v)
+        return v
+
 
 def load_registry(
     path: Path | str = DEFAULT_REGISTRY_PATH,
@@ -270,15 +312,48 @@ def _load_ledger_passed_ids() -> set[str]:
     return {e.id for e in load_ledger() if e.verdict == "gate_passed"}
 
 
+def lake_symbols() -> set[str]:
+    """Distinct tradeable symbols present in the **local** processed price lake.
+
+    This is a local DuckDB read over the Parquet lake (``quant.storage.catalog``
+    over ``realtime.PRICE_DATASET`` — the adjusted-EOD dataset the backtest and
+    live paths both consume) — **never a network call**. It is the resolution
+    target for universe-symbol drift: a strategy whose ``universe`` lists a symbol
+    absent here would pass the C6-M1 G1 reference gate yet silently emit no signal
+    at execution time (C6-M2).
+
+    Returns an **empty set** when the price dataset has never been written
+    (``IOException`` / ``CatalogException``), so the gate stays tolerant in a
+    lake-less checkout — :func:`registry_drift_report` then skips universe
+    resolution rather than flagging every symbol (an environmental property, not
+    a contract violation).
+
+    Imported lazily (mirroring :func:`_load_ledger_passed_ids`) so loading the
+    registry does not pull DuckDB / credential-loaded ``Settings`` into memory;
+    callers that cannot load ``Settings`` (no ``.env``) inject
+    ``tradeable_symbols`` into the gate instead.
+    """
+    import duckdb
+
+    from quant.storage.catalog import query, table
+    from quant.storage.realtime import PRICE_DATASET
+
+    try:
+        df = query(f"SELECT DISTINCT symbol FROM {table(PRICE_DATASET)}")
+    except (duckdb.IOException, duckdb.CatalogException):
+        return set()  # dataset never written — tolerant empty result
+    return {str(s) for s in df["symbol"].tolist()}
+
+
 @dataclass(frozen=True)
 class RegistryDriftReport:
     """Verdict of the G1 registry-contract gate (PRD §Pre-committed gate G1).
 
     ``unresolved`` names every strategy reference (``model_ref`` /
-    ``feature_set_ref`` member / ``target_ref``) with no matching catalog entry.
-    ``provenance_violations`` names every ``enabled`` strategy lacking a valid
-    provenance. A PASS requires **both lists empty** (0 unresolved, 0 violations
-    — the pinned G1 threshold).
+    ``feature_set_ref`` member / ``target_ref`` / ``universe`` member) with no
+    matching catalog/lake entry. ``provenance_violations`` names every ``enabled``
+    strategy lacking a valid provenance. A PASS requires **both lists empty**
+    (0 unresolved, 0 violations — the pinned G1 threshold).
     """
 
     unresolved: list[str]
@@ -325,16 +400,26 @@ def registry_drift_report(
     valid_targets: Iterable[str] | None = None,
     valid_models: Iterable[str] | None = None,
     passed_ledger_ids: set[str] | None = None,
+    tradeable_symbols: Iterable[str] | None = None,
 ) -> RegistryDriftReport:
     """G1 gate: every reference resolves and the provenance gate holds.
 
     For each strategy, resolves ``model_ref`` against *valid_models*
     (default :data:`MODEL_REGISTRY`), every ``feature_set_ref`` member against
-    *catalog* (default the feature catalog), and ``target_ref`` against
-    *valid_targets* (default :func:`known_targets`); then checks the provenance
-    gate against *passed_ledger_ids* (default the ``gate_passed`` ids in
-    ``data/ledger.yaml``). All four inputs are injectable so the drift test can
-    drive crafted positive/negative cases without touching the real catalogs.
+    *catalog* (default the feature catalog), ``target_ref`` against
+    *valid_targets* (default :func:`known_targets`), and every ``universe`` symbol
+    against *tradeable_symbols* (default :func:`lake_symbols` — the symbols present
+    in the local price lake); then checks the provenance gate against
+    *passed_ledger_ids* (default the ``gate_passed`` ids in ``data/ledger.yaml``).
+    All five inputs are injectable so the drift test can drive crafted
+    positive/negative cases without touching the real catalogs, lake, or ledger.
+
+    **Universe-resolution tolerance:** when the resolved tradeable set is empty
+    (lake never ingested / unavailable), universe resolution is **skipped** — the
+    gate does not flag every symbol on an environmental property. When the set is
+    non-empty, each universe symbol absent from it is reported as unresolved
+    (``"<id>.universe -> <symbol>"``), closing the C6-M1 gap where a strategy
+    whose universe lists a never-ingested symbol passed G1 yet emitted no signal.
 
     Returns a :class:`RegistryDriftReport`; ``.passed`` is ``True`` iff both
     lists are empty.
@@ -349,6 +434,9 @@ def registry_drift_report(
     )
     if passed_ledger_ids is None:
         passed_ledger_ids = _load_ledger_passed_ids()
+    tradeable_set = (
+        set(tradeable_symbols) if tradeable_symbols is not None else lake_symbols()
+    )
 
     feature_names = set(catalog.keys())
     unresolved: list[str] = []
@@ -362,6 +450,11 @@ def registry_drift_report(
                 unresolved.append(f"{spec.id}.feature_set_ref -> {feat}")
         if spec.target_ref not in valid_target_set:
             unresolved.append(f"{spec.id}.target_ref -> {spec.target_ref}")
+        # Tolerant universe resolution: skip when the lake reports nothing.
+        if tradeable_set:
+            for sym in spec.universe:
+                if sym not in tradeable_set:
+                    unresolved.append(f"{spec.id}.universe -> {sym}")
 
         violation = _provenance_violation(spec, passed_ledger_ids)
         if violation is not None:
@@ -439,6 +532,7 @@ __all__: Sequence[str] = [
     "StrategySpec",
     "RegistryDriftReport",
     "known_targets",
+    "lake_symbols",
     "resolve_model_class",
     "load_registry",
     "registry_drift_report",

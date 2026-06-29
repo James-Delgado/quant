@@ -3207,8 +3207,9 @@ tasks:
     title: "Harden the registry G1 gate: resolve universe symbols + validate ISO timestamps"
     project: C
     sub_project: C6
-    status: in_progress
+    status: done
     started_at: 2026-06-29T05:13:56Z
+    completed_at: 2026-06-29
     depends_on: [C6-M1]
     blocks: []
     deliverable:
@@ -3237,6 +3238,37 @@ tasks:
       NON-GATING and deliberately NOT added to C-CLOSE.depends_on (mirrors the
       C2-M3-LIVE-REPLAY strengthening-beyond-scope precedent — closeout is not
       gated on optional hardening). Low priority.
+
+  - id: C6-EXEC-UNIVERSE-CHECK
+    rank: 90
+    title: "C6-M2 executor: run-time universe-presence check (gate is load-time only)"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-REGISTRY-HARDENING]
+    blocks: []
+    deliverable:
+      file: src/quant/execution/lean_bridge.py
+      tests: tests/test_lean_bridge.py
+    references:
+      primary: src/quant/execution/strategy_registry.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-REGISTRY-HARDENING post-task review (commit of
+      src/quant/execution/strategy_registry.py lake_symbols + universe resolution).
+      The G1 universe gate that task added is LOAD-TIME: it resolves the registry's
+      universe against the lake when the gate is run. But lake state can drift
+      after a registry passes G1 (a symbol delisted / a backfill window changes),
+      and at execution time get_pit_panel() SILENTLY OMITS any symbol absent from
+      the lake (storage/realtime.py:198 — "Symbols absent from the lake at asof are
+      omitted"). So an enabled strategy can still emit no signal for part of its
+      universe with no surfaced warning. Add a run-time presence check in the
+      C6-M2 executor / lean_bridge daily path: when an enabled strategy's universe
+      symbol produces no panel, surface it (log/raise per the C6-M2 error policy)
+      rather than dropping it. NON-GATING and deliberately NOT added to
+      C-CLOSE.depends_on (mirrors the C6-REGISTRY-HARDENING strengthening-beyond-
+      scope precedent). Low priority.
 
   # ------ A-DSR-LEDGER-SHARPE follow-ups (discovered 2026-06-28) ------
   # Parked in the queued 80s band (the C3-PRD/B3 "re-rank when prioritized"
