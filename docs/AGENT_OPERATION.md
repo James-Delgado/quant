@@ -247,6 +247,31 @@ Proceed autonomously by default. Surface the decision in your plan
 General rule: irreversible or convention-setting decisions wait;
 reversible or convention-following decisions proceed.
 
+### Deferred PRDs and decision-gate tasks
+
+When a PRD is **drafted but deliberately not ratified**, or any thread is held
+pending a human GO/NO-GO, do **not** leave it untracked — a deferred PRD whose
+milestones were never created is invisible to the backlog and silently lost.
+Per `PRIORITIES.yaml` `execution_model.decision_gate_protocol`, create a
+`<ID>-DECISION` task (`status: blocked`, `sub_project: decision-gate`) whose
+`notes` state the decision, the GO action (ratify + create milestones), and the
+NO-GO action (mark `skipped`). It stays `blocked` so an autonomous loop never
+auto-decides it; a human resolving it instructs an agent, who performs the GO/NO-GO
+action and flips the task. This is also the rule when you *defer* a PRD you drafted:
+file its decision-gate task in the same change.
+
+### Surfacing decision-gated work
+
+"What is waiting on **my** decision?" has a deterministic answer:
+- **decision-gate tasks** — tasks with `sub_project: decision-gate` not yet
+  `done`/`skipped`;
+- **gated projects** — `projects:` entries with `status: gated` (e.g. Project D /
+  Phase 5, via its `D-GATE` task).
+
+Any agent can list both on request (a one-line filter over `PRIORITIES.yaml`); a
+standing ask like *"surface every decision-gated item and gated project so I can
+choose what to pursue next"* is a supported, first-class query.
+
 ---
 
 ## Red flags — what NOT to do
