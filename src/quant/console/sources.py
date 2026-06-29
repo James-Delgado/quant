@@ -40,6 +40,25 @@ FEATURE_DRIFT_RECENT_BARS = 252  # ≈ one trading year
 # A feature is "drifting" when the recent-vs-baseline standardized shift of its
 # per-date cross-sectional mean reaches this many baseline standard deviations.
 FEATURE_DRIFT_Z_THRESHOLD = 1.0
+# Distribution-SHAPE drift (E1-FEATURE-MONITOR-DRIFT-PSI). The mean-shift signal
+# above only moves on a per-date cross-sectional MEAN change, so a variance/shape
+# shift that leaves the mean put goes unflagged. A Population Stability Index (PSI)
+# over the recent-vs-baseline windows is the second drift signal: a feature is
+# "drifting" if EITHER the mean-shift z OR the PSI trips its threshold. The bands
+# are the TEXTBOOK PSI convention (not a novel research threshold): PSI < 0.1
+# stable, 0.1–0.25 moderate, > 0.25 a significant population shift. We trip
+# "drifting" at the significant band. Pinned per METHODOLOGY §1 — mirrors the
+# FEATURE_DRIFT_Z_THRESHOLD pin (a code-comment pin; no ledger.yaml row, as the
+# existing monitor thresholds are likewise pinned only in code).
+FEATURE_PSI_BINS = 10  # decile bins — the textbook PSI convention
+FEATURE_PSI_DRIFT_THRESHOLD = 0.25  # textbook "significant population shift" band
+FEATURE_PSI_EPSILON = 1e-4  # proportion floor so an empty bin keeps ln() finite
+# Minimum observations PER BIN each window must hold before a PSI is trusted — the
+# textbook expected-count ≥ 5 rule for binned distribution comparisons. Below
+# ``FEATURE_PSI_BINS × FEATURE_PSI_MIN_PER_BIN`` observations in either window the
+# PSI is too sampling-noisy to act on, so it degrades to ``None`` (no drift signal)
+# rather than firing on noise. Pinned per METHODOLOGY §1.
+FEATURE_PSI_MIN_PER_BIN = 5
 # A feature is "stale" when its most recent non-null observation is more than
 # this many distinct trading dates behind the panel's last date.
 FEATURE_STALE_BARS = 21  # ≈ one trading month
@@ -285,21 +304,103 @@ def _feature_distribution(values: np.ndarray, bins: int) -> list[int] | None:
     return [int(c) for c in counts]
 
 
+def _population_stability_index(
+    baseline: np.ndarray,
+    recent: np.ndarray,
+    *,
+    bins: int,
+    epsilon: float,
+    min_per_bin: int = FEATURE_PSI_MIN_PER_BIN,
+) -> float | None:
+    """Population Stability Index of ``recent`` vs ``baseline`` (None if undefined).
+
+    PSI = Σ_b (rₐ − bₐ)·ln(rₐ / bₐ), summed over bins b, where bₐ / rₐ are the
+    baseline / recent proportions falling in bin b. Bin edges are the baseline's
+    ``bins``-quantiles (the textbook decile-PSI convention); values are clipped to
+    the baseline range so recent observations beyond it bin into the extremes.
+    Empty bins are floored at ``epsilon`` so ``ln()`` stays finite.
+
+    Returns ``None`` when either window holds fewer than ``bins × min_per_bin``
+    observations (too sampling-noisy to trust), when either window is empty, or
+    when the baseline is degenerate (constant → fewer than two distinct quantile
+    edges → no distribution shape to compare). Honest degrade (METHODOLOGY §9): an
+    undefined PSI is ``None``, never a fabricated 0.0.
+    """
+    if baseline.size == 0 or recent.size == 0:
+        return None
+    if baseline.size < bins * min_per_bin or recent.size < bins * min_per_bin:
+        return None  # too few samples per bin → PSI is noise, not signal
+    quantiles = np.linspace(0.0, 1.0, bins + 1)
+    edges = np.unique(np.quantile(baseline, quantiles))
+    if edges.size < 2:
+        return None  # constant baseline → no shape to compare
+    lo, hi = float(edges[0]), float(edges[-1])
+    base_counts, _ = np.histogram(np.clip(baseline, lo, hi), bins=edges)
+    recent_counts, _ = np.histogram(np.clip(recent, lo, hi), bins=edges)
+    base_pct = base_counts / base_counts.sum()
+    recent_pct = recent_counts / recent_counts.sum()
+    base_pct = np.where(base_pct == 0.0, epsilon, base_pct)
+    recent_pct = np.where(recent_pct == 0.0, epsilon, recent_pct)
+    return float(np.sum((recent_pct - base_pct) * np.log(recent_pct / base_pct)))
+
+
+def _drift_psi(
+    column: pd.Series,
+    *,
+    recent_bars: int,
+    psi_bins: int,
+    psi_epsilon: float,
+    psi_min_per_bin: int = FEATURE_PSI_MIN_PER_BIN,
+) -> float | None:
+    """PSI of the column's last ``recent_bars`` dates vs the earlier baseline.
+
+    Partitions the column's *raw* valid observations (all ``(symbol, date)`` rows,
+    not the per-date mean) by date into a baseline window and the recent window, so
+    a cross-sectional variance/shape shift — invisible to the per-date mean-shift
+    signal — is captured. Returns ``None`` with too little history to split
+    (mirrors the mean-shift guard) or when the PSI is otherwise undefined.
+    """
+    valid = column.dropna()
+    if valid.empty:
+        return None
+    norm_dates = pd.DatetimeIndex(valid.index).normalize()
+    unique_dates = norm_dates.unique().sort_values()
+    if len(unique_dates) <= recent_bars + 1:
+        return None  # not enough baseline history to judge drift
+    recent_dates = unique_dates[-recent_bars:]
+    in_recent = norm_dates.isin(recent_dates)
+    values = valid.to_numpy(dtype=float)
+    return _population_stability_index(
+        values[~in_recent],
+        values[in_recent],
+        bins=psi_bins,
+        epsilon=psi_epsilon,
+        min_per_bin=psi_min_per_bin,
+    )
+
+
 def _stability_verdict(
     column: pd.Series,
     *,
     recent_bars: int,
     drift_z_threshold: float,
     stale_bars: int,
+    psi: float | None,
+    psi_drift_threshold: float,
 ) -> str:
     """Classify a feature column as ``stable`` | ``drifting`` | ``stale``.
 
     *stale*    — the column's most recent non-null observation is more than
                  ``stale_bars`` distinct trading dates behind the panel's last
                  date (the feature stopped updating), or it is entirely null.
-    *drifting* — the standardized shift of the feature's per-date cross-sectional
-                 mean over the last ``recent_bars`` dates versus the earlier
-                 baseline reaches ``drift_z_threshold`` baseline σ.
+    *drifting* — EITHER drift signal trips: (1) the standardized shift of the
+                 feature's per-date cross-sectional mean over the last
+                 ``recent_bars`` dates versus the earlier baseline reaches
+                 ``drift_z_threshold`` baseline σ, OR (2) the distribution-shape
+                 ``psi`` (precomputed via :func:`_drift_psi`) reaches
+                 ``psi_drift_threshold`` (the textbook "significant" PSI band).
+                 The PSI signal catches a variance/shape shift that leaves the
+                 mean — and hence signal (1) — unmoved.
     *stable*   — otherwise (including too little history to judge drift).
 
     Point-in-time and direction-agnostic: only the recorded panel is used; no
@@ -314,11 +415,14 @@ def _stability_verdict(
     if int((all_dates > last_valid).sum()) > stale_bars:
         return "stale"
 
+    psi_drift = psi is not None and psi >= psi_drift_threshold
+
     by_date = (
         valid.groupby(pd.DatetimeIndex(valid.index).normalize()).mean().sort_index()
     )
     if len(by_date) <= recent_bars + 1:
-        return "stable"  # not enough baseline history to judge drift
+        # Not enough baseline history for the mean-shift signal; PSI may still flag.
+        return "drifting" if psi_drift else "stable"
 
     baseline = by_date.iloc[:-recent_bars]
     recent = by_date.iloc[-recent_bars:]
@@ -326,8 +430,10 @@ def _stability_verdict(
     base_std = float(baseline.std(ddof=1))
     if not np.isfinite(base_std) or base_std == 0.0:
         # Flat baseline: any real move off it is drift; no move is stable.
-        return "drifting" if shift > 0.0 else "stable"
-    return "drifting" if (shift / base_std) >= drift_z_threshold else "stable"
+        mean_drift = shift > 0.0
+    else:
+        mean_drift = (shift / base_std) >= drift_z_threshold
+    return "drifting" if (mean_drift or psi_drift) else "stable"
 
 
 def _compute_feature_stats(
@@ -337,13 +443,18 @@ def _compute_feature_stats(
     recent_bars: int,
     drift_z_threshold: float,
     stale_bars: int,
+    psi_bins: int,
+    psi_drift_threshold: float,
+    psi_epsilon: float,
+    psi_min_per_bin: int,
 ) -> dict[str, dict]:
     """Per-column monitoring stats for a pooled (date-indexed) feature panel.
 
     ``panel`` rows are ``(symbol, date)`` observations stacked vertically with a
     normalized tz-naive DatetimeIndex; columns are feature names. Returns
-    ``{feature: {coverage, mean, std, stability, distribution}}`` — exactly the
-    dict shape ``readers.load_catalog`` reads. An empty/absent panel yields ``{}``.
+    ``{feature: {coverage, mean, std, stability, distribution, psi}}`` — the dict
+    shape ``readers.load_catalog`` reads (it ignores the extra ``psi`` key). An
+    empty/absent panel yields ``{}``.
     """
     stats: dict[str, dict] = {}
     if panel is None or panel.empty:
@@ -361,9 +472,17 @@ def _compute_feature_stats(
                 "std": None,
                 "stability": "stale",
                 "distribution": None,
+                "psi": None,
             }
             continue
         arr = valid.to_numpy(dtype=float)
+        psi = _drift_psi(
+            column,
+            recent_bars=recent_bars,
+            psi_bins=psi_bins,
+            psi_epsilon=psi_epsilon,
+            psi_min_per_bin=psi_min_per_bin,
+        )
         stats[str(col)] = {
             "coverage": float(coverage),
             "mean": float(np.mean(arr)),
@@ -373,8 +492,11 @@ def _compute_feature_stats(
                 recent_bars=recent_bars,
                 drift_z_threshold=drift_z_threshold,
                 stale_bars=stale_bars,
+                psi=psi,
+                psi_drift_threshold=psi_drift_threshold,
             ),
             "distribution": _feature_distribution(arr, hist_bins),
+            "psi": psi,
         }
     return stats
 
@@ -390,6 +512,10 @@ def build_feature_monitor(
     recent_bars: int = FEATURE_DRIFT_RECENT_BARS,
     drift_z_threshold: float = FEATURE_DRIFT_Z_THRESHOLD,
     stale_bars: int = FEATURE_STALE_BARS,
+    psi_bins: int = FEATURE_PSI_BINS,
+    psi_drift_threshold: float = FEATURE_PSI_DRIFT_THRESHOLD,
+    psi_epsilon: float = FEATURE_PSI_EPSILON,
+    psi_min_per_bin: int = FEATURE_PSI_MIN_PER_BIN,
 ) -> "FeatureMonitorFn":
     """Build a memoized feature monitor from a (lazy) feature-panel provider.
 
@@ -415,6 +541,10 @@ def build_feature_monitor(
                         recent_bars=recent_bars,
                         drift_z_threshold=drift_z_threshold,
                         stale_bars=stale_bars,
+                        psi_bins=psi_bins,
+                        psi_drift_threshold=psi_drift_threshold,
+                        psi_epsilon=psi_epsilon,
+                        psi_min_per_bin=psi_min_per_bin,
                     )
                 )
             except Exception:

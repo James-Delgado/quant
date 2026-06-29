@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-29  # E1-STRATEGY-DETAIL-BENCHMARK done; appended E1-DETAIL-BENCHMARK-NAME (rank 131) follow-up
+last_updated: 2026-06-29  # E1-FEATURE-MONITOR-DRIFT-PSI done; appended E1-FEATURE-MONITOR-PSI-SURFACE (rank 133) follow-up
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -3814,8 +3814,9 @@ tasks:
     title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): distribution-shape drift metric (PSI/KS) for the feature monitor"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T06:53:25Z
+    completed_at: 2026-06-29
     depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
     blocks: []
     deliverable:
@@ -3837,6 +3838,53 @@ tasks:
       pin). NON-GATING / NOT in E1-CLOSE.depends_on — the Feature Catalog panel
       already certifies with the mean-shift verdict (mirrors the parent's own
       non-gating exclusion). Low priority.
+
+      DELIVERED (commit on main): sources._population_stability_index (decile-bin
+      PSI over baseline-quantile edges, recent values clipped into range, empty
+      bins floored at FEATURE_PSI_EPSILON) + sources._drift_psi (partitions the
+      column's RAW (symbol,date) observations into baseline vs the last
+      recent_bars dates so a cross-sectional variance/shape shift — invisible to
+      the per-date mean-shift — is captured). _stability_verdict now flags
+      "drifting" if EITHER the mean-shift z OR the PSI trips; the PSI value is
+      added to the monitor stats dict (readers.load_catalog ignores the extra
+      key — no viewmodel/frontend change). Thresholds pinned per METHODOLOGY §1
+      (code-comment pin mirroring FEATURE_DRIFT_Z_THRESHOLD; no ledger.yaml row):
+      FEATURE_PSI_BINS=10, FEATURE_PSI_DRIFT_THRESHOLD=0.25 (textbook
+      "significant" band), FEATURE_PSI_EPSILON=1e-4, plus FEATURE_PSI_MIN_PER_BIN=5
+      (textbook expected-count≥5 guard so PSI degrades to None on small windows
+      rather than firing on sampling noise). Verified: test_console.py 124 passed
+      (incl. PSI unit + shape-shift-at-constant-mean/variance drift + small-sample
+      degrade), test_priorities.py 51 passed, ruff clean. Discovered follow-up:
+      E1-FEATURE-MONITOR-PSI-SURFACE (surface the PSI number + moderate band in
+      the UI).
+
+  - id: E1-FEATURE-MONITOR-PSI-SURFACE
+    rank: 133
+    title: "E1-FEATURE-MONITOR-DRIFT-PSI follow-up (optional): surface the PSI value + moderate band in the Feature Catalog panel"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-FEATURE-MONITOR-DRIFT-PSI]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-FEATURE-MONITOR-DRIFT-PSI post-task review (commit of
+      src/quant/console/sources.py). The new distribution-shape signal computes a
+      per-feature PSI and folds it into the stable/drifting verdict, but the
+      numeric PSI is recorded only in the monitor stats dict — readers.load_catalog
+      does not thread it into vm.FeatureCard, so the Feature Catalog panel shows
+      the verdict without the PSI magnitude or which signal (mean-shift vs shape)
+      tripped it. Surface stats["psi"] on FeatureCard (+ optionally a "moderate"
+      0.1–0.25 tier distinct from stable/drifting) and render it in the panel.
+      Requires a viewmodel field + frontend change (out of the parent's
+      sources.py-only deliverable). NON-GATING / NOT in E1-CLOSE.depends_on — the
+      panel already certifies with the verdict; this is display polish. Low priority.
 
   - id: E1-FEATURE-MONITOR-ASOF
     rank: 124
