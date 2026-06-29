@@ -636,6 +636,84 @@ tbody tr.clk:hover { background: var(--slate-2); }
   visibility: visible;
 }
 
+/* ── Per-source freshness disclosure (E1-M2-TOPBAR-FRESHNESS-DISCLOSURE) — the
+   accessible companion to the Topbar export stamp. Reuses the .info ⓘ trigger;
+   the popover mirrors the .info::after bubble but holds structured per-source
+   rows so keyboard / screen-reader users reach what previously rode on a native
+   `title` (WCAG 1.3.1 / 4.1.2). `.info.warn` + the `behind` badge flag a source
+   whose mtime lags the export run by > STALE_LAG_DAYS — factual lag, not a
+   value claim. */
+.fresh {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.info.warn {
+  border-color: var(--warnc);
+  color: var(--warnc);
+}
+.info.warn:hover,
+.info.warn.open {
+  border-color: var(--warnc);
+  color: var(--warnc);
+}
+.fresh-pop {
+  position: absolute;
+  top: 150%;
+  right: 0;
+  /* Each row stacks source over "updated <mtime> [badge]", so the popover sizes
+     to the time line (the widest element) and the badge never overflows. */
+  width: max-content;
+  min-width: 220px;
+  max-width: 300px;
+  background: #0b0e13;
+  border: 1px solid var(--hair-2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  z-index: 30;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+.fresh-pop ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fresh-pop li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--steel);
+  padding: 4px 0;
+}
+.fresh-pop .fs-src {
+  color: var(--dim);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.fresh-pop .fs-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.fresh-pop .fs-time {
+  white-space: nowrap;
+}
+.fresh-pop li.behind .fs-time {
+  color: var(--warnc);
+}
+.fresh-pop .fs-badge {
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--warnc);
+  border: 1px solid var(--warnc);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
 /* Explanations reading cards (E1-M5) — serif reading view (DECISIONS #4).
    Ported verbatim from the mockup (docs/project-e/mockups/console.css). */
 .read { font-family: var(--serif); }
