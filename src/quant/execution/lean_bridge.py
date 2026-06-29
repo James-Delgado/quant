@@ -86,6 +86,17 @@ G1_MAX_MISMATCHES: int = 0
 # paper account. Mirrors the C2-M1 hello-world's 1-share order.
 PLACEHOLDER_QTY: float = 1.0
 
+# Cash-fraction sizing constants (C2-M2-SIZING-PARITY). The Phase 1 simulator
+# (``backtest/simulator.py``) deploys ~all available capital — it sizes a
+# position as ``int(cash / entry_fill)`` capped by ``int(volume * liquidity_cap)``
+# — not a fixed share. For C2-M3's G2 (backtest⇔paper per-period total-return
+# reconciliation, ≤1%) to hold honestly, the bridge must be able to size by the
+# SAME rule. These mirror ``simulate``'s signature defaults under a §6 drift
+# contract: ``test_sizing_constants_match_simulator_defaults`` asserts equality
+# via ``inspect.signature(simulate)``, so the two cannot drift apart silently.
+SIM_SLIPPAGE_BPS: float = 5.0
+SIM_LIQUIDITY_CAP: float = 0.10
+
 # Minimum non-NaN label observations before ARIMA(1,0,0) is fit for a symbol.
 # Below this the symbol is skipped (no signal emitted) rather than fitting on a
 # series too short to be meaningful. ARIMABaseline.fit itself requires only
@@ -290,6 +301,78 @@ def plan_order(
     return OrderIntent(symbol=symbol, side=side, qty=abs(delta))
 
 
+# ─── Cash-fraction sizing: simulator parity (C2-M2-SIZING-PARITY) ──────────────
+
+
+def simulator_position_qty(
+    cash: float,
+    ref_price: float,
+    target_position: int,
+    *,
+    volume: float | None = None,
+    slippage_bps: float = SIM_SLIPPAGE_BPS,
+    liquidity_cap: float = SIM_LIQUIDITY_CAP,
+) -> int:
+    """Share magnitude the Phase 1 simulator would open — the G2 sizing rule. Pure.
+
+    Reproduces ``backtest/simulator.py``'s entry sizing exactly:
+    ``shares = max(0, min(int(cash / entry_fill), int(volume * liquidity_cap)))``
+    where ``entry_fill`` is the slippage-adjusted fill — a long buys at the ask
+    (``ref_price * (1 + slip)``) and a short sells at the bid
+    (``ref_price * (1 - slip)``), ``slip = slippage_bps / 10_000``. The cap uses
+    *cash before commission*, matching the simulator (commission is deducted
+    after the share count is fixed and so does not change it).
+
+    *target_position* selects the slippage side; a flat target (0) needs no
+    shares and returns 0. *volume* is the fill-bar volume for the liquidity cap;
+    pass ``None`` to skip it (a paper order may have no volume read at submit
+    time — the cash cap then governs, never the 1-share placeholder). Returns a
+    non-negative integer magnitude; the caller applies the sign via the target
+    position. Non-positive *cash* or *ref_price* yields 0.
+    """
+    if target_position == 0 or cash <= 0.0 or ref_price <= 0.0:
+        return 0
+    slip = slippage_bps / 10_000.0
+    if target_position > 0:
+        entry_fill = ref_price * (1.0 + slip)  # buying long at the ask
+    else:
+        entry_fill = ref_price * (1.0 - slip)  # selling short at the bid
+    if entry_fill <= 0.0:
+        return 0
+    max_cap = int(cash / entry_fill)
+    if volume is not None:
+        max_cap = min(max_cap, int(volume * liquidity_cap))
+    return max(0, max_cap)
+
+
+def sized_target_order(
+    symbol: str,
+    target_position: int,
+    *,
+    cash: float,
+    ref_price: float,
+    volume: float | None = None,
+    slippage_bps: float = SIM_SLIPPAGE_BPS,
+    liquidity_cap: float = SIM_LIQUIDITY_CAP,
+) -> TargetOrder:
+    """Build a :class:`TargetOrder` sized by the simulator's cash-fraction rule. Pure.
+
+    Wraps :func:`simulator_position_qty` so the bridge can deploy ~all capital
+    like the backtest (the G2 prerequisite) instead of the fixed
+    :data:`PLACEHOLDER_QTY`. Sizing logic proper (vol-targeting / risk caps) is
+    still C3 — this is only the placeholder-vs-simulator parity G2 needs.
+    """
+    qty = simulator_position_qty(
+        cash,
+        ref_price,
+        target_position,
+        volume=volume,
+        slippage_bps=slippage_bps,
+        liquidity_cap=liquidity_cap,
+    )
+    return TargetOrder(symbol=symbol, target_position=target_position, qty=float(qty))
+
+
 # ─── Position-state persistence (format pinned here; the loop is C2-M3) ─────────
 
 
@@ -472,6 +555,30 @@ class AlpacaPaperBridge:
             "order_id": str(getattr(submitted, "id", "")),
             "status": str(getattr(submitted, "status", "")),
         }
+
+    def place_sized_target(
+        self,
+        symbol: str,
+        target_position: int,
+        ref_price: float,
+        *,
+        volume: float | None = None,
+    ) -> dict:
+        """Place a simulator-sized target: deploy ~all account cash (the G2 rule).
+
+        Reads the account's available cash, sizes the position with
+        :func:`simulator_position_qty` (the Phase 1 simulator's cash-fraction
+        rule), then routes through :meth:`place_target` so the signed-delta /
+        no-op semantics are identical to the fixed-quantity path. This is the
+        C2-M2-SIZING-PARITY entry point C2-M3's G2 reconciliation drives — the
+        fixed :data:`PLACEHOLDER_QTY` path is preserved for the uninteresting
+        placeholder. Sizing proper (vol-targeting / caps) remains C3.
+        """
+        cash = float(self.account_summary().cash)
+        order = sized_target_order(
+            symbol, target_position, cash=cash, ref_price=ref_price, volume=volume
+        )
+        return self.place_target(order)
 
 
 class LeanBridge:
