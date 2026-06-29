@@ -20,4 +20,13 @@ describe("Data & Market panel", () => {
     expect(screen.getByText("Breadth > MA200")).toBeInTheDocument();
     expect(screen.getAllByText("lands with E4").length).toBe(2);
   });
+
+  it("leaves the Breadth/2s10s tiles bare — their ⓘ definitions moved to the Overview (E1-M5-OVERVIEW-CONDITION-TIPS)", async () => {
+    render(<DataMarket />);
+    await screen.findByText("Breadth > MA200");
+    // Mockup parity: the Data & Market figs carry no InfoTip; the conditions
+    // definitions live once, on the Overview conditions snapshot.
+    expect(screen.queryByRole("button", { name: /^Breadth:/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Yield curve:/ })).toBeNull();
+  });
 });

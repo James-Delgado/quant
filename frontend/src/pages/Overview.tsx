@@ -248,6 +248,31 @@ export function Overview() {
                 {market?.fed_funds != null ? `${market.fed_funds}%` : "—"}
               </span>
             </li>
+            {/* Breadth + yield-curve sit on the conditions snapshot per the mockup
+                (E1-M5-OVERVIEW-CONDITION-TIPS). Neither is ingested yet, so the
+                value reads an honest "—" and the note below explains why — never
+                a fabricated figure (METHODOLOGY §9). The InfoTip copy is verbatim
+                from the frozen mockup. */}
+            <li>
+              <span className="k">
+                Breadth
+                <InfoTip
+                  label="Breadth"
+                  tip="Share of the universe trading above its 200-day moving average — a gauge of how broad the uptrend is."
+                />
+              </span>
+              <span className="v dim">—</span>
+            </li>
+            <li>
+              <span className="k">
+                Yield curve
+                <InfoTip
+                  label="Yield curve"
+                  tip="2s10s: the 10-year minus 2-year Treasury yield. Negative (inverted) has historically preceded recessions; positive here."
+                />
+              </span>
+              <span className="v dim">—</span>
+            </li>
           </ul>
           {market?.notes?.length ? (
             <p className="note">{market.notes[0]}</p>

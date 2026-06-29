@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-M3-OVERVIEW-BENCHMARK done
+last_updated: 2026-06-28  # E1-M5-OVERVIEW-CONDITION-TIPS done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2184,6 +2184,13 @@ tasks:
       drift stats to a live, alerting surface. Acceptance: market env matches
       the condition machinery; the drift monitor flags a seeded distribution
       shift.
+      BREADCRUMB (from E1-M5-OVERVIEW-CONDITION-TIPS, 2026-06-28): once breadth +
+      2s10s are ingested, un-hardcode the pending "—" placeholders that read from
+      market.json — the Overview "Market snapshot" Breadth/Yield-curve rows
+      (frontend/src/pages/Overview.tsx) and the Data & Market Breadth/2s10s tiles
+      (frontend/src/pages/DataMarket.tsx) — by adding the fields to the
+      MarketSnapshot export schema and rendering the real values. The InfoTip
+      copy already lives on the Overview; this is a value-wiring step only.
 
   - id: E4-CLOSE
     rank: 65
@@ -2613,8 +2620,9 @@ tasks:
     title: "E1-M5 follow-up: move Breadth + yield-curve ⓘ tips onto the Overview conditions-now axis once it lands"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T23:53:57Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1-CONDITIONS-MARKET-AXIS]
     blocks: [E1-CLOSE]
     deliverable:
