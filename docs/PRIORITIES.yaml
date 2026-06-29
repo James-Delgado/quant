@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-M6-FEEDBACK-LABEL done
+last_updated: 2026-06-28  # E1-CONDITIONS-TREND-AXIS done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1896,7 +1896,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE, E1-CONDITIONS-TREND-AXIS, E1-M2-TOPBAR-FRESHNESS]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE, E1-CONDITIONS-TREND-AXIS, E1-M2-TOPBAR-FRESHNESS, E1-CONDITIONS-TREND-COPY]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -2790,8 +2790,9 @@ tasks:
     title: "E1-M1-CONDITIONS-MARKET-AXIS follow-up: market-level trend axis (third DECISIONS §6 axis) on the benchmark series"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M3-OVERVIEW-BENCHMARK]
     blocks: [E1-CLOSE]
     deliverable:
@@ -3176,3 +3177,59 @@ tasks:
       NOT in E1-CLOSE.depends_on (mirrors the parent E1-M6-GH-SUBMIT exclusion: an
       optional, downstream-conditional enhancement must not deadlock closeout). Low
       priority.
+
+  - id: E1-CONDITIONS-TREND-COPY
+    rank: 121
+    title: "E1-CONDITIONS-TREND-AXIS follow-up: Conditions panel lead-text names all three axes (vol/trend/rates)"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-CONDITIONS-TREND-AXIS]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: frontend/src/pages/Conditions.tsx
+      tests: frontend/src/test/Conditions.test.tsx
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      decisions: docs/project-e/DECISIONS.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-CONDITIONS-TREND-AXIS post-task review (commit adding the
+      trend axis to src/quant/console/readers.py). The Conditions panel lead text
+      (frontend/src/pages/Conditions.tsx ~line 22) still names only "volatility
+      (VIX) and rates (10-year Treasury)" — it predates the third axis. The
+      heatmap + Sharpe-by-condition bars already render the trend axis dynamically
+      (they map over the export's axes/by_condition), but the prose under-describes
+      the panel now that load_conditions emits a `trend` axis (uptrend/downtrend,
+      benchmark vs its 200-bar MA). One-line copy fix to name all three DECISIONS §6
+      axes; extend Conditions.test.tsx mockExport with a trend axis so the test
+      fixture matches production. GATES E1-CLOSE per AGENT_OPERATION Step 7 corollary
+      so closeout certifies the UI describes all three intended axes, not two.
+
+  - id: E1-CONDITIONS-TREND-MA-WARMUP
+    rank: 122
+    title: "E1-CONDITIONS-TREND-AXIS follow-up (optional): full-history trend MA to remove the OOS warm-up gap"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-CONDITIONS-TREND-AXIS]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-CONDITIONS-TREND-AXIS post-task review. _trend_labels computes
+      the 200-bar moving average on the OOS-aligned benchmark price (faithful to the
+      task's "exactly as the VIX/DGS10 axes via _by_date / _align_market" instruction;
+      mirrors the rates axis's 63-bar align-then-compute warm-up), so the first
+      TREND_MA_WINDOW-1 (~199) OOS bars carry no trend label — a ~9-month gap at the
+      very start of the OOS span. The benchmark_price_fn returns the FULL pre-OOS SPY
+      history, so computing the 200-bar MA on the full series BEFORE aligning the
+      resulting uptrend/downtrend labels onto the OOS calendar would give full-span
+      trend coverage with no warm-up gap (and is equally point-in-time). NON-GATING
+      polish — current behavior is honest (omits, never fakes, the warm-up region) and
+      consistent with the rates axis; NOT in E1-CLOSE.depends_on. Low priority.

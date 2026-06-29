@@ -478,6 +478,64 @@ def test_rates_labels_classify_direction():
     assert set(readers._rates_labels(flat)) == {"rates_steady"}
 
 
+def test_trend_labels_classify_up_and_down():
+    # A price that climbs for ~1.5× the MA window then falls below the average:
+    # the rising leg (close > MA) labels uptrend, the falling leg downtrend.
+    n = readers.TREND_MA_WINDOW
+    up = np.linspace(100.0, 200.0, n + 30)
+    down = np.linspace(200.0, 120.0, n)  # drops fast enough to cross below the MA
+    idx = pd.date_range("2010-01-01", periods=len(up) + len(down), freq="B")
+    price = pd.Series(np.concatenate([up, down]), index=idx)
+    labels = readers._trend_labels(price)
+    # First TREND_MA_WINDOW-1 dates have no MA yet → dropped (honest gap).
+    assert len(labels) == len(price) - (readers.TREND_MA_WINDOW - 1)
+    assert set(labels.unique()) == {"uptrend", "downtrend"}
+    assert labels.iloc[0] == "uptrend"  # still climbing above the trailing MA
+    assert labels.iloc[-1] == "downtrend"  # fell below the trailing MA
+
+
+def test_trend_labels_empty_without_history():
+    assert readers._trend_labels(pd.Series(dtype=float)).empty
+    # Fewer than TREND_MA_WINDOW points → no MA → no labels (not faked).
+    short = pd.Series(
+        np.arange(10.0), index=pd.date_range("2010-01-01", periods=10, freq="B")
+    )
+    assert readers._trend_labels(short).empty
+
+
+def test_load_conditions_adds_trend_axis_with_benchmark(sources):
+    # Wiring a benchmark price surfaces the third DECISIONS §6 axis (trend),
+    # ordered between volatility and rates.
+    src = dataclasses.replace(sources, benchmark_price_fn=_benchmark_prices)
+    cond = readers.load_conditions(src)
+    assert [a.name for a in cond.axes] == ["volatility", "trend", "rates"]
+    assert len(cond.by_condition) == 8  # 3 vol + 2 trend + 3 rates
+    assert cond.heatmap.conditions == [
+        "low_vol",
+        "mid_vol",
+        "high_vol",
+        "uptrend",
+        "downtrend",
+        "rates_falling",
+        "rates_steady",
+        "rates_rising",
+    ]
+    assert all(len(row) == 8 for row in cond.heatmap.values)
+    # The steady-drift benchmark sits above its own MA → uptrend is populated.
+    populated = {c.condition for c in cond.by_condition if c.n_bars > 0}
+    assert "uptrend" in populated
+
+
+def test_load_conditions_trend_axis_without_fred(sources):
+    # Trend depends on the benchmark price, not the FRED feed: it renders even
+    # when market_series_fn is absent (each axis degrades independently).
+    src = dataclasses.replace(
+        sources, market_series_fn=None, benchmark_price_fn=_benchmark_prices
+    )
+    cond = readers.load_conditions(src)
+    assert [a.name for a in cond.axes] == ["trend"]
+
+
 def test_align_market_forward_fills_point_in_time():
     series = pd.Series([1.0, 2.0], index=pd.to_datetime(["2020-01-01", "2020-01-05"]))
     dates = pd.DatetimeIndex(pd.to_datetime(["2020-01-01", "2020-01-03", "2020-01-05", "2020-01-06"]))
