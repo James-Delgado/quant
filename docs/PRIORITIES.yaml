@@ -2306,7 +2306,8 @@ tasks:
     title: "E1-M1-FEATURE-MONITOR follow-up: cache/gate the export-time feature-panel build (+ richer drift options)"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T01:17:16Z
     depends_on: [E1-M1-FEATURE-MONITOR]
     blocks: []
     deliverable:
