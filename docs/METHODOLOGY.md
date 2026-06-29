@@ -333,6 +333,12 @@ Location: `data/ledger.yaml`. Append-only. CI-audited via a drift test.
   preregistration: docs/historical/PHASE_4A_REPORT.md#2--the-gate-verbatim
   config_hash: f3b75332527b7b58e952522a1df093bd2dede78320b7a17747d995dcfe06fc49
   n_comparisons: 1           # number of per-regime tests in this trial
+  sharpe: 0.82               # OPTIONAL, back-compat — headline annualised Sharpe of
+                             # this trial's arm. Older / infrastructure entries omit
+                             # it. When ≥2 entries carry it, observed_sharpe_std()
+                             # reads them for the empirical cross-trial Sharpe
+                             # dispersion the §13 DSR deflation uses (else the pinned
+                             # DEFAULT_SHARPE_STD scalar).
   started_at: 2026-06-13T11:00:00Z
   completed_at: 2026-06-13T11:16:43Z
   verdict: gate_failed       # gate_passed | gate_failed | inconclusive
