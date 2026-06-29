@@ -144,6 +144,32 @@ def issue_url(report: FeedbackReport, *, repo_url: str = DEFAULT_REPO_URL) -> st
     return f"{repo_url}/issues/new?{query}"
 
 
+# ── Label helpers (guard arbitrary-issue promotion) ──────────────────────────
+
+
+def issue_labels(issue: dict) -> list[str]:
+    """Extract label *names* from an issue JSON dict.
+
+    Tolerates both shapes we encounter: the ``gh issue view --json labels`` form
+    (a list of ``{"name": ...}`` objects) and a plain list of label strings.
+    Unknown/empty entries are skipped.
+    """
+    names: list[str] = []
+    for label in issue.get("labels") or []:
+        if isinstance(label, dict):
+            name = label.get("name")
+            if name:
+                names.append(name)
+        elif isinstance(label, str):
+            names.append(label)
+    return names
+
+
+def has_feedback_label(issue: dict) -> bool:
+    """True iff the issue carries the :data:`FEEDBACK_LABEL` (DECISIONS #11)."""
+    return FEEDBACK_LABEL in issue_labels(issue)
+
+
 # ── GitHub read (injectable, degrades without `gh`) ──────────────────────────
 
 
@@ -177,6 +203,53 @@ def fetch_issue_via_gh(
             f"{result.stderr.strip()}"
         )
     return json.loads(result.stdout)
+
+
+# ── GitHub write (one-click direct submission, opt-in) ───────────────────────
+
+
+def submit_issue_via_gh(
+    report: FeedbackReport,
+    *,
+    repo: str = DEFAULT_REPO_SLUG,
+    label: str = FEEDBACK_LABEL,
+    runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> str:
+    """File the report directly via ``gh issue create``, returning the issue URL.
+
+    The one-step alternative to :func:`issue_url`: that function builds a
+    pre-filled ``issues/new`` page the user still has to open and submit (two
+    clicks); this files the issue in a single call when a GitHub token is present
+    locally (``gh`` authenticated). E2 swaps this for a server-side ``POST`` that
+    reuses the same :func:`issue_title` / :func:`issue_body` construction.
+
+    Unlike the URL path — where GitHub *silently drops* an unknown ``labels=``
+    query param — ``gh issue create --label`` fails loudly if ``label`` does not
+    exist in ``repo``, so a successful return guarantees the issue is labeled
+    (the ``feedback`` label exists in the canonical repo; a fork must recreate it
+    — see the module docstring). Raises :class:`RuntimeError` when ``gh`` is
+    missing or the call fails; tests inject a fake ``runner``.
+    """
+    if shutil.which("gh") is None:
+        raise RuntimeError(
+            "GitHub CLI `gh` not found. Install it and run `gh auth login` to "
+            "submit directly, or use the pre-filled issue_url() path instead. "
+            "See feedback.py module docstring."
+        )
+    result = runner(
+        ["gh", "issue", "create", "--repo", repo,
+         "--title", issue_title(report),
+         "--body", issue_body(report),
+         "--label", label],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"`gh issue create` failed (exit {result.returncode}): "
+            f"{result.stderr.strip()}"
+        )
+    return result.stdout.strip()
 
 
 # ── Issue → PRIORITIES task ──────────────────────────────────────────────────
@@ -295,17 +368,28 @@ def promote(
     issue_fetcher: IssueFetcher | None = None,
     today: str | None = None,
     status: str = "ready",
+    require_label: bool = True,
 ) -> PromotedTask:
     """Read issue ``issue_number`` and append it to PRIORITIES as a task.
 
     Returns the :class:`PromotedTask`. Raises :class:`ValueError` if a task for
-    this issue already exists (idempotency guard). ``issue_fetcher`` defaults to
+    this issue already exists (idempotency guard) or — when ``require_label`` is
+    True (the default) — if the fetched issue does not carry the ``feedback``
+    label, so an arbitrary issue number cannot be promoted by mistake (DECISIONS
+    #11: the ``feedback`` issues *are* the tracker). Pass ``require_label=False``
+    to override deliberately. ``issue_fetcher`` defaults to
     :func:`fetch_issue_via_gh`, resolved lazily so the module-level reader can be
     monkeypatched in tests.
     """
     if issue_fetcher is None:
         issue_fetcher = fetch_issue_via_gh
     issue = issue_fetcher(issue_number)
+    if require_label and not has_feedback_label(issue):
+        raise ValueError(
+            f"issue #{issue['number']} does not carry the {FEEDBACK_LABEL!r} "
+            f"label (labels: {issue_labels(issue) or 'none'}); refusing to "
+            "promote. Pass require_label=False to override."
+        )
     data = yaml.safe_load(Path(priorities_path).read_text())
     tasks = data.get("tasks") or []
     existing_ids = {t["id"] for t in tasks}

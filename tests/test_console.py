@@ -1222,6 +1222,60 @@ def test_fetch_issue_via_gh_raises_on_nonzero(monkeypatch):
         feedback.fetch_issue_via_gh(7, runner=fail_runner)
 
 
+# ── feedback: label helpers (guard arbitrary-issue promotion) ─────────────────
+
+
+def test_issue_labels_handles_gh_and_string_shapes():
+    # gh JSON shape: list of {"name": ...}; plus a plain-string list; skip junk.
+    gh_shape = {"labels": [{"name": "feedback"}, {"name": "bug"}, {"color": "x"}]}
+    str_shape = {"labels": ["feedback", "triage"]}
+    assert feedback.issue_labels(gh_shape) == ["feedback", "bug"]
+    assert feedback.issue_labels(str_shape) == ["feedback", "triage"]
+    assert feedback.issue_labels({}) == []  # missing labels → empty
+
+
+def test_has_feedback_label():
+    assert feedback.has_feedback_label({"labels": [{"name": "feedback"}]}) is True
+    assert feedback.has_feedback_label({"labels": ["feedback"]}) is True
+    assert feedback.has_feedback_label({"labels": [{"name": "bug"}]}) is False
+    assert feedback.has_feedback_label({}) is False
+
+
+# ── feedback: GitHub write (one-click direct submission) ──────────────────────
+
+
+def test_submit_issue_via_gh_raises_when_gh_missing(monkeypatch):
+    monkeypatch.setattr(feedback.shutil, "which", lambda _: None)
+    with pytest.raises(RuntimeError, match="gh.*not found"):
+        feedback.submit_issue_via_gh(_report())
+
+
+def test_submit_issue_via_gh_returns_url(monkeypatch):
+    monkeypatch.setattr(feedback.shutil, "which", lambda _: "/usr/bin/gh")
+    created_url = "https://github.com/James-Delgado/quant/issues/99"
+
+    def fake_runner(cmd, capture_output, text):
+        assert cmd[:3] == ["gh", "issue", "create"]
+        # The feedback label is passed so gh fails loudly if it is missing.
+        assert "--label" in cmd and feedback.FEEDBACK_LABEL in cmd
+        return types.SimpleNamespace(returncode=0, stdout=created_url + "\n", stderr="")
+
+    out = feedback.submit_issue_via_gh(_report(), runner=fake_runner)
+    assert out == created_url
+
+
+def test_submit_issue_via_gh_raises_on_nonzero(monkeypatch):
+    monkeypatch.setattr(feedback.shutil, "which", lambda _: "/usr/bin/gh")
+
+    def fail_runner(cmd, capture_output, text):
+        return types.SimpleNamespace(
+            returncode=1, stdout="", stderr="could not add label: 'feedback' not found"
+        )
+
+    with pytest.raises(RuntimeError, match="not found"):
+        feedback.submit_issue_via_gh(_report(), runner=fail_runner)
+
+
 # ── feedback: issue → task transform + YAML append ───────────────────────────
 
 _SEED_PRIORITIES = """\
@@ -1253,6 +1307,8 @@ _FAKE_ISSUE = {
     "body": "Type: bug\nThe sparkline starts a day late.",
     "url": "https://github.com/James-Delgado/quant/issues/42",
     "state": "OPEN",
+    # `gh issue view --json labels` shape (a list of {"name": ...} objects).
+    "labels": [{"name": "feedback"}],
 }
 
 
@@ -1321,6 +1377,27 @@ def test_promote_idempotency_guard(tmp_path):
         feedback.promote(42, priorities_path=path, issue_fetcher=fetch, today="2026-06-28")
 
 
+def test_promote_rejects_unlabeled_issue(tmp_path):
+    """An issue without the `feedback` label cannot be promoted by mistake."""
+    path = tmp_path / "PRIORITIES.yaml"
+    path.write_text(_SEED_PRIORITIES)
+    unlabeled = {**_FAKE_ISSUE, "labels": [{"name": "bug"}]}
+    with pytest.raises(ValueError, match="does not carry the 'feedback' label"):
+        feedback.promote(42, priorities_path=path, issue_fetcher=lambda n: unlabeled)
+    # Nothing was appended — the file is unchanged.
+    assert [t["id"] for t in yaml.safe_load(path.read_text())["tasks"]] == ["SEED-1"]
+
+
+def test_promote_allows_override_of_label_guard(tmp_path):
+    path = tmp_path / "PRIORITIES.yaml"
+    path.write_text(_SEED_PRIORITIES)
+    unlabeled = {**_FAKE_ISSUE, "labels": []}
+    task = feedback.promote(
+        42, priorities_path=path, issue_fetcher=lambda n: unlabeled, require_label=False
+    )
+    assert task.id == "FEEDBACK-42"
+
+
 def test_promoted_task_passes_priorities_drift_checks(tmp_path):
     """The appended task must keep the file valid under tests/test_priorities.py."""
     import test_priorities as tp
@@ -1341,3 +1418,29 @@ def test_cli_feedback_promote(monkeypatch, tmp_path, capsys):
     assert rc == 0
     assert "FEEDBACK-42" in capsys.readouterr().out
     assert yaml.safe_load(path.read_text())["tasks"][-1]["id"] == "FEEDBACK-42"
+
+
+def test_cli_feedback_submit(monkeypatch, capsys):
+    from quant.console import __main__ as cli
+
+    captured: dict = {}
+
+    def fake_submit(report):
+        captured["report"] = report
+        return "https://github.com/James-Delgado/quant/issues/99"
+
+    monkeypatch.setattr(feedback, "submit_issue_via_gh", fake_submit)
+    rc = cli.main([
+        "feedback", "submit",
+        "--title", "Sparkline glitch",
+        "--type", "bug",
+        "--severity", "high",
+        "--description", "It starts a day late.",
+    ])
+    assert rc == 0
+    assert "issues/99" in capsys.readouterr().out
+    report = captured["report"]
+    assert report.title == "Sparkline glitch"
+    assert report.type == "bug"
+    assert report.panel == "CLI"  # default context
+    assert report.timestamp  # auto-stamped (non-empty ISO string)
