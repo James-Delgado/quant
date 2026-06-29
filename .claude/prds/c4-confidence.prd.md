@@ -1,6 +1,12 @@
 # C4 — Confidence Calibration
 
-> **STATUS: DRAFT — pre-committed design/thresholds need human ratification before implementation (METHODOLOGY §1).**
+> **STATUS: RATIFIED (2026-06-29, James Delgado).** Thresholds are now **FROZEN**
+> (METHODOLOGY §1) — changing any requires a new PRD + ledger entry, not an edit.
+> **Amended at ratification (per review):** a **sharpness / scalar-discrimination
+> criterion (G1c)** was ADDED to the gate so an honestly-calibrated but *uninformative*
+> model (constant wide intervals → near-constant confidence scalar → sizing no-op)
+> **fails** — calibration alone is not sufficient. All inline "(DRAFT / pending
+> ratification)" qualifiers below are superseded by this ratification.
 >
 > **Project**: C (Live execution & deployment infrastructure) — sub-project C4.
 > **Roadmap**: [`docs/PROJECT_ROADMAP.md`](../../docs/PROJECT_ROADMAP.md) §4 Project C
@@ -216,6 +222,7 @@ which a change requires a PRD revision + a new ledger entry.**
 |---|---|---|---|---|---|
 | G1a | Intervals achieve honest OOS coverage | a calibrated method over the replay window (≥ 2 regimes), test fold only | \|empirical OOS coverage − nominal (1−α)\| at α = 0.10 | **≤ 0.05 (90% interval covers 85–95% OOS)** | per-bar OOS realizations (`BacktestResult.oos_returns`) |
 | G1b | Calibration beats the uncalibrated baseline | same window | calibrated method's coverage error vs the uncalibrated/naive-interval baseline's | **calibrated error < baseline error** (strictly) | uncalibrated baseline (point forecast ± in-sample residual σ) |
+| G1c | Intervals are **sharp** AND the confidence scalar **discriminates** (calibration alone is insufficient) | same window, test fold only | (i) mean calibrated interval width ÷ marginal/climatological interval width achieving the same coverage; (ii) cross-prediction dispersion (std) of the confidence scalar | **(i) ≤ `SHARPNESS_MAX_RATIO` (0.90 — ≥10% narrower than marginal) AND (ii) ≥ `CONFIDENCE_SCALAR_MIN_STD` (0.05)** | marginal-quantile-range baseline; the C3 sizing scalar |
 | G2 | Coverage holds per-regime, not just pooled | each regime over the window (`regime_metrics`) | max over regimes of \|coverage − (1−α)\| | **≤ 0.10 in every regime** (looser than pooled; noisier per-regime n) | `backtest/regimes.py` + `regime_metrics.py` |
 | G3a | Schema drift holds, both directions | the extended registry × code | (unresolved refs, schema/enum mismatches) | **(0, 0)** | `tests/test_strategy_registry.py` (§6) |
 | G3b | Inert gate path unchanged (back-compat) | the `always_pass` / scalar-`1.0` universe over the window | sizing regressions vs the C3/C6 placeholder | **exactly 0** | C3/C6 sizing-reconciliation (the `× 1.0` no-op) |
@@ -236,9 +243,21 @@ Notes on the metric choices:
 - **G2's per-regime band is intentionally looser than G1a's pooled band** (±0.10 vs ±0.05):
   per-regime sample sizes are smaller, so the same materiality stance tolerates more
   finite-sample noise. The looseness is pinned, not discovered (§1).
+- **G1c is the sharpness/discrimination gate — ADDED at ratification (per review).** A
+  model can be honestly *calibrated* (G1a) and still *useless*: if it emits a near-constant
+  wide interval every bar, coverage is nominal but the derived confidence scalar barely
+  varies, so confidence-aware sizing collapses to a no-op. G1c forbids that on two axes:
+  (i) **sharpness** — the calibrated intervals must be materially narrower (≤ 0.90×) than
+  the marginal/climatological interval that trivially achieves the same coverage, i.e. the
+  *conditional* uncertainty is informative; (ii) **discrimination** — the confidence scalar
+  must actually vary across predictions (std ≥ 0.05), else it cannot shape size. This is the
+  classic calibration-vs-sharpness distinction (Gneiting): calibration is necessary, not
+  sufficient. `SHARPNESS_MAX_RATIO = 0.90` and `CONFIDENCE_SCALAR_MIN_STD = 0.05` are
+  conservative floors — they reject "constant wide band", not borderline-useful methods;
+  they are now FROZEN with the rest of the gate.
 - **Materiality before significance (§10).** G3a/G3b/G3c are deterministic predicates and
   G1/G2 are deterministic OOS replays; there is no statistical-significance axis. The bars
-  are pure materiality thresholds pinned in code (pending ratification).
+  are pure materiality thresholds pinned in code.
 - **No new tolerance is invented for sizing reconciliation.** C4's scalar is `1.0` on the
   back-compat path (G3b), so the C3/C6 reconciliation it must preserve runs under the
   *existing* 1% drift-locked constant (C2-M3 / C6-M2); C4 adds none of its own.
@@ -322,15 +341,22 @@ calibration-drift detector**, all as the value of the *existing* C6 `confidence_
 The gate functions are the source of truth; this prose describes them (METHODOLOGY §2).
 C4's gate is the conjunction of:
 
-1. **OOS coverage accuracy (G1, C4-M2)** — over the shared replay window (≥ 2 regimes),
+1. **OOS coverage accuracy (G1a/G1b, C4-M2)** — over the shared replay window (≥ 2 regimes),
    test fold only, `abs(empirical_oos_coverage − (1 − α)) <= COVERAGE_TOLERANCE` at the
-   pinned `α = 0.10` (DRAFT default `COVERAGE_TOLERANCE = 0.05`), **and** the calibrated
+   pinned `α = 0.10` (`COVERAGE_TOLERANCE = 0.05`), **and** the calibrated
    method's coverage error is strictly less than the uncalibrated baseline's on the same
    window.
-2. **Per-regime coverage (G2, C4-M3)** — the max over regimes of
-   `abs(coverage − (1 − α))` is `<= PER_REGIME_COVERAGE_TOLERANCE` (DRAFT default `0.10`),
+2. **Sharpness + discrimination (G1c, C4-M2) — ADDED at ratification.** On the same window:
+   `mean(calibrated_interval_width) / mean(marginal_interval_width) <= SHARPNESS_MAX_RATIO`
+   (default `0.90`), **and** the confidence scalar's cross-prediction dispersion
+   `std(confidence_scalar) >= CONFIDENCE_SCALAR_MIN_STD` (default `0.05`). An honestly
+   calibrated but uninformative (constant wide-band) model fails here even if G1a/G1b pass —
+   calibration is necessary, not sufficient. Blocks merge: a non-discriminating scalar makes
+   confidence-aware sizing a no-op.
+3. **Per-regime coverage (G2, C4-M3)** — the max over regimes of
+   `abs(coverage − (1 − α))` is `<= PER_REGIME_COVERAGE_TOLERANCE` (default `0.10`),
    so calibration does not collapse in any single regime (§10).
-3. **Contract drift + back-compat + drift-detector correctness (G3, C4-M2/M3)** — the
+4. **Contract drift + back-compat + drift-detector correctness (G3, C4-M2/M3)** — the
    extended `ConfidenceGate` schema yields **0** unresolved refs / schema mismatches in the
    C6 bidirectional drift test (both directions, §6); the `always_pass` / scalar-`1.0`
    inert path produces **0** sizing regressions vs the C3/C6 placeholder
@@ -339,10 +365,11 @@ C4's gate is the conjunction of:
    window (`G3C_MISSED_TRIPS = 0`, `G3C_FALSE_ALARMS = 0`).
 
 `α = 0.10`, `COVERAGE_TOLERANCE`, `PER_REGIME_COVERAGE_TOLERANCE`,
+`SHARPNESS_MAX_RATIO` (0.90), `CONFIDENCE_SCALAR_MIN_STD` (0.05),
 `G3B_MAX_BACKCOMPAT_REGRESSIONS`, `G3C_MISSED_TRIPS`, `G3C_FALSE_ALARMS`, the
 confidence-once-at-sizing rule, the `confidence_scalar ∈ (0, 1]` default-`1.0` mapping
-contract, and the OOS-only coverage definition are all pinned constants (DRAFT, pending
-ratification). The sizing reconciliation C4 must preserve on the back-compat path reuses the
+contract, and the OOS-only coverage definition are all **FROZEN** constants (ratified
+2026-06-29). The sizing reconciliation C4 must preserve on the back-compat path reuses the
 *existing* C2-M3 / C6-M2 1% constant under its drift lock; C4 invents no new tolerance.
 
 ## Open Questions
@@ -446,13 +473,11 @@ ratification). The sizing reconciliation C4 must preserve on the back-compat pat
   the C4 milestone gates passing.
 
 ---
-*Status: DRAFT (2026-06-29) — pre-commitment for Project C4. **The thresholds in
-"Success Metrics" and "Pre-committed gate" (G1 OOS coverage ±0.05 at α = 0.10 + strictly
-beats uncalibrated, G2 per-regime coverage ±0.10, G3 0 drift / 0 back-compat regressions /
-0 missed-drift + 0 false-alarm trips) and the pinned design rules (conformal/quantile
-method shortlist, confidence-scalar ∈ (0,1] default-1.0 mapping, confidence-once-at-sizing
-seam consumed by C3, live calibration-drift window/threshold, the C4-computed /
-E3-E4-surfaced calibration-drift boundary) are DRAFT proposals that need human ratification
-before implementation (METHODOLOGY §1).** On ratification they freeze; changes thereafter
-require a PRD revision and a new ledger entry, not an in-flight override. Next: ratify the
-thresholds, then `/plan` turns C4-M1 into an implementation plan.*
+*Status: RATIFIED (2026-06-29, James Delgado) — pre-commitment for Project C4. The
+thresholds in "Success Metrics" and "Pre-committed gate" (G1a/G1b OOS coverage ±0.05 at
+α = 0.10 + strictly beats uncalibrated, **G1c sharpness ≤ 0.90× marginal + scalar std ≥ 0.05
+— ADDED at ratification per review**, G2 per-regime coverage ±0.10, G3 0 drift / 0
+back-compat regressions / 0 missed-drift + 0 false-alarm trips) and the pinned design rules
+are now FROZEN (METHODOLOGY §1) — changes require a new PRD + ledger entry, not an in-flight
+override. Milestone tasks C4-M1/M2/M3 created 2026-06-29 (C4-M2 depends on C3-M3). Next:
+`/plan` turns C4-M1 into an implementation plan.*

@@ -1,6 +1,14 @@
 # C3 — Position Sizing & Risk Management
 
-> **STATUS: DRAFT — pre-committed design/thresholds need human ratification before implementation (METHODOLOGY §1).**
+> **STATUS: RATIFIED (2026-06-29, James Delgado).** Thresholds are now **FROZEN**
+> (METHODOLOGY §1) — changing any requires a new PRD + ledger entry, not an edit. All inline
+> "(DRAFT / pending ratification)" qualifiers below are superseded by this ratification.
+> Two review critiques are carried as build-time notes on the milestone tasks (not gate
+> changes): (a) G2b's drawdown-stop test must validate against an **independent hand-computed
+> fixture**, not a sibling reference function (C3-M2); (b) the **≤1% reconciliation tolerance
+> (G3c) must be confirmed appropriate for `vol_target` sizing** — if integer-share rounding
+> on small accounts makes 1% infeasible, that is a finding requiring a new ledger entry, not
+> a silent loosening (C3-M1/M3).
 >
 > **Project**: C (Live execution & deployment infrastructure) — sub-project C3.
 > **Roadmap**: [`docs/PROJECT_ROADMAP.md`](../../docs/PROJECT_ROADMAP.md) §4 Project C
@@ -377,12 +385,13 @@ no new tolerance.
   gates passing.
 
 ---
-*Status: DRAFT (2026-06-29) — pre-commitment for Project C3. **The thresholds in
-"Success Metrics" and "Pre-committed gate" (G1 vol-target tolerance ±25% + strictly beats
-equal-weight, G2 0 cap breaches / 0 stop-trip errors, G3 0 drift / 0 back-compat
-regressions / ≤ 1% vol-target reconciliation) and the pinned design rules (vol-target
-sizing formula, confidence-once-at-sizing seam, trailing-drawdown stop, equal-weight
-capital budget unchanged from C6) are DRAFT proposals that need human ratification before
-implementation (METHODOLOGY §1).** On ratification they freeze; changes thereafter require
-a PRD revision and a new ledger entry, not an in-flight override. Next: ratify the
-thresholds, then `/plan` turns C3-M1 into an implementation plan.*
+*Status: RATIFIED (2026-06-29, James Delgado) — pre-commitment for Project C3. The
+thresholds in "Success Metrics" and "Pre-committed gate" (G1 vol-target tolerance ±25% +
+strictly beats equal-weight, G2 0 cap breaches / 0 stop-trip errors, G3 0 drift / 0
+back-compat regressions / ≤ 1% vol-target reconciliation) and the pinned design rules
+(vol-target sizing formula, confidence-once-at-sizing seam, trailing-drawdown stop,
+equal-weight capital budget unchanged from C6) are now FROZEN (METHODOLOGY §1) — changes
+require a new PRD + ledger entry, not an in-flight override. Two review critiques are carried
+as build-time notes on the milestone tasks (drawdown-stop test independence; ≤1% tolerance
+fit for vol-target). Milestone tasks C3-M1/M2/M3 created 2026-06-29. Next: `/plan` turns
+C3-M1 into an implementation plan.*
