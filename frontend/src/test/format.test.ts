@@ -5,6 +5,7 @@ import {
   signClass,
   signedFixed,
   signedPct,
+  utcStamp,
   yearSpan,
 } from "@/lib/format";
 
@@ -36,5 +37,18 @@ describe("format helpers", () => {
   it("yearSpan compacts an ISO date range", () => {
     expect(yearSpan("2004-06-20", "2026-03-30")).toBe("’04–’26");
     expect(yearSpan(null, "2026-03-30")).toBe("—");
+  });
+
+  it("utcStamp renders an ISO instant in UTC, regardless of viewer timezone", () => {
+    // 23:42 UTC stays 23:42 UTC even though the local zone may differ — the
+    // formatter uses UTC getters so the stamp is deterministic.
+    expect(utcStamp("2026-06-28T23:42:09Z")).toBe("2026-06-28 23:42 UTC");
+    // An explicit offset is normalised to UTC (08:30+02:00 -> 06:30 UTC).
+    expect(utcStamp("2026-01-05T08:30:00+02:00")).toBe("2026-01-05 06:30 UTC");
+  });
+
+  it("utcStamp returns an unparseable value verbatim (never guesses a time)", () => {
+    expect(utcStamp("not-a-date")).toBe("not-a-date");
+    expect(utcStamp("")).toBe("");
   });
 });

@@ -85,6 +85,8 @@ const PROVENANCE_KEYS = [
   "self_tests",
   "lineage",
 ];
+const MANIFEST_KEYS = ["generated_at", "sources"];
+const MANIFEST_SOURCE_KEYS = ["source", "modified_at"];
 
 describe("export contract (TS mirror vs real Python export)", () => {
   const strategies = load("strategies.json");
@@ -138,5 +140,13 @@ describe("export contract (TS mirror vs real Python export)", () => {
   const provenance = load("provenance/arima.json");
   it.skipIf(provenance === null)("provenance matches ProvenanceView", () => {
     expect(hasKeys(provenance, PROVENANCE_KEYS)).toBe(true);
+  });
+
+  const manifest = load("_manifest.json");
+  it.skipIf(manifest === null)("manifest matches ExportManifest", () => {
+    expect(hasKeys(manifest, MANIFEST_KEYS)).toBe(true);
+    for (const s of (manifest as { sources: unknown[] }).sources) {
+      expect(hasKeys(s, MANIFEST_SOURCE_KEYS)).toBe(true);
+    }
   });
 });

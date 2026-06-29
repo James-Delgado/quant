@@ -40,4 +40,18 @@ describe("dataClient", () => {
     mockFetchOnce(null, false, 404);
     await expect(dataClient.market()).rejects.toBeInstanceOf(DataFetchError);
   });
+
+  it("parses the freshness manifest shape", async () => {
+    mockFetchOnce({
+      generated_at: "2026-06-28T23:42:09Z",
+      sources: [
+        { source: "Trial Registry", modified_at: "2026-06-28T17:52:48Z" },
+        { source: "Strategy checkpoints", modified_at: null },
+      ],
+    });
+    const m = await dataClient.manifest();
+    expect(m.generated_at).toBe("2026-06-28T23:42:09Z");
+    expect(m.sources).toHaveLength(2);
+    expect(m.sources[1].modified_at).toBeNull();
+  });
 });
