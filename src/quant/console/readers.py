@@ -236,42 +236,61 @@ def _benchmark_equity_net(price: pd.Series) -> pd.Series | None:
     return equity
 
 
-def _benchmark_sparkline(price: pd.Series | None, returns: pd.Series) -> list[float]:
-    """Cost-net SPY buy-and-hold growth-of-1 aligned to one strategy's OOS dates.
+def _benchmark_growth(price: pd.Series | None, returns: pd.Series) -> pd.Series | None:
+    """Cost-net benchmark buy-and-hold growth-of-1 aligned to one strategy's OOS dates.
 
     Reindexes the benchmark price point-in-time (ffill) onto the strategy's exact
     return dates — same length, same order — then runs it through the trade
     simulator as an always-long position (:func:`_benchmark_equity_net`) so the
     curve is cost-NET, parity-comparable with the cost-net strategy equity it
-    overlays (E1-M3-BENCHMARK-COST-NAME). The resulting equity is normalised to
-    growth-of-1 and downsampled to ``SPARKLINE_POINTS``. Because it is sampled at
-    the identical positions as the strategy ``sparkline``, the two curves overlay
-    index-for-index on the Overview hero (both start at 1.0 — the pre-entry cash
-    mark — so the shared y-domain keeps them comparable).
+    overlays (E1-M3-BENCHMARK-COST-NAME), and normalises it to growth-of-1.
 
-    Returns ``[]`` when the benchmark is unavailable, or when it does not fully
-    cover the OOS span (a leading gap) — an honest "no overlay" rather than a
-    partial, misaligned line (METHODOLOGY §9).
+    This is the single source for *both* benchmark overlays — the Overview hero
+    sparkline (:func:`_benchmark_sparkline`, downsampled to ``SPARKLINE_POINTS``
+    floats) and the per-strategy detail equity line (``StrategyDetail.benchmark_equity``,
+    :func:`_to_timepoints` at ``SERIES_POINTS``). Keeping the alignment, cost model,
+    and degrade rules in one place stops the two overlays from drifting apart
+    (DRY; METHODOLOGY §4). The returned Series carries the (normalised) OOS dates as
+    its index and is the same length as ``returns``, so downsampling it at any point
+    count picks the *same* positions the strategy equity does — index-for-index
+    overlay, both starting at 1.0 (the pre-entry cash mark).
+
+    Returns ``None`` when the benchmark is unavailable, or when it does not fully
+    cover the OOS span (a leading gap) — the caller renders an honest "no overlay"
+    rather than a partial, misaligned line (METHODOLOGY §9).
     """
     if price is None or price.empty or returns.empty:
-        return []
+        return None
     idx = pd.DatetimeIndex(returns.index)
     if idx.tz is not None:
         idx = idx.tz_convert("UTC").tz_localize(None)
     dates = idx.normalize()
     aligned = _align_market(_by_date(price), dates)
     if aligned.isna().any():
-        return []
+        return None
     first = float(aligned.iloc[0])
     if first == 0.0 or not math.isfinite(first):
-        return []
+        return None
     equity = _benchmark_equity_net(aligned)
     if equity is None or equity.empty:
-        return []
+        return None
     base = float(equity.iloc[0])
     if base == 0.0 or not math.isfinite(base):
+        return None
+    return equity / base
+
+
+def _benchmark_sparkline(price: pd.Series | None, returns: pd.Series) -> list[float]:
+    """Cost-net SPY buy-and-hold growth-of-1 sparkline for the Overview hero.
+
+    Thin wrapper over :func:`_benchmark_growth` (the shared cost-net source)
+    downsampled to ``SPARKLINE_POINTS`` — sampled at the identical positions as the
+    strategy ``sparkline`` so the two curves overlay index-for-index. Returns ``[]``
+    when no honest overlay is available (METHODOLOGY §9).
+    """
+    growth = _benchmark_growth(price, returns)
+    if growth is None:
         return []
-    growth = equity / base
     return [float(v) for v in _downsample(growth, SPARKLINE_POINTS).to_numpy()]
 
 
@@ -397,6 +416,14 @@ def load_strategy(
     equity = _equity_curve(returns)
     drawdown = equity / equity.cummax() - 1.0
 
+    # SPY benchmark overlay for the detail equity chart, aligned to this
+    # strategy's OOS dates via the same cost-net source as the hero sparkline
+    # (E1-STRATEGY-DETAIL-BENCHMARK). Sampled at SERIES_POINTS — the same positions
+    # `equity` is, so the two overlay index-for-index. Empty on honest no-overlay (§9).
+    benchmark_price = sources.benchmark_price_fn() if sources.benchmark_price_fn else None
+    bench_growth = _benchmark_growth(benchmark_price, returns)
+    benchmark_equity = _to_timepoints(bench_growth) if bench_growth is not None else []
+
     from quant.ledger import load_ledger as load_ledger_entries
 
     try:
@@ -422,6 +449,7 @@ def load_strategy(
             "n_oos_bars": int(ck.metadata.get("n_oos_bars", len(returns)) or 0),
         },
         equity=_to_timepoints(equity),
+        benchmark_equity=benchmark_equity,
         drawdown=_to_timepoints(drawdown),
         rolling_sharpe=_to_timepoints(_rolling_sharpe(returns)),
         return_hist=_return_histogram(returns),

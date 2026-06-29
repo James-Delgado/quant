@@ -90,6 +90,14 @@ class StrategyDetail:
     metrics: StrategyMetrics
     figures: dict[str, int]  # n_symbols, n_folds, n_oos_bars
     equity: list[TimePoint]
+    # SPY buy-and-hold growth-of-1 over the SAME OOS span, sampled at the identical
+    # positions/dates as ``equity`` so the two curves overlay index-for-index on the
+    # detail equity chart (E1-STRATEGY-DETAIL-BENCHMARK). Cost-net via the same
+    # simulator the arms trade — the detail-resolution sibling of
+    # ``StrategyCard.benchmark_sparkline`` (both derive from ``_benchmark_growth``).
+    # Empty when the benchmark price is unavailable or does not fully cover the span
+    # — an honest "no overlay", never faked (§9).
+    benchmark_equity: list[TimePoint]
     drawdown: list[TimePoint]
     rolling_sharpe: list[TimePoint]
     return_hist: Histogram

@@ -495,6 +495,54 @@ def test_load_strategy_unknown_returns_none(sources):
     assert readers.load_strategy("does_not_exist", sources) is None
 
 
+# ── detail benchmark overlay (E1-STRATEGY-DETAIL-BENCHMARK) ───────────────────
+
+
+def test_load_strategy_detail_overlays_benchmark(sources):
+    src = dataclasses.replace(sources, benchmark_price_fn=_benchmark_prices)
+    detail = readers.load_strategy("arima", src)
+    assert detail is not None
+    # Same point count and dates as the detail equity → overlays index-for-index.
+    assert len(detail.benchmark_equity) == len(detail.equity)
+    assert [p.date for p in detail.benchmark_equity] == [p.date for p in detail.equity]
+    # Cost-net buy-and-hold growth-of-1 starts at 1.0 and rises (positive drift).
+    assert detail.benchmark_equity[0].value == pytest.approx(1.0, abs=1e-6)
+    assert detail.benchmark_equity[-1].value > detail.benchmark_equity[0].value
+    assert all(p.value > 0 for p in detail.benchmark_equity)
+
+
+def test_load_strategy_detail_benchmark_empty_without_price(sources):
+    # The default fixture wires no benchmark_price_fn → honest "no overlay" (§9).
+    detail = readers.load_strategy("arima", sources)
+    assert detail is not None and detail.benchmark_equity == []
+
+
+def test_load_strategy_detail_benchmark_incomplete_coverage_degrades(sources):
+    # A benchmark that begins AFTER the OOS start leaves a leading gap → []
+    # (no partial / misaligned overlay; METHODOLOGY §9).
+    late = _benchmark_prices(start="2015-01-01", periods=1000)
+    src = dataclasses.replace(sources, benchmark_price_fn=lambda: late)
+    detail = readers.load_strategy("arima", src)
+    assert detail is not None and detail.benchmark_equity == []
+
+
+def test_load_strategy_detail_benchmark_is_cost_net(sources):
+    # The detail overlay reuses the same cost-net helper as the hero sparkline,
+    # so its terminal growth sits below the gross buy-and-hold (costs shave it)
+    # — parity-comparable with the cost-net strategy equity it overlays.
+    src = dataclasses.replace(sources, benchmark_price_fn=_benchmark_prices)
+    detail = readers.load_strategy("arima", src)
+    assert detail is not None and detail.benchmark_equity
+    returns = read_oos_returns(src.strategy_roots[0] / "arima" / "oos_returns.parquet")
+    idx = pd.DatetimeIndex(returns.index)
+    if idx.tz is not None:
+        idx = idx.tz_convert("UTC").tz_localize(None)
+    aligned = readers._align_market(readers._by_date(_benchmark_prices()), idx.normalize())
+    gross_terminal = float(aligned.iloc[-1]) / float(aligned.iloc[0])
+    assert detail.benchmark_equity[-1].value < gross_terminal  # costs shave the curve
+    assert detail.benchmark_equity[-1].value > gross_terminal * 0.95  # small drag
+
+
 def test_calmar_none_when_no_drawdown():
     flat = pd.Series([0.01, 0.01, 0.01])  # monotonic up → max_drawdown == 0
     metrics = readers._strategy_metrics(flat)

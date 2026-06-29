@@ -59,6 +59,9 @@ export interface StrategyDetail {
   metrics: StrategyMetrics;
   figures: Record<string, number>;
   equity: TimePoint[];
+  /** SPY buy-and-hold growth-of-1 over the same OOS span, aligned index-for-index
+   *  to `equity`; empty when no overlay is available. (E1-STRATEGY-DETAIL-BENCHMARK) */
+  benchmark_equity: TimePoint[];
   drawdown: TimePoint[];
   rolling_sharpe: TimePoint[];
   return_hist: Histogram;

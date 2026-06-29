@@ -447,6 +447,7 @@ tbody tr.clk:hover { background: var(--slate-2); }
 .band-stress { fill: rgba(242, 113, 90, 0.12); }
 .ln-port { fill: none; stroke: var(--series); stroke-width: 1.75; }
 .ln-bench { fill: none; stroke: var(--steel); stroke-width: 1.25; stroke-dasharray: 3 3; }
+.ln-spy { fill: none; stroke: var(--warnc); stroke-width: 1.25; stroke-dasharray: 5 3; }
 .ln-gain { fill: none; stroke: var(--gain); stroke-width: 1.75; }
 .dd-area { fill: rgba(242, 113, 90, 0.18); stroke: var(--loss); stroke-width: 1; }
 .spark { fill: none; stroke-width: 1.4; }
