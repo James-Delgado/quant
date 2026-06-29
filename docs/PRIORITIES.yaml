@@ -3655,8 +3655,9 @@ tasks:
     title: "E1-M3-OVERVIEW-BENCHMARK follow-up: cost-consistent benchmark + carry the benchmark name in the export"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T06:26:00Z
+    completed_at: 2026-06-29
     depends_on: [E1-M3-OVERVIEW-BENCHMARK]
     blocks: []
     deliverable:

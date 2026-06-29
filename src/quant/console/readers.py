@@ -36,6 +36,10 @@ SERIES_POINTS = 300  # downsample target for detail-chart series
 ROLLING_SHARPE_WINDOW = 63  # bars (≈ one quarter)
 RETURN_HIST_BINS = 41
 TRADING_DAYS = 252
+# Non-binding bar volume for the cost-net benchmark sim: an index benchmark is
+# assumed infinitely deep, so the simulator's liquidity cap never trims the
+# single buy-and-hold position (E1-M3-BENCHMARK-COST-NAME).
+_BENCHMARK_VOLUME = 1e15
 
 # Friendly strategy names keyed by arm id; falls back to a titleised id.
 _STRATEGY_NAMES = {
@@ -201,15 +205,49 @@ def _description_for(meta: dict) -> str:
 # ── 1. Strategies ────────────────────────────────────────────────────────────
 
 
+def _benchmark_equity_net(price: pd.Series) -> pd.Series | None:
+    """Cost-net buy-and-hold equity curve for an aligned benchmark price series.
+
+    Runs the *same* Phase-4A trade simulator the arms trade through
+    (:func:`quant.backtest.simulator.simulate`) over an always-long signal, so the
+    single buy-and-hold position pays one round trip of the same commission +
+    slippage cost model — the simulator defaults equal
+    ``scripts/run_phase4a_arms.SIM_KWARGS``. Reusing the simulator (rather than
+    re-deriving the cost arithmetic) keeps the benchmark cost model from drifting
+    away from the strategies' (METHODOLOGY §4). Volume is set non-binding so the
+    liquidity cap never trims the position — an index benchmark is assumed
+    infinitely deep. Degrades to ``None`` on any simulator error or empty input
+    (honest "no overlay", METHODOLOGY §9).
+    """
+    from quant.backtest.simulator import simulate
+
+    opens = price.to_numpy(dtype=float)
+    if opens.size == 0:
+        return None
+    frame = pd.DataFrame(
+        {"open": opens, "volume": np.full(opens.shape, _BENCHMARK_VOLUME)},
+        index=price.index,
+    )
+    signals = pd.Series(1, index=price.index)
+    try:
+        equity, _ = simulate(frame, signals)
+    except Exception:
+        return None
+    return equity
+
+
 def _benchmark_sparkline(price: pd.Series | None, returns: pd.Series) -> list[float]:
-    """SPY buy-and-hold growth-of-1 aligned to one strategy's OOS dates.
+    """Cost-net SPY buy-and-hold growth-of-1 aligned to one strategy's OOS dates.
 
     Reindexes the benchmark price point-in-time (ffill) onto the strategy's exact
-    return dates — same length, same order — then normalises to growth-of-1 and
-    downsamples to ``SPARKLINE_POINTS``. Because it is sampled at the identical
-    positions as the strategy ``sparkline``, the two curves overlay
-    index-for-index on the Overview hero (both grow from 1.0, so the shared
-    y-domain keeps them comparable).
+    return dates — same length, same order — then runs it through the trade
+    simulator as an always-long position (:func:`_benchmark_equity_net`) so the
+    curve is cost-NET, parity-comparable with the cost-net strategy equity it
+    overlays (E1-M3-BENCHMARK-COST-NAME). The resulting equity is normalised to
+    growth-of-1 and downsampled to ``SPARKLINE_POINTS``. Because it is sampled at
+    the identical positions as the strategy ``sparkline``, the two curves overlay
+    index-for-index on the Overview hero (both start at 1.0 — the pre-entry cash
+    mark — so the shared y-domain keeps them comparable).
 
     Returns ``[]`` when the benchmark is unavailable, or when it does not fully
     cover the OOS span (a leading gap) — an honest "no overlay" rather than a
@@ -227,7 +265,13 @@ def _benchmark_sparkline(price: pd.Series | None, returns: pd.Series) -> list[fl
     first = float(aligned.iloc[0])
     if first == 0.0 or not math.isfinite(first):
         return []
-    growth = aligned / first
+    equity = _benchmark_equity_net(aligned)
+    if equity is None or equity.empty:
+        return []
+    base = float(equity.iloc[0])
+    if base == 0.0 or not math.isfinite(base):
+        return []
+    growth = equity / base
     return [float(v) for v in _downsample(growth, SPARKLINE_POINTS).to_numpy()]
 
 
@@ -255,6 +299,7 @@ def load_strategies(sources: ConsoleSources | None = None) -> list[vm.StrategyCa
         spark = [float(v) for v in _downsample(equity, SPARKLINE_POINTS).to_numpy()]
         config_hash = ck.metadata.get("config_hash")
         verdict = _verdict_by_config_hash(ledger_entries, config_hash)
+        bench_spark = _benchmark_sparkline(benchmark_price, returns)
         cards.append(
             vm.StrategyCard(
                 id=ck.id,
@@ -266,7 +311,10 @@ def load_strategies(sources: ConsoleSources | None = None) -> list[vm.StrategyCa
                 status=verdict,
                 driver=_driver_text(metrics, verdict),
                 sparkline=spark,
-                benchmark_sparkline=_benchmark_sparkline(benchmark_price, returns),
+                benchmark_sparkline=bench_spark,
+                # Name only the series that was actually drawn (§9): None when no
+                # overlay, else the configured benchmark identity.
+                benchmark_name=sources.benchmark_name if bench_spark else None,
                 n_folds=int(ck.metadata.get("n_folds", 0) or 0),
                 oos_start=_iso_date(ck.metadata.get("oos_start")),
                 oos_end=_iso_date(ck.metadata.get("oos_end")),

@@ -374,6 +374,73 @@ def test_benchmark_sparkline_edge_cases():
     assert readers._benchmark_sparkline(zeros, rets) == []
 
 
+# ── benchmark cost-consistency (E1-M3-BENCHMARK-COST-NAME refinement a) ───────
+
+
+def test_benchmark_equity_net_applies_cost_drag():
+    # On a flat benchmark price the GROSS buy-and-hold is exactly 1.0 every bar;
+    # the cost-net curve (same simulator the arms trade through — one round trip
+    # of commission + slippage) must dip below par and never exceed it.
+    price = pd.Series(100.0, index=pd.date_range("2020-01-01", periods=50, freq="B"))
+    equity = readers._benchmark_equity_net(price)
+    assert equity is not None and not equity.empty
+    growth = equity / float(equity.iloc[0])
+    assert growth.iloc[0] == pytest.approx(1.0)  # pre-entry cash mark
+    assert growth.iloc[-1] < 1.0  # entry+exit slippage + commission drag a flat bench
+    assert (growth <= 1.0 + 1e-9).all()  # no bar exceeds gross (flat) par
+
+
+def test_benchmark_sparkline_is_cost_net_below_gross(sources):
+    # The exported sparkline must be the cost-NET curve: strictly below the gross
+    # growth-of-1 it used to emit, so it is cost-consistent with the strategy
+    # equity it overlays (both net of the same sim cost model).
+    src = dataclasses.replace(sources, benchmark_price_fn=_benchmark_prices)
+    arima = next(c for c in readers.load_strategies(src) if c.id == "arima")
+    assert arima.benchmark_sparkline
+    # Reconstruct the gross terminal growth from the same aligned price.
+    returns = read_oos_returns(src.strategy_roots[0] / "arima" / "oos_returns.parquet")
+    idx = pd.DatetimeIndex(returns.index)
+    if idx.tz is not None:
+        idx = idx.tz_convert("UTC").tz_localize(None)
+    aligned = readers._align_market(readers._by_date(_benchmark_prices()), idx.normalize())
+    gross_terminal = float(aligned.iloc[-1]) / float(aligned.iloc[0])
+    assert arima.benchmark_sparkline[-1] < gross_terminal  # costs shave the curve
+    # The drag is small (one round trip on a multi-year hold), not a blunder.
+    assert arima.benchmark_sparkline[-1] > gross_terminal * 0.95
+
+
+def test_benchmark_equity_net_empty_price_degrades():
+    assert readers._benchmark_equity_net(pd.Series(dtype=float)) is None
+
+
+# ── benchmark name in the export (E1-M3-BENCHMARK-COST-NAME refinement b) ─────
+
+
+def test_load_strategies_carries_benchmark_name_when_overlaid(sources):
+    src = dataclasses.replace(sources, benchmark_price_fn=_benchmark_prices)
+    cards = readers.load_strategies(src)
+    overlaid = [c for c in cards if c.benchmark_sparkline]
+    assert overlaid and all(c.benchmark_name == "SPY" for c in overlaid)
+
+
+def test_load_strategies_benchmark_name_none_without_overlay(sources):
+    # No benchmark_price_fn → no overlay → no name (honest, METHODOLOGY §9):
+    # never name a series that was not drawn.
+    cards = readers.load_strategies(sources)
+    assert cards and all(c.benchmark_name is None for c in cards)
+
+
+def test_load_strategies_benchmark_name_reflects_configured_symbol(sources):
+    # The export names whatever the service layer computed, not a frontend
+    # constant — so re-pinning the benchmark symbol can never silently go stale.
+    src = dataclasses.replace(
+        sources, benchmark_price_fn=_benchmark_prices, benchmark_name="VOO"
+    )
+    cards = readers.load_strategies(src)
+    overlaid = [c for c in cards if c.benchmark_sparkline]
+    assert overlaid and all(c.benchmark_name == "VOO" for c in overlaid)
+
+
 # ── load_portfolio (C6 registry) ─────────────────────────────────────────────
 
 
