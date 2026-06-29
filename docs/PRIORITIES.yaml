@@ -3207,7 +3207,8 @@ tasks:
     title: "Harden the registry G1 gate: resolve universe symbols + validate ISO timestamps"
     project: C
     sub_project: C6
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T05:13:56Z
     depends_on: [C6-M1]
     blocks: []
     deliverable:
