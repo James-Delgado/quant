@@ -499,3 +499,51 @@ class TestAttributionStatusDrift:
         assert not offenders, (
             f"features outside the B2 attribution surface must be 'none': {offenders}"
         )
+
+    def test_both_status_set_equals_m6_25col_input_set(self):
+        """The 25-vs-27 reconciliation, pinned in code (METHODOLOGY §6).
+
+        docs/concepts/oos-attribution.md §"The attributed set" and
+        docs/PHASE_4A_REPORT.md §"The attributed set" both assert the identity
+        ``27 = 25 + 2``: the 25 catalog rows with ``attribution_status == "both"``
+        are *precisely* the M6 model-*input* set, and the 2 ``ablation_only`` rows
+        are the catalog-only cross-sectional ranks. Only prose + the runner config
+        carried that 25-col list, so the catalog's own 27-row drift test could not
+        see the 25-vs-27 seam. The single source of truth for the M6 list is the
+        frozen runner constant ``FINAL_FEATURE_COLUMNS`` (loaded via ``_surface``).
+
+        Set equality (both directions) is strictly tighter than the
+        ``test_g1_features_have_both_signal_status`` subset check: it also catches a
+        25-col feature silently flipped to ``"agreed"`` and any stray 26th ``"both"``.
+        """
+        catalog = load_catalog()
+        g1, _ = self._surface()
+        assert len(g1) == 25, (
+            f"canonical M6 model-input set must be 25 columns, got {len(g1)}: "
+            f"{sorted(g1)}"
+        )
+        both = {
+            name for name, r in catalog.items() if r.attribution_status == "both"
+        }
+        missing = sorted(g1 - both)  # M6 inputs not marked 'both'
+        extra = sorted(both - g1)    # 'both' rows that are not M6 inputs
+        assert both == g1, (
+            "attribution_status=='both' set must equal the M6 25-column input set: "
+            f"missing={missing}, extra={extra}"
+        )
+
+    def test_two_noninput_xs_ranks_are_ablation_only(self):
+        """The 2-column catalog/model gap is exactly the two non-input ranks.
+
+        ``xs_rank_ret_21d`` / ``xs_rank_ret_252d`` are registered in the catalog and
+        ran an add-one ablation, but are not M6 model inputs, so no OOS permutation
+        score is defined → ``ablation_only`` (oos-attribution.md §"The attributed set").
+        They are the entirety of the 27 − 25 = 2 gap, so they must NOT be ``"both"``.
+        """
+        catalog = load_catalog()
+        for name in ("xs_rank_ret_21d", "xs_rank_ret_252d"):
+            assert name in catalog, f"expected {name} registered in the catalog"
+            assert catalog[name].attribution_status == "ablation_only", (
+                f"{name} is a catalog-only rank (not an M6 input) and must be "
+                f"'ablation_only', got {catalog[name].attribution_status!r}"
+            )

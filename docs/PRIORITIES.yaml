@@ -3430,8 +3430,9 @@ tasks:
     title: "Drift test: attribution_status==both set == the M6 25-column model input set"
     project: B
     sub_project: B2
-    status: in_progress
+    status: done
     started_at: 2026-06-29T06:14:00Z
+    completed_at: 2026-06-29
     depends_on: [B2-M3, B2-DOC-COLCOUNT]
     blocks: [B-CLOSE]
     deliverable:
