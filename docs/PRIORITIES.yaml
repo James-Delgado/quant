@@ -371,7 +371,7 @@ tasks:
     title: "A-CLOSE: Project A closeout — E2E methodology-substrate notebook + closeout report"
     project: A
     sub_project: closeout
-    status: blocked
+    status: ready
     depends_on: [A-LEDGER, A-PRIORITIES-TEST, A-PRIORITIES-TEST-TS, A-LEDGER-RUNNERS, A-DSR-GATE, A-DSR-LEDGER-SHARPE, A-DSR-DOC-SYNC, A-DSR-WIRE-EMPIRICAL-STD, A-DSR-METH-SCHEMA-SYNC]
     blocks: []
     deliverable:
@@ -3360,8 +3360,9 @@ tasks:
     title: "Sync METHODOLOGY reference schema: add the optional `sharpe` field to the ledger entry example"
     project: A
     sub_project: methodology-upgrade
-    status: in_progress
+    status: done
     started_at: 2026-06-29T05:38:26Z
+    completed_at: 2026-06-29
     depends_on: [A-DSR-LEDGER-SHARPE]
     blocks: [A-CLOSE]
     deliverable:
