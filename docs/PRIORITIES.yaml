@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-29  # E1-LEDGER-ARTIFACTS-PATH-JOIN done
+last_updated: 2026-06-29  # E1-M2-TOPBAR-FRESHNESS done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1896,7 +1896,7 @@ tasks:
     project: E
     sub_project: E1
     status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE, E1-CONDITIONS-TREND-AXIS, E1-M2-TOPBAR-FRESHNESS, E1-CONDITIONS-TREND-COPY]
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE, E1-CONDITIONS-TREND-AXIS, E1-M2-TOPBAR-FRESHNESS, E1-M2-TOPBAR-FRESHNESS-DISCLOSURE, E1-CONDITIONS-TREND-COPY]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -3031,8 +3031,9 @@ tasks:
     title: "Wire the M2 Topbar to consume export/_manifest.json (generated_at + per-source mtimes)"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T22:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1-EXPORT-FRESHNESS-STAMP]
     blocks: [E1-CLOSE]
     deliverable:
@@ -3056,6 +3057,40 @@ tasks:
       honestly). Copy-export.mjs already globs *.json so the manifest is copied
       into the SPA public dir with no script change. Added to E1-CLOSE.depends_on
       per AGENT_OPERATION Step 7 corollary (E1-scoped follow-up). Non-gating polish.
+
+  - id: E1-M2-TOPBAR-FRESHNESS-DISCLOSURE
+    rank: 127
+    title: "E1-M2-TOPBAR-FRESHNESS follow-up: accessible per-source freshness disclosure (+ optional staleness highlighting)"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M2-TOPBAR-FRESHNESS]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: frontend/src/components/layout/Topbar.tsx
+      methodology: docs/METHODOLOGY.md
+      decisions: docs/project-e/DECISIONS.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M2-TOPBAR-FRESHNESS post-task review (commit wiring the
+      Topbar to _manifest.json). Two gaps in the freshness disclosure:
+        (a) A11Y. The per-source mtimes ride on a native `title` attribute on the
+            .meta span — keyboard and screen-reader users cannot reliably reach it
+            (WCAG 1.3.1 / 4.1.2). The VISIBLE stamp (manifest.generated_at) IS
+            accessible plain text; only the supplementary per-source breakdown is
+            title-bound. Surface it through a focusable disclosure (reuse the
+            InfoTip ⓘ popover pattern, or an aria-describedby region) so assistive
+            tech reaches each "<source> updated <mtime|unknown>" line.
+        (b) STALENESS HIGHLIGHTING (optional). A source whose modified_at lags
+            generated_at (e.g. Strategy checkpoints 2026-06-13 vs export 2026-06-28)
+            is VISIBLE in the tooltip but not visually FLAGGED. A badge/colour on
+            sources older than a pinned threshold would make a stale upstream
+            artifact pop. Keep the honesty rules: "unknown" for null, no guessed
+            time. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary
+            (a11y is a genuine E1 quality bar — E1-M5 a11y polish — so it gates
+            closeout, unlike the optional E1-EXPORT-FANOUT-CHECK gold-plating).
 
   - id: E1-EXPORT-FANOUT-CHECK
     rank: 117

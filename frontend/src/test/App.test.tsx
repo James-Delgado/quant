@@ -9,14 +9,14 @@ const FUTURE = {
   v7_relativeSplatPath: true,
 } as const;
 
-// AppShell does one real fetch (data_status). Stub it so routing tests are
-// hermetic and don't depend on synced files.
+// AppShell does one real fetch (the freshness manifest). Stub it so routing
+// tests are hermetic and don't depend on synced files.
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => ({
       ok: true,
-      json: async () => ({ asof: "2026-06-28", feeds: [] }),
+      json: async () => ({ generated_at: "2026-06-28T23:42:09Z", sources: [] }),
     })),
   );
 });

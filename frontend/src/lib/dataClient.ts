@@ -10,6 +10,7 @@ import type {
   CatalogView,
   ConditionsView,
   DataStatusView,
+  ExportManifest,
   LedgerView,
   MarketSnapshot,
   PortfolioView,
@@ -56,6 +57,10 @@ export const dataClient = {
     getJSON<DataStatusView>("data_status.json", signal),
   market: (signal?: AbortSignal) =>
     getJSON<MarketSnapshot>("market.json", signal),
+  // Freshness side artifact (E1-M1-EXPORT-FRESHNESS-STAMP). Leading underscore;
+  // copy-export.mjs copies it into public/data alongside the payloads.
+  manifest: (signal?: AbortSignal) =>
+    getJSON<ExportManifest>("_manifest.json", signal),
 };
 
 export type DataClient = typeof dataClient;

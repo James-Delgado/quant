@@ -60,3 +60,19 @@ export function yearSpan(start: string | null, end: string | null): string {
   const b = end.slice(2, 4);
   return `’${a}–’${b}`;
 }
+
+/**
+ * Render an ISO-8601 UTC instant as a compact, timezone-independent stamp:
+ * "2026-06-28T23:42:09Z" -> "2026-06-28 23:42 UTC". Formatted from UTC getters
+ * so it is identical regardless of the viewer's locale/timezone. An unparseable
+ * value is returned verbatim rather than guessed (honesty: never fabricate a
+ * time — mirrors the python layer degrading to null/"unknown").
+ */
+export function utcStamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const p = (n: number): string => String(n).padStart(2, "0");
+  const date = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+  const time = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+  return `${date} ${time} UTC`;
+}

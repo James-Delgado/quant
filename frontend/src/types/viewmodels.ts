@@ -227,3 +227,19 @@ export interface MarketSnapshot {
   fed_funds: number | null;
   notes: string[];
 }
+
+// ── Export freshness manifest (_manifest.json) ───────────────────────────────
+// TS mirror of the Python `vm.ExportManifest` / `vm.ManifestSource` dataclasses.
+// A side artifact written OUTSIDE the byte-idempotent payload set, so re-running
+// the export over unchanged artifacts moves only `generated_at`. `source` is a
+// friendly label, never a filesystem path (DECISIONS #5/#7); `modified_at` is
+// `null` when the upstream artifact is absent (render "unknown", never a guess).
+
+export interface ManifestSource {
+  source: string;
+  modified_at: string | null;
+}
+export interface ExportManifest {
+  generated_at: string;
+  sources: ManifestSource[];
+}
