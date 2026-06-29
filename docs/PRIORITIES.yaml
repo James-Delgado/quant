@@ -2740,8 +2740,9 @@ tasks:
     title: "E1-M6 follow-up (optional): direct gh/REST submission + promote label-guard"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T00:45:22Z
+    completed_at: 2026-06-28
     depends_on: [E1-M6]
     blocks: []
     deliverable:
@@ -2761,6 +2762,28 @@ tasks:
       can't be promoted by mistake. CONDITIONAL / non-MVP — intentionally NOT in
       E1-CLOSE.depends_on so an unbuilt optional enhancement cannot deadlock
       closeout (mirrors B2-FULLPANEL-AGREEMENT). Low priority.
+
+      DELIVERED (commit on branch worktree-e1-m1-console). Both enhancements shipped
+      in src/quant/console/feedback.py + __main__.py:
+        (a) DIRECT SUBMISSION: submit_issue_via_gh(report) files the issue via
+            `gh issue create --label feedback` (one call vs. the two-click pre-filled
+            issues/new page), wired as `console feedback submit --title --type
+            --severity --description [--panel/--build-sha/--app-version]`. Same
+            issue_title/issue_body construction as the URL path (E2 reuses it
+            server-side). Unlike the URL path (GitHub silently drops an unknown
+            labels= param), `gh issue create --label` fails loudly if the label is
+            missing, so success guarantees a labeled issue. Browser SPA deliberately
+            unchanged — it can't hold a token / shell out to gh (DECISIONS #5/#7);
+            direct submission is a local/CLI-only capability.
+        (b) LABEL-GUARD: promote() now refuses (ValueError) to promote an issue that
+            does not carry the `feedback` label (new require_label=True default; CLI
+            `--allow-unlabeled` overrides), so an arbitrary issue number can't be
+            promoted by mistake (DECISIONS #11). New issue_labels()/has_feedback_label()
+            helpers tolerate both the gh `[{"name":...}]` and plain-string label shapes.
+        Verified: 84 test_console.py (8 new) + 27 test_priorities.py + full suite
+        981 passed / 4 skipped; ruff clean; feedback.py 99% / __main__.py 93% cov.
+        Follow-up E1-M6-REST-SUBMIT appended (gh-free REST variant for E2's server
+        path); not in E1-CLOSE.depends_on (optional, E2-conditional — mirrors parent).
 
   - id: E1-CONDITIONS-TREND-AXIS
     rank: 112
@@ -3125,3 +3148,30 @@ tasks:
       equity chart. NON-GATING / NOT in E1-CLOSE.depends_on (mirrors the established
       non-gating follow-up precedent): the task's pinned scope was the Overview hero,
       which is delivered; the detail overlay is an additive enhancement.
+
+  - id: E1-M6-REST-SUBMIT
+    rank: 120
+    title: "E1-M6-GH-SUBMIT follow-up (optional): gh-free REST submission for the E2 server path"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M6-GH-SUBMIT]
+    blocks: []
+    deliverable:
+      file: src/quant/console/feedback.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M6-GH-SUBMIT post-task review (commit of
+      src/quant/console/feedback.py submit_issue_via_gh). The direct-submission path
+      shells out to the `gh` CLI, which the eventual E2 server context may not have
+      installed/authenticated. Add a REST variant (e.g. submit_issue_via_rest(report,
+      *, repo, token)) that POSTs to /repos/{repo}/issues with a bearer token and the
+      `feedback` label — the server-native form E2's `POST /feedback` reuses. Mirror
+      the existing fail-loud RuntimeError discipline and the shared issue_title/
+      issue_body construction (no second body format). NON-GATING / E2-conditional —
+      NOT in E1-CLOSE.depends_on (mirrors the parent E1-M6-GH-SUBMIT exclusion: an
+      optional, downstream-conditional enhancement must not deadlock closeout). Low
+      priority.
