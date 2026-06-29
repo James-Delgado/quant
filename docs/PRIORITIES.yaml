@@ -1530,7 +1530,8 @@ tasks:
     title: "Close the code-vs-doc §6 gap: machine-readable SLA table or doc-parse drift test for the freshness monitor"
     project: C
     sub_project: C1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T05:47:51Z
     depends_on: [C1-M3]
     blocks: []
     deliverable:
