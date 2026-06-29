@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-29  # E1-CONDITIONS-TREND-COPY done; E1-CLOSE still gated on E1-M2-TOPBAR-FRESHNESS-DISCLOSURE (81)
+last_updated: 2026-06-29  # E1-M2-TOPBAR-FRESHNESS-DISCLOSURE done; all E1-CLOSE deps done -> E1-CLOSE (52) now ready
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1895,7 +1895,7 @@ tasks:
     title: "E1-CLOSE: E1 closeout — E2E build+render from fresh real artifacts + closeout report"
     project: E
     sub_project: E1
-    status: blocked
+    status: ready
     depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE, E1-CONDITIONS-TREND-AXIS, E1-M2-TOPBAR-FRESHNESS, E1-M2-TOPBAR-FRESHNESS-DISCLOSURE, E1-CONDITIONS-TREND-COPY]
     blocks: [E2-M1]
     deliverable:
@@ -3070,8 +3070,9 @@ tasks:
     title: "E1-M2-TOPBAR-FRESHNESS follow-up: accessible per-source freshness disclosure (+ optional staleness highlighting)"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M2-TOPBAR-FRESHNESS]
     blocks: [E1-CLOSE]
     deliverable:
@@ -3398,3 +3399,42 @@ tasks:
       superseded feature_panel_*.parquet. Best-effort + guarded, same honest-degrade
       discipline as the cache itself. NON-GATING / NOT in E1-CLOSE.depends_on — disk
       hygiene, not a panel-correctness concern. Low priority.
+
+  - id: E1-TOPBAR-MOBILE-REFLOW
+    rank: 127
+    title: "E1-M2-TOPBAR-FRESHNESS-DISCLOSURE follow-up (optional): reflow the topbar right cluster so it stays on-screen at 320px"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M2-TOPBAR-FRESHNESS-DISCLOSURE]
+    blocks: []
+    deliverable:
+      app: frontend/
+    references:
+      primary: frontend/src/components/layout/Topbar.tsx
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M2-TOPBAR-FRESHNESS-DISCLOSURE post-task review (commit
+      adding FreshnessDisclosure). At the 320px target breakpoint the topbar's right
+      cluster — the "live execution · not connected" pill, the "data exported …"
+      stamp, and the new freshness ⓘ — overflows horizontally (header content ≈463px
+      > 320) and is clipped off-screen, so the ⓘ trigger is unreachable there. This
+      is a PRE-EXISTING topbar responsive gap: the export stamp already overflowed at
+      320 before this task, there is NO page-level horizontal scroll (bodyScrollWidth
+      stays 320 — the header clips internally), and the disclosure is fully reachable
+      and fits the viewport at 375 / 768 / 1024 / 1440 (browser-verified). Fix:
+      reflow the right cluster on narrow widths (e.g. shorten/icon-ize the live-status
+      pill below ~480px, wrap the meta onto a second row, or move the freshness ⓘ into
+      the mobile nav) so the stamp + disclosure stay on-screen at 320.
+
+      DELIBERATELY NOT added to E1-CLOSE.depends_on (departure from the
+      AGENT_OPERATION Step 7 corollary, declared per METHODOLOGY §9, mirroring the
+      E1-EXPORT-FANOUT-CHECK precedent): the panels render honestly from real
+      artifacts at all breakpoints; this is a chrome responsive edge at the narrowest
+      target that pre-dates this task and affects the stamp too, and the honesty rules
+      (DECISIONS #5/#7 — no file paths, "unknown" for null, no faked times) are all
+      honored. Reworking the topbar layout is E1-M2 scope, not this a11y-disclosure
+      task (AGENT_OPERATION scope-creep guidance: surface, don't expand). Re-add to
+      E1-CLOSE.depends_on if a future decision makes 320px topbar parity a closeout
+      requirement.

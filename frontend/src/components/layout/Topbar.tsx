@@ -1,5 +1,6 @@
 import { utcStamp } from "@/lib/format";
 import type { ManifestSource } from "@/types/viewmodels";
+import { FreshnessDisclosure } from "./FreshnessDisclosure";
 
 interface TopbarProps {
   title: string;
@@ -20,8 +21,10 @@ function sourceLine(s: ManifestSource): string {
  * Top bar: menu toggle (mobile only), current panel title, an honest
  * "live execution · not connected" status (DECISIONS #7 — no faked live data),
  * and the export freshness stamp sourced from the manifest (E1-M2-TOPBAR-
- * FRESHNESS). The stamp shows the export-run time; hovering it reveals each
- * upstream artifact's mtime so a stale source is visible.
+ * FRESHNESS). The stamp shows the export-run time; the adjacent ⓘ disclosure
+ * (E1-M2-TOPBAR-FRESHNESS-DISCLOSURE) exposes each upstream artifact's mtime to
+ * keyboard/screen-reader users and flags any source lagging the export run. The
+ * native `title` is kept as a sighted-mouse-hover convenience.
  */
 export function Topbar({ title, generatedAt, sources, onMenu }: TopbarProps) {
   const stamp = generatedAt ? utcStamp(generatedAt) : "";
@@ -47,6 +50,9 @@ export function Topbar({ title, generatedAt, sources, onMenu }: TopbarProps) {
       <span className="meta" title={stamp ? tooltip : undefined}>
         {stamp ? `data exported ${stamp}` : ""}
       </span>
+      {stamp && sources?.length ? (
+        <FreshnessDisclosure generatedAt={generatedAt} sources={sources} />
+      ) : null}
     </header>
   );
 }
