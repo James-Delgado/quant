@@ -273,6 +273,123 @@ def test_fred_feeds_reuse_engineering_lags_no_new_values():
         assert series in FRED_PUBLICATION_LAGS
 
 
+# ─── Drift contract: code SLA constants ⇔ the DOCS (METHODOLOGY §6) ─────────────
+# The asserts above pin code against literal values (trip CI on a *code* edit).
+# These pin code against the human-readable SLA tables in the C1-M1 contract doc
+# and the C1-M3 runner doc — the gap C1-M3-SLA-DOC-DRIFT closes: without them the
+# prose and the constants could silently diverge. Every expected substring is
+# built from the *live* module constant, so the contract bites in both directions
+# (a code edit OR a doc edit that breaks lock-step makes the substring absent).
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_SLA_CONTRACT_DOC = "docs/concepts/data-freshness-slas.md"
+_MONITOR_RUNNER_DOC = "docs/concepts/freshness-monitor.md"
+
+
+def _read_doc(rel_path: str) -> str:
+    return (_REPO_ROOT / rel_path).read_text(encoding="utf-8")
+
+
+def _table_row(doc_text: str, label: str) -> str:
+    """The first Markdown table row (a ``|``-delimited line) containing *label*.
+
+    Raises if no such row exists, so dropping a documented feed fails the test
+    rather than passing vacuously.
+    """
+    for line in doc_text.splitlines():
+        if line.lstrip().startswith("|") and label in line:
+            return line
+    raise AssertionError(f"no SLA table row containing {label!r}")
+
+
+def _available_by_phrase(hour_utc: int, day_offset: int) -> str:
+    """The doc's "available by" wording for a price deadline, from the constants.
+
+    ``day_offset == 0`` ⇒ same session ("on trading day T"); ``> 0`` ⇒ "on T+N".
+    """
+    day = "on trading day T" if day_offset == 0 else f"on T+{day_offset}"
+    return f"{hour_utc}:00 UTC {day}"
+
+
+def test_c1m1_contract_doc_matches_code_constants():
+    # docs/concepts/data-freshness-slas.md "Pinned per-source freshness SLA" table
+    # is the frozen C1-M1 contract the monitor reproduces in code. Assert each row
+    # encodes the live constant's value.
+    doc = _read_doc(_SLA_CONTRACT_DOC)
+
+    alpaca = _table_row(doc, "Alpaca IEX daily bar")
+    assert (
+        _available_by_phrase(mf.ALPACA_DEADLINE_HOUR_UTC, mf.ALPACA_DEADLINE_DAY_OFFSET)
+        in alpaca
+    ), "Alpaca SLA prose drifted from ALPACA_DEADLINE_* constants"
+
+    tiingo = _table_row(doc, "Tiingo adjusted EOD")
+    assert (
+        _available_by_phrase(mf.TIINGO_DEADLINE_HOUR_UTC, mf.TIINGO_DEADLINE_DAY_OFFSET)
+        in tiingo
+    ), "Tiingo SLA prose drifted from TIINGO_DEADLINE_* constants"
+
+    edgar = _table_row(doc, "EDGAR 8-K")
+    assert f"{mf.EDGAR_MAX_STALE_TRADING_DAYS} trading day" in edgar, (
+        "EDGAR liveness prose drifted from EDGAR_MAX_STALE_TRADING_DAYS"
+    )
+
+    rss = _table_row(doc, "| RSS ")
+    assert f"{mf.RSS_MAX_STALE_CALENDAR_DAYS} calendar day" in rss, (
+        "RSS liveness prose drifted from RSS_MAX_STALE_CALENDAR_DAYS"
+    )
+
+    # FRED reuses the pinned engineering dict by name — the contract states no
+    # literal lag value, so assert the doc names the parity lever the code reads.
+    fred = _table_row(doc, "FRED (per series)")
+    assert "FRED_PUBLICATION_LAGS" in fred, (
+        "FRED SLA row no longer references the FRED_PUBLICATION_LAGS parity lever"
+    )
+
+
+def test_monitor_runner_doc_matches_code_constants():
+    # docs/concepts/freshness-monitor.md "Source-of-truth constant" column writes
+    # NAME=value tokens. Build each token from the live constant and require it.
+    doc = _read_doc(_MONITOR_RUNNER_DOC)
+
+    for name in (
+        "ALPACA_DEADLINE_HOUR_UTC",
+        "TIINGO_DEADLINE_HOUR_UTC",
+        "FRED_GRACE_BDAYS",
+        "EDGAR_MAX_STALE_TRADING_DAYS",
+        "RSS_MAX_STALE_CALENDAR_DAYS",
+    ):
+        token = f"{name}={getattr(mf, name)}"
+        assert token in doc, f"{token!r} not documented in {_MONITOR_RUNNER_DOC}"
+
+    # The day-offset constants are written abbreviated (…DAY_OFFSET=) per feed row.
+    alpaca = _table_row(doc, "`alpaca`")
+    assert f"DAY_OFFSET={mf.ALPACA_DEADLINE_DAY_OFFSET}" in alpaca
+    tiingo = _table_row(doc, "`tiingo`")
+    assert f"DAY_OFFSET={mf.TIINGO_DEADLINE_DAY_OFFSET}" in tiingo
+
+    # FRED row names the engineering dict rather than a literal lag.
+    assert "FRED_PUBLICATION_LAGS" in doc
+
+
+def test_doc_drift_contract_is_not_vacuous(monkeypatch):
+    # The contract must bite: with a constant diverged from the docs, the value
+    # the doc-parse tests require to be present must be ABSENT. Mirrors the G3
+    # "gate not vacuously satisfiable" tests above.
+    contract = _read_doc(_SLA_CONTRACT_DOC)
+    runner = _read_doc(_MONITOR_RUNNER_DOC)
+
+    monkeypatch.setattr(mf, "EDGAR_MAX_STALE_TRADING_DAYS", 99, raising=True)
+    assert f"{mf.EDGAR_MAX_STALE_TRADING_DAYS} trading day" not in contract
+    assert f"EDGAR_MAX_STALE_TRADING_DAYS={mf.EDGAR_MAX_STALE_TRADING_DAYS}" not in runner
+
+    monkeypatch.setattr(mf, "TIINGO_DEADLINE_HOUR_UTC", 7, raising=True)
+    assert (
+        _available_by_phrase(mf.TIINGO_DEADLINE_HOUR_UTC, mf.TIINGO_DEADLINE_DAY_OFFSET)
+        not in contract
+    )
+
+
 # ─── Lake-reading + CLI wiring on a synthetic processed lake ───────────────────
 
 
