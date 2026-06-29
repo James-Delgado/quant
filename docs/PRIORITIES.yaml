@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-29  # E1-M2-TOPBAR-FRESHNESS done
+last_updated: 2026-06-29  # E1-M2-TOPBAR-FRESHNESS done; gating deps re-ranked to front (80/81)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -3059,7 +3059,7 @@ tasks:
       per AGENT_OPERATION Step 7 corollary (E1-scoped follow-up). Non-gating polish.
 
   - id: E1-M2-TOPBAR-FRESHNESS-DISCLOSURE
-    rank: 127
+    rank: 81
     title: "E1-M2-TOPBAR-FRESHNESS follow-up: accessible per-source freshness disclosure (+ optional staleness highlighting)"
     project: E
     sub_project: E1
@@ -3091,6 +3091,10 @@ tasks:
             time. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary
             (a11y is a genuine E1 quality bar — E1-M5 a11y polish — so it gates
             closeout, unlike the optional E1-EXPORT-FANOUT-CHECK gold-plating).
+      Re-ranked 127 -> 81 on 2026-06-28: one of two remaining E1-CLOSE gating deps,
+      pulled to the front of the pickable band (alongside E1-CONDITIONS-TREND-COPY
+      at 80) so closeout is reached in 3 sessions instead of 13. The rank 116-126
+      non-gating polish now defers behind E1-CLOSE rather than blocking it.
 
   - id: E1-EXPORT-FANOUT-CHECK
     rank: 117
@@ -3219,7 +3223,7 @@ tasks:
       priority.
 
   - id: E1-CONDITIONS-TREND-COPY
-    rank: 121
+    rank: 80
     title: "E1-CONDITIONS-TREND-AXIS follow-up: Conditions panel lead-text names all three axes (vol/trend/rates)"
     project: E
     sub_project: E1
@@ -3245,6 +3249,10 @@ tasks:
       axes; extend Conditions.test.tsx mockExport with a trend axis so the test
       fixture matches production. GATES E1-CLOSE per AGENT_OPERATION Step 7 corollary
       so closeout certifies the UI describes all three intended axes, not two.
+      Re-ranked 121 -> 80 on 2026-06-28: this is one of only two remaining
+      E1-CLOSE gating deps, pulled to the front of the pickable band so closeout is
+      reached without first clearing the rank 116-126 non-gating polish (which now
+      defers behind E1-CLOSE). The other gating dep is E1-M2-TOPBAR-FRESHNESS-DISCLOSURE.
 
   - id: E1-CONDITIONS-TREND-MA-WARMUP
     rank: 122
