@@ -2042,6 +2042,48 @@ def test_cli_export_no_monitor_passes_flag(monkeypatch, sources, tmp_path):
     assert captured["feature_monitor"] is True
 
 
+# ── CLI --check fan-out gate (E1-EXPORT-FANOUT-CHECK) ─────────────────────────
+
+
+def test_cli_export_check_passes_when_fanout_complete(monkeypatch, sources, tmp_path):
+    # The fixture has two non-smoke checkpoints → complete fan-out → --check 0.
+    from quant.console import __main__ as cli
+
+    monkeypatch.setattr(ConsoleSources, "default", classmethod(lambda cls, **kw: sources))
+    assert cli.main(["export", "--check", "--out", str(tmp_path / "ok")]) == 0
+
+
+def test_cli_export_check_fails_when_fanout_incomplete(
+    monkeypatch, sources, tmp_path, capsys
+):
+    # A checkpoint-less sources exports the top-level panels but no detail/
+    # provenance fan-out → --check must exit non-zero so CI can gate on it.
+    from quant.console import __main__ as cli
+
+    bare = dataclasses.replace(sources, strategy_roots=(tmp_path / "no_checkpoints",))
+    monkeypatch.setattr(ConsoleSources, "default", classmethod(lambda cls, **kw: bare))
+    rc = cli.main(["export", "--check", "--out", str(tmp_path / "bad")])
+    assert rc != 0
+    out = capsys.readouterr().out
+    # The files are still written (the gate is non-destructive) and the failure
+    # reason is surfaced, naming the data-prep doc not an internal path (#5/#7).
+    assert "export files" in out
+    assert "frontend/README.md" in out
+    assert "data/phase4a" not in out
+
+
+def test_cli_export_incomplete_fanout_is_quiet_zero_without_check(
+    monkeypatch, sources, tmp_path
+):
+    # Regression guard: without --check, an incomplete fan-out still exits 0
+    # (the warning is informational; the top-level panels remain valid).
+    from quant.console import __main__ as cli
+
+    bare = dataclasses.replace(sources, strategy_roots=(tmp_path / "no_checkpoints",))
+    monkeypatch.setattr(ConsoleSources, "default", classmethod(lambda cls, **kw: bare))
+    assert cli.main(["export", "--out", str(tmp_path / "warn")]) == 0
+
+
 # ── production sources wiring ─────────────────────────────────────────────────
 
 

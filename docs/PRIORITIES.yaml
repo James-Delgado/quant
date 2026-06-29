@@ -3620,8 +3620,9 @@ tasks:
     title: "E1-M2-EXPORT-DETAIL follow-up (optional): CLI --check mode that exits non-zero on incomplete fan-out"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T07:21:26Z
+    completed_at: 2026-06-29
     depends_on: [E1-M2-EXPORT-DETAIL]
     blocks: []
     deliverable:
