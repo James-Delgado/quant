@@ -1406,8 +1406,9 @@ tasks:
     title: "Draft B2 conformal-feature-relevance follow-on PRD (triggered by B2 G1 fail)"
     project: B
     sub_project: B2
-    status: in_progress
+    status: done
     started_at: 2026-06-29T05:59:14Z
+    completed_at: 2026-06-29
     depends_on: [B2-M2]
     blocks: []
     deliverable:
