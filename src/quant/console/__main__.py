@@ -42,6 +42,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             "~1-2 min full feature-panel build."
         ),
     )
+    export_parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Exit non-zero when the per-strategy detail/provenance fan-out is "
+            "incomplete (zero or partial coverage). Lets CI / the E1-CLOSE "
+            "build step GATE on a populated fan-out instead of eyeballing the "
+            "printed summary. The export is still written either way."
+        ),
+    )
 
     feedback_parser = sub.add_parser(
         "feedback", help="Issue-tracker tooling (promote a feedback issue to a task)"
@@ -113,6 +123,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "empty or partial — regenerate strategy checkpoints "
                 '(see frontend/README.md § "Detail / provenance data prep").'
             )
+            if args.check:
+                # --check turns the warning into a hard failure so CI / the
+                # E1-CLOSE build step can GATE on a populated fan-out
+                # (E1-EXPORT-FANOUT-CHECK; METHODOLOGY §9).
+                print(
+                    "  ERROR: --check requires complete fan-out coverage; "
+                    "exiting non-zero."
+                )
+                return 1
         return 0
 
     if args.command == "feedback" and args.feedback_command == "promote":
