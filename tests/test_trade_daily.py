@@ -430,14 +430,155 @@ def test_load_monitor_returns_the_real_monitor_callable():
     assert monitor.__name__ == "monitor"
 
 
-# ─── _strategy_signal dispatch (the documented extension point) ─────────────────
+# ─── _strategy_signal dispatch (C6-M2-MODEL-DISPATCH) ───────────────────────────
 
 
-def test_strategy_signal_rejects_unknown_model():
+def test_strategy_signal_rejects_model_outside_registry():
+    """A model_ref absent from MODEL_REGISTRY raises (no silent fallback, §9)."""
     spec = _spec_for()
-    object.__setattr__(spec, "model_ref", "gbm")  # no signal path wired yet
+    object.__setattr__(spec, "model_ref", "no_such_model")
     with pytest.raises(NotImplementedError, match="model_ref"):
         td._strategy_signal(spec, pd.Timestamp("2026-06-27"))
+
+
+def test_strategy_signal_routes_arima_to_daily_signal(monkeypatch):
+    """The arima_baseline ref keeps routing to lean_bridge.daily_signal."""
+    sentinel = {"SPY": _sig("SPY", 1)}
+    monkeypatch.setattr(td, "daily_signal", lambda asof, symbols=None: sentinel)
+    spec = _spec_for()  # model_ref == "arima_baseline"
+    assert td._strategy_signal(spec, pd.Timestamp("2026-06-27")) is sentinel
+
+
+def test_strategy_signal_routes_registered_model_to_feature_path(monkeypatch):
+    """A non-arima registered ref (gbm) routes through _feature_model_signal."""
+    sentinel = {"SPY": _sig("SPY", -1)}
+    monkeypatch.setattr(td, "_feature_model_signal", lambda spec, asof: sentinel)
+    spec = _spec_for()
+    object.__setattr__(spec, "model_ref", "gbm")
+    assert td._strategy_signal(spec, pd.Timestamp("2026-06-27")) is sentinel
+
+
+# ─── _feature_model_signal (the generic resolve → features → score → sign seam) ──
+
+
+def _feat_frame(n: int = 60, seed: int = 0, cols=("f1", "f2")) -> pd.DataFrame:
+    """A clean numeric feature matrix on a daily index (no NaN warmup)."""
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2020-01-01", periods=n, freq="D")
+    return pd.DataFrame({c: rng.normal(size=n) for c in cols}, index=idx)
+
+
+def _price_panel_frame(n: int = 60, seed: int = 1, base: float = 100.0) -> pd.DataFrame:
+    """A get_pit_panel-shaped frame (close column, positive, same index as features)."""
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2020-01-01", periods=n, freq="D")
+    close = np.maximum(base + np.cumsum(rng.normal(0.05, 1.0, n)), 1.0)
+    return pd.DataFrame({"close": close}, index=idx)
+
+
+def _make_model(forecast: float):
+    """A zero-arg fake model (duck-typed fit/predict) emitting a fixed forecast.
+
+    Records the training matrix shape on the class so feature-selection can be
+    asserted without touching a real estimator (no network, deterministic).
+    """
+
+    class _M:
+        last_fit_shape: tuple[int, int] | None = None
+
+        def fit(self, X, y):
+            _M.last_fit_shape = X.shape
+            return self
+
+        def predict(self, X):
+            return np.full(len(X), forecast, dtype=float)
+
+    return _M
+
+
+def _gbm_spec(model_ref: str = "gbm", features=("f1", "f2")) -> StrategySpec:
+    spec = _spec_for(universe=("SPY",))
+    object.__setattr__(spec, "model_ref", model_ref)
+    object.__setattr__(spec, "feature_set_ref", list(features))
+    return spec
+
+
+def test_feature_model_signal_signs_positive_forecast():
+    out = td._feature_model_signal(
+        _gbm_spec(),
+        "2020-04-01",
+        min_obs=10,
+        panel_fn=lambda u, a: {"SPY": _price_panel_frame()},
+        feature_fn=lambda u, a: {"SPY": _feat_frame()},
+        model_cls=_make_model(0.05),
+    )
+    assert out["SPY"].target_position == 1
+    assert out["SPY"].forecast == pytest.approx(0.05)
+
+
+def test_feature_model_signal_signs_negative_and_flat_forecasts():
+    for forecast, expected in [(-0.03, -1), (0.0, 0)]:
+        out = td._feature_model_signal(
+            _gbm_spec(),
+            "2020-04-01",
+            min_obs=10,
+            panel_fn=lambda u, a: {"SPY": _price_panel_frame()},
+            feature_fn=lambda u, a: {"SPY": _feat_frame()},
+            model_cls=_make_model(forecast),
+        )
+        assert out["SPY"].target_position == expected
+
+
+def test_feature_model_signal_selects_feature_set_ref_columns():
+    """Only the strategy's feature_set_ref columns reach the model (subset of 3)."""
+    model = _make_model(0.01)
+    td._feature_model_signal(
+        _gbm_spec(features=("f1",)),  # select 1 of the 3 feature columns
+        "2020-04-01",
+        min_obs=10,
+        panel_fn=lambda u, a: {"SPY": _price_panel_frame()},
+        feature_fn=lambda u, a: {"SPY": _feat_frame(cols=("f1", "f2", "f3"))},
+        model_cls=model,
+    )
+    assert model.last_fit_shape is not None
+    assert model.last_fit_shape[1] == 1  # exactly the one selected feature
+
+
+def test_feature_model_signal_skips_symbol_with_insufficient_history():
+    out = td._feature_model_signal(
+        _gbm_spec(),
+        "2020-01-04",
+        min_obs=30,
+        panel_fn=lambda u, a: {"SPY": _price_panel_frame(n=5)},
+        feature_fn=lambda u, a: {"SPY": _feat_frame(n=5)},
+        model_cls=_make_model(0.05),
+    )
+    assert out == {}  # fewer than min_obs training rows → no signal
+
+
+def test_feature_model_signal_skips_when_no_requested_features_present():
+    out = td._feature_model_signal(
+        _gbm_spec(features=("missing_feat",)),
+        "2020-04-01",
+        min_obs=10,
+        panel_fn=lambda u, a: {"SPY": _price_panel_frame()},
+        feature_fn=lambda u, a: {"SPY": _feat_frame(cols=("f1", "f2"))},
+        model_cls=_make_model(0.05),
+    )
+    assert out == {}  # none of the strategy's features resolved → skip, never guess
+
+
+def test_feature_model_signal_resolves_real_buyandhold_baseline():
+    """No model_cls injection → resolve_model_class wires the real always-long model."""
+    out = td._feature_model_signal(
+        _gbm_spec(model_ref="buyandhold_baseline"),
+        "2020-04-01",
+        min_obs=10,
+        panel_fn=lambda u, a: {"SPY": _price_panel_frame()},
+        feature_fn=lambda u, a: {"SPY": _feat_frame()},
+    )
+    assert out["SPY"].target_position == 1  # BuyAndHoldBaseline.predict → +1 → long
+    assert out["SPY"].forecast == pytest.approx(1.0)
 
 
 # ─── Closes C2-M2-SIZING-PARITY: the bridge no longer trades a fixed 1 share ────

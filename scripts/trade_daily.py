@@ -103,10 +103,13 @@ from quant.execution.lean_bridge import (
     signal_parity_gate_report,
 )
 from quant.execution.strategy_registry import (
+    MODEL_REGISTRY,
     StrategySpec,
     enabled_strategies,
     load_registry,
+    resolve_model_class,
 )
+from quant.features.labels import generate_labels
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +138,13 @@ PAPER_LIQUIDITY_CAP: float = 0.10
 # G3 paper-loop liveness: a real run must complete ≥ this many consecutive clean
 # daily cycles with state round-tripping across runs (PRD G3 — the C2-M3 constant).
 G3_MIN_CYCLES: int = 5
+
+# Minimum non-NaN (feature, label) training rows before a FEATURE-consuming model
+# (e.g. gbm) is fit for a symbol in the generic dispatch path; below it the symbol
+# is skipped (no signal) rather than fitting on a series too short to be meaningful.
+# Mirrors lean_bridge.MIN_LABEL_OBS (the ARIMA path's floor) so both signal paths
+# apply the same sanity threshold — not a new pinned research knob (METHODOLOGY §1).
+MIN_FEATURE_OBS: int = 30
 
 # Default paper capital used for offline gate computation when no live account
 # equity is available (the live cycle reads it from the bridge account summary).
@@ -441,6 +451,10 @@ FreshnessFn = Callable[..., Sequence[object]]  # now=asof -> [FeedStatus]
 SignalFn = Callable[[StrategySpec, pd.Timestamp], dict[str, TargetSignal]]
 PriceFn = Callable[[Sequence[str], pd.Timestamp], dict[str, float]]
 CapitalFn = Callable[[object], float]
+# Seams for the generic feature-model signal path (_feature_model_signal): the PIT
+# price reader and the reader→features matrix builder, both {symbol: DataFrame}.
+PriceFnPanel = Callable[[Sequence[str], pd.Timestamp], dict[str, pd.DataFrame]]
+FeatureFn = Callable[[Sequence[str], pd.Timestamp], dict[str, pd.DataFrame]]
 
 
 class FreshnessError(RuntimeError):
@@ -457,20 +471,115 @@ class CycleResult:
     state: PositionState
 
 
+def _feature_model_signal(
+    spec: StrategySpec,
+    asof: pd.Timestamp | str,
+    *,
+    label_horizon: int = 1,
+    min_obs: int = MIN_FEATURE_OBS,
+    panel_fn: PriceFnPanel | None = None,
+    feature_fn: FeatureFn | None = None,
+    model_cls: type | None = None,
+) -> dict[str, TargetSignal]:
+    """Signal path for a FEATURE-consuming model (the C6-M2-MODEL-DISPATCH seam).
+
+    Generalizes :func:`daily_signal`'s ARIMA-on-labels shape to any model with the
+    project's duck-typed ``fit(X, y) → predict(X)`` interface, via the pattern the
+    C6-M2-MODEL-DISPATCH task pins: ``resolve_model_class(spec.model_ref) →
+    build_feature_row (the reader→features seam) → score → sign``. Per symbol:
+
+    1. read point-in-time prices (``get_pit_panel``) + features (``build_feature_row``);
+    2. select ``spec.feature_set_ref`` columns (all features if the set is empty);
+    3. build ``next_bar_return`` labels (``generate_labels(close, label_horizon)``) —
+       the same BUILTIN target the ARIMA path forecasts (no new pinned target);
+    4. fit the model on rows with complete features **and** a non-NaN label (the
+       last ``label_horizon`` bars have no realized forward return, so they are
+       training-excluded but still scoreable);
+    5. predict the latest as-of feature row, ``derive_target_position(forecast)``.
+
+    This mirrors ``daily_signal``: fit on all point-in-time-available history,
+    predict today — the established live-inference precedent, generalized, not a
+    new training-window decision. Symbols with fewer than *min_obs* training rows,
+    no usable feature columns, or no complete latest row are skipped (no signal),
+    exactly as the ARIMA path skips too-short series. Every external dependency is
+    an injected callable (the module's design philosophy) so the path runs offline
+    in tests; the defaults are the live ``get_pit_panel`` / ``build_feature_row`` /
+    :func:`resolve_model_class` of *spec*'s ``model_ref``.
+    """
+    cls = model_cls if model_cls is not None else resolve_model_class(spec.model_ref)
+    universe = list(spec.universe)
+    asof_ts = pd.Timestamp(asof)
+
+    if panel_fn is None:
+        from quant.storage.realtime import get_pit_panel
+
+        panel_fn = get_pit_panel
+    if feature_fn is None:
+        from quant.execution.lean_bridge import build_feature_row
+
+        feature_fn = build_feature_row
+
+    panel = panel_fn(universe, asof_ts)
+    features = feature_fn(universe, asof_ts)
+
+    out: dict[str, TargetSignal] = {}
+    for sym in universe:
+        feat = features.get(sym)
+        price_frame = panel.get(sym)
+        if feat is None or feat.empty or price_frame is None or price_frame.empty:
+            continue
+        if spec.feature_set_ref:
+            cols = [c for c in spec.feature_set_ref if c in feat.columns]
+            if not cols:
+                continue  # none of the strategy's features are present — skip, don't guess
+            feat = feat[cols]
+
+        close = price_frame["close"]
+        if len(close) <= label_horizon:
+            continue
+        labels = generate_labels(close, label_horizon).series
+
+        aligned = feat.join(labels.rename("__y__"), how="inner")
+        y = aligned["__y__"]
+        X = aligned.drop(columns="__y__")
+        train_mask = y.notna() & X.notna().all(axis=1)
+        if int(train_mask.sum()) < min_obs:
+            continue
+
+        complete_feat = feat.dropna()
+        if complete_feat.empty:
+            continue
+        x_pred = complete_feat.iloc[[-1]]
+
+        model = cls()
+        model.fit(X[train_mask].to_numpy(), y[train_mask].to_numpy())
+        forecast = float(np.asarray(model.predict(x_pred.to_numpy())).reshape(-1)[-1])
+        out[sym] = TargetSignal(
+            symbol=sym,
+            asof=asof_ts,
+            forecast=forecast,
+            target_position=derive_target_position(forecast),
+        )
+    return out
+
+
 def _strategy_signal(spec: StrategySpec, asof: pd.Timestamp) -> dict[str, TargetSignal]:
     """Compute *spec*'s daily signals. Dispatches on ``model_ref``.
 
-    Only the ARIMA placeholder is wired in C6 (it forecasts the next-bar return
-    from the label series via ``lean_bridge.daily_signal``). A second deployable
-    model arrives as a registry entry later; until its signal path exists, an
-    unsupported ``model_ref`` raises rather than silently emitting nothing
-    (METHODOLOGY §9). This is the documented C6 extension point.
+    The ARIMA placeholder forecasts the next-bar return from the label series via
+    ``lean_bridge.daily_signal``. Any other model registered in ``MODEL_REGISTRY``
+    (e.g. ``gbm``, ``buyandhold_baseline``) routes through :func:`_feature_model_signal`,
+    the generic ``resolve_model_class → build_feature_row → score → sign`` path
+    (C6-M2-MODEL-DISPATCH). A ``model_ref`` absent from ``MODEL_REGISTRY`` raises
+    rather than silently emitting nothing (METHODOLOGY §9 — no silent fallback).
     """
     if spec.model_ref == "arima_baseline":
         return daily_signal(asof, symbols=list(spec.universe))
+    if spec.model_ref in MODEL_REGISTRY:
+        return _feature_model_signal(spec, asof)
     raise NotImplementedError(
-        f"no signal path for model_ref={spec.model_ref!r} yet — C6 wires only the "
-        "arima_baseline placeholder; a new deployable model adds its dispatch here"
+        f"no signal path for model_ref={spec.model_ref!r} — not in MODEL_REGISTRY; "
+        f"known models: {sorted(MODEL_REGISTRY)}"
     )
 
 

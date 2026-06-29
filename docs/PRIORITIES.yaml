@@ -1734,8 +1734,9 @@ tasks:
     title: "Generalize trade_daily._strategy_signal beyond the ARIMA placeholder"
     project: C
     sub_project: C6
-    status: in_progress
+    status: done
     started_at: 2026-06-29T05:24:39Z
+    completed_at: 2026-06-29
     depends_on: [C6-M2]
     blocks: []
     deliverable:
@@ -1789,6 +1790,45 @@ tasks:
       result. Mirrors C2-M3's live ≥5-cycle accrual (the lean-setup.md runbook).
       Operational; NON-GATING and intentionally NOT added to C-CLOSE.depends_on
       (it spans real days — same treatment as C2-M3's live accrual). Low priority.
+
+  - id: C6-M2-MODEL-DEPLOY-CONFIG
+    rank: 131
+    title: "Resolve feature-model hyperparameters + target-aware labels from the spec"
+    project: C
+    sub_project: C6
+    status: ready
+    depends_on: [C6-M2-MODEL-DISPATCH]
+    blocks: []
+    deliverable:
+      file: scripts/trade_daily.py
+      tests: tests/test_trade_daily.py
+    references:
+      primary: scripts/trade_daily.py
+      model_registry: src/quant/execution/strategy_registry.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C6-M2-MODEL-DISPATCH post-task review (commit of
+      trade_daily._feature_model_signal). The generic feature-model signal path
+      instantiates the resolved model with the LIBRARY DEFAULT constructor
+      (``cls()`` — e.g. GBMModel defaults to label_horizon=5, n_iter=50,
+      n_splits=3) and fixes the label horizon at 1 (``next_bar_return``, the
+      BUILTIN target the ARIMA path forecasts). Two real gaps for a genuinely
+      deployed B-model surface here: (a) HYPERPARAMETERS — a gated B-model's
+      training config (the exact n_iter/horizon/etc. it cleared its gate under)
+      must be resolved from the strategy spec / its registered config rather than
+      library defaults, otherwise the live model differs from the gated one (note
+      GBM's internal label_horizon drives only the sample-uniqueness weighting, so
+      a horizon-5 default against horizon-1 labels is silently mismatched); and
+      (b) TARGET-AWARE LABELS — the path assumes a forward-return target
+      (``generate_labels``); a B1-catalog target (drawdown/vol/directional) needs
+      its own label construction keyed off ``spec.target_ref``. Both are future
+      deployment work triggered only when a gated B-model with a non-default
+      config or a non-forward-return target is registered; like the parent
+      C6-M2-MODEL-DISPATCH this is intentionally NON-GATING and NOT added to
+      C-CLOSE.depends_on (it would deadlock closeout on indefinitely-deferred
+      work — mirrors the C6-M2-MODEL-DISPATCH / B3/B4 exclusion precedents).
+      Low priority.
 
   # ------ Project B closeout (gap flagged in B2-PRD prose; appended 2026-06-23) ------
 
