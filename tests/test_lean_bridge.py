@@ -340,5 +340,116 @@ def test_from_settings_pins_paper_endpoint(monkeypatch):
     assert captured["paper"] is True  # never live in C2
 
 
+# ─── C2-M2-SIZING-PARITY: cash-fraction sizing matches the simulator ──────────
+
+
+def _flat_price_frame(n=5, open_px=100.0, volume=1e12):
+    """OHLCV frame with constant opens and constant volume for a single entry."""
+    idx = pd.date_range("2024-01-01", periods=n, freq="D", tz="UTC")
+    return pd.DataFrame(
+        {
+            "open": np.full(n, open_px),
+            "high": np.full(n, open_px + 1.0),
+            "low": np.full(n, open_px - 1.0),
+            "close": np.full(n, open_px),
+            "volume": np.full(n, float(volume)),
+        },
+        index=idx,
+    )
+
+
+def test_sizing_constants_match_simulator_defaults():
+    # §6 drift contract: the bridge's pinned cost constants must equal the
+    # Phase 1 simulator's signature defaults, else cash-fraction sizing would
+    # silently diverge from the engine G2 reconciles against.
+    import inspect
+
+    from quant.backtest.simulator import simulate
+
+    params = inspect.signature(simulate).parameters
+    assert lb.SIM_SLIPPAGE_BPS == params["slippage_bps"].default
+    assert lb.SIM_LIQUIDITY_CAP == params["liquidity_cap"].default
+
+
+def test_simulator_position_qty_flat_is_zero():
+    assert lb.simulator_position_qty(1_000_000.0, 100.0, 0) == 0
+
+
+def test_simulator_position_qty_matches_simulator_cash_cap():
+    # Cash-bound: liquidity not binding (huge volume). The bridge sizing must
+    # equal the shares the simulator actually opens.
+    from quant.backtest.simulator import simulate
+
+    cash = 100_000.0
+    prices = _flat_price_frame(volume=1e12)
+    signals = pd.Series([1, 1, 1, 1, 1], index=prices.index)
+    _, trade_log = simulate(prices, signals, initial_capital=cash)
+    opened = int(trade_log.iloc[0]["shares"])
+    assert opened > 1  # full-notional deployment, not the 1-share placeholder
+    assert (
+        lb.simulator_position_qty(cash, 100.0, 1, volume=1e12) == opened
+    )
+
+
+def test_simulator_position_qty_matches_simulator_liquidity_cap():
+    # Liquidity-bound: huge cash, tiny volume so the 10% cap binds.
+    from quant.backtest.simulator import simulate
+
+    cash = 1e12
+    prices = _flat_price_frame(volume=1000.0)
+    signals = pd.Series([1, 1, 1, 1, 1], index=prices.index)
+    _, trade_log = simulate(prices, signals, initial_capital=cash)
+    opened = int(trade_log.iloc[0]["shares"])
+    assert opened == 100  # int(1000 * 0.10)
+    assert lb.simulator_position_qty(cash, 100.0, 1, volume=1000.0) == opened
+
+
+def test_simulator_position_qty_short_uses_bid_slippage():
+    # Long buys at the ask (open*(1+slip)); short sells at the bid
+    # (open*(1-slip)), so a short deploys at least as many shares as a long.
+    long_qty = lb.simulator_position_qty(100_000.0, 100.0, 1, volume=1e12)
+    short_qty = lb.simulator_position_qty(100_000.0, 100.0, -1, volume=1e12)
+    assert short_qty >= long_qty
+    slip = lb.SIM_SLIPPAGE_BPS / 10_000.0
+    assert short_qty == int(100_000.0 / (100.0 * (1.0 - slip)))
+    assert long_qty == int(100_000.0 / (100.0 * (1.0 + slip)))
+
+
+def test_simulator_position_qty_no_volume_skips_liquidity_cap():
+    # volume=None → only the cash cap applies (paper account may lack a volume
+    # read at order time); never silently caps at the placeholder.
+    qty = lb.simulator_position_qty(100_000.0, 100.0, 1)
+    slip = lb.SIM_SLIPPAGE_BPS / 10_000.0
+    assert qty == int(100_000.0 / (100.0 * (1.0 + slip)))
+
+
+def test_simulator_position_qty_nonpositive_inputs_are_zero():
+    assert lb.simulator_position_qty(0.0, 100.0, 1) == 0
+    assert lb.simulator_position_qty(100_000.0, 0.0, 1) == 0
+    assert lb.simulator_position_qty(-1.0, 100.0, 1) == 0
+
+
+def test_sized_target_order_uses_simulator_qty():
+    order = lb.sized_target_order("SPY", 1, cash=100_000.0, ref_price=100.0, volume=1e12)
+    assert isinstance(order, lb.TargetOrder)
+    assert order.symbol == "SPY"
+    assert order.target_position == 1
+    assert order.qty == lb.simulator_position_qty(100_000.0, 100.0, 1, volume=1e12)
+
+
+def test_bridge_place_sized_target_sizes_from_account_cash():
+    # The fake account reports cash="1000000"; the bridge must size from it,
+    # not from the 1-share placeholder.
+    client = _FakeClient()  # flat
+    bridge = lb.AlpacaPaperBridge(client)
+    result = bridge.place_sized_target("SPY", target_position=1, ref_price=100.0)
+    expected = lb.simulator_position_qty(1_000_000.0, 100.0, 1)
+    assert expected > 1
+    assert result["submitted"] is True
+    assert result["side"] == "BUY"
+    assert result["qty"] == expected
+    assert client.submitted[0].qty == expected
+
+
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-v"]))

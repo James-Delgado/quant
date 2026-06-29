@@ -1600,8 +1600,9 @@ tasks:
     title: "Match the bridge's placeholder sizing to the backtest simulator's cash-fraction sizing (G2 prerequisite)"
     project: C
     sub_project: C2
-    status: in_progress
+    status: done
     started_at: 2026-06-29T04:45:24Z
+    completed_at: 2026-06-29
     depends_on: [C2-M2]
     blocks: [C-CLOSE]
     deliverable:
@@ -1659,6 +1660,39 @@ tasks:
       published statistic vs a proxy). Non-gating for C2-M2 (the mappings are
       verified equal on 500+ finite forecasts + 125 real-data pairs); added to
       C-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  - id: C2-SIZING-CROSS-POSITION
+    rank: 88
+    title: "Reconcile cross-position (short↔long) sizing between the bridge and the simulator"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M2-SIZING-PARITY]
+    blocks: []
+    deliverable:
+      file: src/quant/execution/lean_bridge.py
+    references:
+      primary: src/quant/backtest/simulator.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M2-SIZING-PARITY post-task review (commit of
+      simulator_position_qty / place_sized_target in lean_bridge.py). The new
+      cash-fraction sizing matches the Phase 1 simulator EXACTLY for the dominant
+      flat→long / flat→short OPEN case (proven against simulate() in
+      tests/test_lean_bridge.py — cash-bound and liquidity-bound). It is an
+      APPROXIMATION on a direct cross (short→long or long→short): the simulator
+      CLOSES the existing position first, then sizes the new one off the
+      post-close cash (which includes the close proceeds), whereas
+      place_sized_target sizes off the account cash read BEFORE the close. The
+      residual is the sizing delta from the intermediate cash difference. Per the
+      C2-M2-SIZING-PARITY task framing, C2-M3's G2 may absorb this as a NAMED
+      residual component (METHODOLOGY §9, no unexplained gap) rather than
+      requiring an exact cross-sizing match — so this is NON-GATING and
+      intentionally NOT added to C-CLOSE.depends_on (mirrors the C1-M*-* /
+      C6-DD non-gating-refinement exclusion precedent; a refinement must not
+      deadlock closeout). Close by either sizing off simulated post-close cash or
+      documenting the residual in the G2 decomposition. Low priority.
 
   # ------ C6-M2 follow-ups (discovered during the daily-executor build) ------
 
