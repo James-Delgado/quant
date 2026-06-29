@@ -1094,6 +1094,57 @@ def test_load_feature_panel_returns_none_without_lake(monkeypatch):
     assert sources_mod._load_feature_panel() is None
 
 
+# ── monitored xs-rank coverage (E1-FEATURE-MONITOR-XSRANK) ────────────────────
+
+
+def test_load_feature_panel_monitors_all_registered_xs_rank_columns(monkeypatch):
+    # The panel must carry EVERY registered xs_rank_* feature (catalog.yaml:
+    # xs_rank_ret_21d, xs_rank_ret_252d, xs_rank_vol_21d), not just the M3 survivor
+    # xs_rank_vol_21d, so the Feature Catalog panel monitors them all rather than
+    # rendering the other two registry-only (E1-FEATURE-MONITOR-XSRANK). Exercises
+    # the real add_cross_sectional_features over the pinned source columns.
+    fake_prices = {
+        s: pd.DataFrame(
+            {"close": [1.0, 1.1]},
+            index=pd.date_range("2020-01-02", periods=2, freq="B"),
+        )
+        for s in ("AAA", "BBB", "CCC", "DDD", "EEE")
+    }
+    monkeypatch.setattr(sources_mod, "_load_prices_for_panel", lambda *a, **k: fake_prices)
+
+    def fake_build_features(symbols, prices, **kwargs):
+        idx = pd.DatetimeIndex(["2020-01-02"])
+        return {
+            s: pd.DataFrame(
+                {"ret_21d": [0.1], "ret_252d": [0.2], "vol_21d": [0.3]}, index=idx
+            )
+            for s in symbols
+        }
+
+    monkeypatch.setattr("quant.features.engineering.build_features", fake_build_features)
+    panel = sources_mod._load_feature_panel()
+    assert panel is not None
+    for col in ("xs_rank_ret_21d", "xs_rank_ret_252d", "xs_rank_vol_21d"):
+        assert col in panel.columns
+
+
+def test_monitored_xs_rank_source_columns_match_catalog():
+    # Drift guard (METHODOLOGY §6): the pinned source columns the monitor ranks
+    # must derive EXACTLY the cross_sectional-family features registered in
+    # catalog.yaml — no monitored rank missing from the catalog, none registered
+    # but left unmonitored. Catches drift in both directions if either side moves.
+    from quant.features.catalog import load_catalog
+
+    catalog = load_catalog()
+    registered = {
+        name for name, rec in catalog.items() if rec.family == "cross_sectional"
+    }
+    monitored = {
+        f"xs_rank_{col}" for col in sources_mod.MONITORED_XS_RANK_SOURCE_COLUMNS
+    }
+    assert monitored == registered
+
+
 # ── feature-panel disk cache (E1-M1-FEATURE-MONITOR-EXPORT-COST) ──────────────
 
 
