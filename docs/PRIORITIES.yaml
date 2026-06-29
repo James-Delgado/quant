@@ -3173,7 +3173,8 @@ tasks:
     title: "Concept doc for the strategy registry (docs/concepts/strategy-registry.md)"
     project: C
     sub_project: C6
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T05:07:00Z
     depends_on: [C6-M1]
     blocks: [C-CLOSE]
     deliverable:
