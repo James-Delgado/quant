@@ -829,7 +829,8 @@ tasks:
     title: "Draft C3 (position sizing + risk management) PRD"
     project: C
     sub_project: C3
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T06:07:49Z
     depends_on: [C2-M2, C6-M1]
     blocks: [E3-M1]
     deliverable:
