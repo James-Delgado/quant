@@ -27,11 +27,13 @@ from quant.execution.strategy_registry import (
     StrategySpec,
     enabled_strategies,
     known_targets,
+    lake_symbols,
     load_registry,
     registry_drift_report,
     resolve_model_class,
     strategy_view_models,
 )
+import quant.execution.strategy_registry as registry_mod
 from quant.features.targets import TARGET_CATALOG
 
 
@@ -69,6 +71,9 @@ _FAKE_CATALOG = {"ret_1d": None, "mom_21d": None}  # values unused; keys resolve
 _TARGETS = {"next_bar_return", "directional_5d"}
 _MODELS = {"arima_baseline", "gbm"}
 _LEDGER_IDS = {"ledger-2026-06-13-0001"}
+# Tradeable-universe set injected so universe resolution never hits the real lake.
+# Covers the seeded ETF universe (SPY/QQQ/IWM) so the default _spec() resolves.
+_TRADEABLE = {"SPY", "QQQ", "IWM"}
 
 
 def _report(registry, **kw):
@@ -78,6 +83,7 @@ def _report(registry, **kw):
         valid_targets=_TARGETS,
         valid_models=_MODELS,
         passed_ledger_ids=_LEDGER_IDS,
+        tradeable_symbols=_TRADEABLE,
     )
     defaults.update(kw)
     return registry_drift_report(registry, **defaults)
@@ -436,3 +442,97 @@ class TestEnabledStrategies:
         registry = load_registry()
         result = enabled_strategies(registry)
         assert "arima_placeholder" in {s.id for s in result}
+
+
+# --------------------------------------------------------------------- #
+# G1 gate — universe resolution against the lake (C6-REGISTRY-HARDENING a)
+# --------------------------------------------------------------------- #
+
+class TestUniverseResolution:
+    def test_unknown_universe_symbol_unresolved(self):
+        # A symbol the lake never ingests would pass C6-M1 G1 yet emit no signal.
+        report = _report(_registry(_spec(universe=["SPY", "FAKECOIN"])))
+        assert report.unresolved == ["s1.universe -> FAKECOIN"]
+        assert report.passed is False
+
+    def test_resolvable_universe_passes(self):
+        report = _report(_registry(_spec(universe=["SPY", "QQQ"])))
+        assert report.unresolved == []
+
+    def test_multiple_unknown_universe_symbols_all_reported(self):
+        report = _report(
+            _registry(_spec(universe=["SPY", "GHOST1", "GHOST2"]))
+        )
+        assert set(report.unresolved) == {
+            "s1.universe -> GHOST1",
+            "s1.universe -> GHOST2",
+        }
+
+    def test_empty_tradeable_set_skips_universe_resolution(self):
+        # Lake-less environment: nothing to resolve against, so the gate stays
+        # tolerant rather than flagging every universe symbol (documented skip).
+        report = _report(
+            _registry(_spec(universe=["ANYTHING", "GOES"])),
+            tradeable_symbols=set(),
+        )
+        assert report.unresolved == []
+        assert report.passed is True
+
+    def test_default_tradeable_set_reads_lake(self, monkeypatch):
+        # When tradeable_symbols is not injected, the gate resolves against the
+        # local lake via lake_symbols() — not a network call.
+        monkeypatch.setattr(registry_mod, "lake_symbols", lambda: {"SPY", "QQQ"})
+        report = registry_drift_report(
+            _registry(_spec(universe=["SPY", "DELISTED"])),
+            catalog=_FAKE_CATALOG,
+            valid_targets=_TARGETS,
+            valid_models=_MODELS,
+            passed_ledger_ids=_LEDGER_IDS,
+        )
+        assert report.unresolved == ["s1.universe -> DELISTED"]
+
+    def test_lake_symbols_returns_a_set(self):
+        # Smoke test against the real local lake: a set of ticker strings (may be
+        # empty in a lake-less checkout — tolerated by design).
+        syms = lake_symbols()
+        assert isinstance(syms, set)
+        assert all(isinstance(s, str) for s in syms)
+
+
+# --------------------------------------------------------------------- #
+# ISO-8601 timestamp validation (C6-REGISTRY-HARDENING b)
+# --------------------------------------------------------------------- #
+
+class TestTimestampValidation:
+    def test_valid_z_suffix_created_at_ok(self):
+        spec = _spec(created_at="2026-06-28T00:00:00Z")
+        assert spec.created_at == "2026-06-28T00:00:00Z"
+
+    def test_unparseable_created_at_raises(self):
+        with pytest.raises(ValidationError, match=r"created_at"):
+            _spec(created_at="not-a-date")
+
+    def test_naive_created_at_raises(self):
+        # No offset → ambiguous instant; mirror the ledger tz-aware requirement.
+        with pytest.raises(ValidationError, match=r"created_at"):
+            _spec(created_at="2026-06-28T00:00:00")
+
+    def test_empty_created_at_raises(self):
+        with pytest.raises(ValidationError, match=r"created_at"):
+            _spec(created_at="   ")
+
+    def test_enabled_at_none_ok(self):
+        spec = _spec(enabled_at=None)
+        assert spec.enabled_at is None
+
+    def test_valid_enabled_at_ok(self):
+        spec = _spec(enabled_at="2026-06-28T12:00:00Z")
+        assert spec.enabled_at == "2026-06-28T12:00:00Z"
+
+    def test_unparseable_enabled_at_raises(self):
+        with pytest.raises(ValidationError, match=r"enabled_at"):
+            _spec(enabled_at="garbage")
+
+    def test_naive_enabled_at_raises(self):
+        with pytest.raises(ValidationError, match=r"enabled_at"):
+            _spec(enabled_at="2026-06-28T12:00:00")
