@@ -75,6 +75,122 @@ def test_signal_parity_gate_threshold_is_pinned_to_zero():
     assert lb.signal_parity_gate_report([(1, -1)]).passed is False
 
 
+# ─── G1 reconciled against the ACTUAL harness signal path (C2-M2-G1-HARNESS-EXACT) ─
+
+
+class _PinnedForecastModel:
+    """Fixture model whose ``predict`` returns the first feature column verbatim.
+
+    The harness derives a per-symbol signal as ``np.sign(raw_pred).astype(int)``
+    where ``raw_pred = model.predict(X_test)``. Echoing column 0 lets the test
+    inject a *pinned* forecast spread at known dates and read back the exact
+    signal the running harness produced from it — no reimplementation of the
+    sign step in the test.
+    """
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> None:  # noqa: D401 - stub
+        pass
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        return np.asarray(X, dtype=float)[:, 0]
+
+
+def test_bridge_mapping_matches_actual_harness_signal_derivation(monkeypatch):
+    """G1, reconciled against the REAL engine (C2-M2-G1-HARNESS-EXACT).
+
+    Instead of comparing :func:`derive_target_position` against the in-module
+    reimplementation :func:`backtest_path_target_position`, this feeds a pinned
+    forecast spread through ``run_portfolio_backtest`` and captures the signals
+    the harness ACTUALLY hands to ``simulate`` (``harness.py`` ``np.sign(raw_pred)
+    .astype(int)``). Each captured harness signal is then reconciled against the
+    bridge mapping via the live :func:`signal_parity_gate_report` gate. A drift
+    between the bridge and the running harness sign step now fails this test —
+    which the prior reimplementation-vs-reimplementation check could not catch.
+    """
+    from quant.backtest import harness as hb
+
+    # Shared, identical forecast spread across symbols so a captured signal at a
+    # given date maps to one known forecast regardless of which symbol produced
+    # it. The [+, -, 0] cycle guarantees all three signs (+1, -1, 0) appear.
+    n = 300
+    dates = pd.bdate_range("2018-01-02", periods=n)
+    spread = np.tile([0.02, -0.02, 0.0], n // 3 + 1)[:n].astype(float)
+    forecast_by_date = pd.Series(spread, index=dates)
+
+    symbols = ["AAPL", "MSFT"]
+    rng = np.random.default_rng(0)
+    features_by_symbol: dict[str, pd.DataFrame] = {}
+    labels_by_symbol: dict[str, pd.Series] = {}
+    prices_by_symbol: dict[str, pd.DataFrame] = {}
+    for sym in symbols:
+        # Column 0 is the pinned forecast the model echoes; the rest is noise.
+        feats = pd.DataFrame(
+            {"f0": spread, "f1": rng.standard_normal(n)},
+            index=dates,
+        )
+        close = 100.0 * np.exp(np.cumsum(rng.normal(0.0, 0.01, n)))
+        prices = pd.DataFrame(
+            {
+                "open": close,
+                "high": close + 1.0,
+                "low": close - 1.0,
+                "close": close,
+                "volume": np.full(n, 1_000_000.0),
+            },
+            index=dates,
+        )
+        features_by_symbol[sym] = feats
+        labels_by_symbol[sym] = prices["close"].shift(-1) / prices["close"] - 1.0
+        prices_by_symbol[sym] = prices
+
+    # Capture the signals the harness actually feeds to simulate(), tagged by the
+    # forecast that produced each one (looked up by date from the shared spread).
+    captured_pairs: list[tuple[int, int]] = []
+
+    def _fake_simulate(prices, signals, **kwargs):
+        for ts, harness_signal in signals.items():
+            forecast = float(forecast_by_date.loc[ts])
+            # (bridge_target, actual_harness_signal) — exactly the G1 check shape.
+            captured_pairs.append((lb.derive_target_position(forecast), int(harness_signal)))
+        eq = pd.Series(
+            100.0 * (1.0 + 0.001 * np.arange(len(signals))), index=signals.index
+        )
+        tlog = pd.DataFrame(
+            columns=["date", "entry_price", "exit_price", "shares",
+                     "gross_pnl", "commission", "net_pnl"]
+        )
+        return eq, tlog
+
+    monkeypatch.setattr(hb, "simulate", _fake_simulate)
+
+    hb.run_portfolio_backtest(
+        model=_PinnedForecastModel(),
+        features_by_symbol=features_by_symbol,
+        labels_by_symbol=labels_by_symbol,
+        prices_by_symbol=prices_by_symbol,
+        train_window=150,
+        test_window=50,
+        step=50,
+        label_horizon=1,
+        embargo=3,
+    )
+
+    # The test must be meaningful: all three signal values must have been
+    # exercised through the real harness path, else parity is trivially true.
+    harness_signals = {pair[1] for pair in captured_pairs}
+    assert harness_signals == {-1, 0, 1}, (
+        f"expected all three signals from the harness path, got {harness_signals}"
+    )
+
+    # Reconcile via the live G1 gate: bridge target == actual harness signal,
+    # pinned 0-mismatch threshold.
+    result = lb.signal_parity_gate_report(captured_pairs)
+    assert result.n_checked == len(captured_pairs)
+    assert result.n_checked > 0
+    assert result.n_mismatches == 0
+    assert result.passed is True
+
+
 # ─── plan_order: target position → signed-delta order ──────────────────────────
 
 

@@ -1635,8 +1635,9 @@ tasks:
     title: "Strengthen G1 to exercise the actual harness signal-derivation path (not a reimplementation)"
     project: C
     sub_project: C2
-    status: in_progress
+    status: done
     started_at: 2026-06-29T04:52:05Z
+    completed_at: 2026-06-29
     depends_on: [C2-M2]
     blocks: [C-CLOSE]
     deliverable:
@@ -1661,6 +1662,37 @@ tasks:
       published statistic vs a proxy). Non-gating for C2-M2 (the mappings are
       verified equal on 500+ finite forecasts + 125 real-data pairs); added to
       C-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  - id: C2-M2-G1-REIMPL-REVIEW
+    rank: 89
+    title: "Review whether backtest_path_target_position reimplementation is now redundant scaffolding"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M2-G1-HARNESS-EXACT]
+    blocks: [C-CLOSE]
+    deliverable:
+      file: src/quant/execution/lean_bridge.py
+    references:
+      primary: src/quant/execution/lean_bridge.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M2-G1-HARNESS-EXACT post-task review. Now that G1 is
+      reconciled against the ACTUAL harness signal-derivation path
+      (test_bridge_mapping_matches_actual_harness_signal_derivation in
+      tests/test_lean_bridge.py, which captures the harness's
+      np.sign(raw_pred).astype(int) output via run_portfolio_backtest), the
+      independent reimplementation `backtest_path_target_position`
+      (lean_bridge.py:~132) and its structural test
+      `test_bridge_and_backtest_mappings_agree_on_finite_forecasts` are no longer
+      the *primary* G1 evidence. The reimplementation still has secondary value
+      (a fast pure-function check over 500+ forecasts without harness machinery),
+      so this is a judgment call, not an automatic delete: decide whether to keep
+      it as a documented fast-path check, demote its docstring claim from "the G1
+      gate compares against this" to "supplementary structural check", or remove
+      it + its test. Non-gating; src change so deferred per AGENT_OPERATION (test
+      task touched tests only). Added to C-CLOSE.depends_on per Step 7 corollary.
 
   - id: C2-SIZING-CROSS-POSITION
     rank: 88
@@ -1803,7 +1835,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C6-REGISTRY-CONCEPT-DOC]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C2-M2-G1-REIMPL-REVIEW, C6-REGISTRY-CONCEPT-DOC]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
