@@ -3784,7 +3784,8 @@ tasks:
     title: "E1-CONDITIONS-TREND-AXIS follow-up (optional): full-history trend MA to remove the OOS warm-up gap"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T06:46:18Z
     depends_on: [E1-CONDITIONS-TREND-AXIS]
     blocks: []
     deliverable:
