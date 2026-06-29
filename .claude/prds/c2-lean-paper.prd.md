@@ -1,9 +1,21 @@
-# C2 — Execution Layer (LEAN local + paper trading)
+# C2 — Execution Layer (Alpaca paper trading; LEAN deferred)
 
+> **Platform resolved (C2-M1, 2026-06-28).** This PRD was drafted under the §8.3
+> *LEAN-first* default; C2-M1 then **triggered the ratified fallback** — LEAN-local's
+> CLI gates local data/live behind a paid QuantConnect seat (friction beyond the
+> 2-day budget *a fortiori*), so the chosen platform is **Alpaca paper trading**
+> (pure-Python, zero Docker). The prose below has been reframed to Alpaca-paper as
+> the **primary** engine with **LEAN preserved as the documented future swap** behind
+> the broker-agnostic `ExecutionBridge` Protocol
+> (`docs/concepts/lean-setup.md` Appendix A). All pinned gate thresholds (G1 = 0
+> mismatches, G2 ≤ 1% relative, G3 ≥ 5 cycles) are **unchanged** — this was a
+> platform-wording sync (`C2-DOC-PLATFORM-SYNC`), not a re-commitment.
+>
 > **Project**: C (Live execution & deployment infrastructure) — sub-project C2.
 > **Roadmap**: [`docs/PROJECT_ROADMAP.md`](../../docs/PROJECT_ROADMAP.md) §4 Project C,
-> §7 "C2 — Execution layer (LEAN local + paper)", §8 ratified decisions 3 (LEAN-first
-> platform) & 4 (ARIMA placeholder).
+> §7 "C2 — Execution layer (Alpaca paper; LEAN deferred)", §8 ratified decisions 3
+> (platform: LEAN-first with the §8.3 Alpaca-paper fallback, resolved to Alpaca paper
+> in C2-M1) & 4 (ARIMA placeholder).
 > **Methodology** (binding): [`docs/METHODOLOGY.md`](../../docs/METHODOLOGY.md) — esp.
 > §1 (pre-committed thresholds), §2 (gates-in-code), §4 (contract before consumer),
 > §6 (drift contracts), §8 (invariant-parity audits), §9 (honest deviation declaration),
@@ -67,15 +79,15 @@ From the existing code and ratified decisions (read at draft time):
 | Same-day reader is PIT-correct and batch-identical (G1=0 future bars, G2 `rtol≤1e-9`) | `storage/realtime.py`, C1-M2 / nb13 | C2 consumes `get_pit_panel(asof) → build_features(asof) → predict` as a *settled* contract; no execution-side feature recompute |
 | ARIMA(1,0,0) fits once per fold, forecasts 1-step-ahead, no per-bar re-fit | `models/arima_baseline.py` | The placeholder signal is cheap and deterministic — a daily run is one `fit` on history-to-`asof` + one `predict_one_step` per symbol |
 | Phase 1 simulator fills **next-bar** with a pinned cost model | `backtest/simulator.py`, `docs/concepts/cost-model.md` | Reconciliation is only meaningful if the paper engine's fill convention + costs are *matched* to these; mismatched assumptions are the first thing M3 surfaces |
-| LEAN runs locally, open-source; model lives outside LEAN | Phase 4 Sub-track B; ROADMAP §8.3 | The bridge is "LEAN algorithm consumes an external signal feed"; LEAN is an execution *engine*, not the model host |
-| Platform fallback is ratified | ROADMAP §8.3 | LEAN local first; Alpaca paper adapter **only if** LEAN install friction > 2 days. The bridge abstraction must make this a swap, not a rewrite |
+| Model lives outside the execution engine | Phase 4 Sub-track B; ROADMAP §8.3 | The bridge is "the paper engine consumes an external signal feed"; the engine (Alpaca paper now, LEAN deferred) is an execution *engine*, not the model host |
+| Platform resolved to Alpaca paper | ROADMAP §8.3; C2-M1 (`lean-setup.md`) | LEAN-first was attempted and found paywalled; the §8.3 Alpaca-paper fallback (no Docker, free unlimited paper) is the chosen engine. The `ExecutionBridge` abstraction keeps the future LEAN swap a swap, not a rewrite |
 | Same-day feed cadence is unresolved for deployment | `C1-M2-ALPACA-FRESHNESS` (PRIORITIES rank 43) | C2 must pick a decision cadence: the parity-safe Tiingo source is `T+1 12:00 UTC`; the freshest same-day Alpaca feed (`T 23:00 UTC`) is *not* parity-safe (IEX raw close ≠ Tiingo adjClose) |
 
 Structural facts that shape the design:
 
 - **The Phase 1 backtest is the reconciliation ground truth, and it is
   deterministic.** Reconciliation does **not** require waiting for wall-clock paper
-  days to accumulate. The honest, gateable comparison is: run the LEAN/paper engine
+  days to accumulate. The honest, gateable comparison is: run the paper engine
   over the **same historical window** the Phase 1 backtest covers, feeding it the
   **same daily ARIMA signals**, and reconcile the two equity curves. Forward paper
   trading then accrues over real time as a *liveness* check, but the merge-blocking
@@ -113,9 +125,9 @@ Structural facts that shape the design:
 ## Hypothesis
 
 We believe that **a model-outside-the-engine execution bridge — emitting a daily
-ARIMA(1,0,0) target-position signal from `build_features(asof=today)`, executed by a
-local LEAN paper engine (Alpaca-paper fallback per §8.3) — produces a paper equity
-curve that reconciles with the Phase 1 backtest over a shared historical window to
+ARIMA(1,0,0) target-position signal from `build_features(asof=today)`, executed by an
+Alpaca paper engine (the ratified §8.3 platform; LEAN deferred) — produces a paper
+equity curve that reconciles with the Phase 1 backtest over a shared historical window to
 within a pinned tolerance**, and that **the residual delta, once within tolerance, is
 fully attributable to declared execution-model differences** — for **the C3/C4
 milestones and every future live B-model run** — closing the "execution layer not
@@ -176,7 +188,7 @@ Notes on the metric choices:
   assumptions, not an absolute P&L number.** "Matched assumptions" means the paper
   engine is configured with the *same* cost model (`docs/concepts/cost-model.md`) and
   the *same* next-bar fill convention as the Phase 1 simulator; the residual within
-  1% is then decomposed and named (e.g. LEAN's per-share fee model vs the simulator's
+  1% is then decomposed and named (e.g. the paper broker's per-share fee model vs the simulator's
   bps model, integer-share rounding vs fractional, corporate-action handling). A
   residual that cannot be named is treated as a G2 *failure* even if it is under 1%
   (METHODOLOGY §9 — no silent unexplained gaps).
@@ -194,18 +206,20 @@ C2 wires the *existing* placeholder ARIMA through a *new* execution boundary and
 reconciles it; only the **execution bridge**, the **signal-emission contract**, and
 the **reconciliation harness** are new.
 
-1. **C2-M1 — LEAN local installed; hello-world algorithm runs.**
-   `docs/concepts/lean-setup.md`: the local LEAN install procedure (or, on the §8.3
-   fallback trigger, the Alpaca-paper adapter setup), a hello-world algorithm that
-   boots and places one paper order, and the **platform decision record** — which
-   path was taken and why (LEAN-first; fall back to Alpaca paper only if install
-   friction exceeds 2 days, timed and recorded). This is the platform contract
-   (METHODOLOGY §4 — before the C2-M2 bridge code commits to an engine). Docs +
-   a runnable hello-world; the production bridge is M2.
+1. **C2-M1 — Paper engine installed; hello-world algorithm runs.**
+   `docs/concepts/lean-setup.md`: the platform setup procedure and the **platform
+   decision record** — which path was taken and why. *Resolved:* LEAN-local was
+   attempted and found paywalled (CLI local data/live behind a paid QuantConnect
+   seat), triggering the §8.3 fallback, so the procedure documents the **Alpaca-paper
+   adapter setup**, with the LEAN install steps preserved in Appendix A for the future
+   swap; plus a hello-world algorithm that boots and places one paper order. This is
+   the platform contract (METHODOLOGY §4 — before the C2-M2 bridge code commits to an
+   engine). Docs + a runnable hello-world; the production bridge is M2.
 2. **C2-M2 — ARIMA(1,0,0) daily signal feeds the paper account.**
    `src/quant/execution/lean_bridge.py` exposing a **broker-agnostic
-   `ExecutionBridge`** boundary (a `LeanBridge` impl + an `AlpacaPaperBridge` fallback
-   impl behind one Protocol, so §8.3's fallback is a swap) plus a
+   `ExecutionBridge`** boundary (an `AlpacaPaperBridge` impl as the primary engine
+   plus a deferred `LeanBridge` swap behind one Protocol, so the future LEAN swap is
+   a swap) plus a
    `daily_signal(asof)` that runs `get_pit_panel(asof) → build_features(asof) →
    ARIMA.predict_one_step → target position` and emits it to the engine. Ships the
    **G1 (signal parity) gate function** with the pinned `0-mismatch` threshold. Tests
@@ -245,7 +259,7 @@ the **reconciliation harness** are new.
 
 | # | Milestone | Outcome | PRIORITIES task | Depends on |
 |---|---|---|---|---|
-| 1 | LEAN install + hello-world | `docs/concepts/lean-setup.md` documents the install, a paper hello-world runs, platform decision (LEAN vs Alpaca-paper fallback) recorded with the 2-day timing | `C2-M1` | `C2-PRD` |
+| 1 | Paper engine install + hello-world | `docs/concepts/lean-setup.md` documents the setup, a paper hello-world runs, platform decision recorded (resolved to Alpaca paper — LEAN-local paywalled, §8.3 fallback triggered; 2-day budget satisfied a fortiori) | `C2-M1` | `C2-PRD` |
 | 2 | ARIMA daily signal → paper | `execution/lean_bridge.py::ExecutionBridge` + `daily_signal(asof)` emit a daily ARIMA target position; G1 (signal parity, 0 mismatches) gate function passes | `C2-M2` | `C2-M1` |
 | 3 | Reconciliation harness | `scripts/reconcile_paper_backtest.py` reconciles paper ⇄ backtest (G2 ≤ 1% with decomposed residual); G3 ≥5-cycle paper liveness verified | `C2-M3` | `C2-M2` |
 | Gate | The execution path emits the backtest's decision (G1) AND papers within 1% of the backtest (G2) AND runs daily end-to-end (G3) | Binary. **Pass** → a reconciled paper execution path is in code; C3/C4 unblocked. **Fail (G2)** → execution skew documented; C3/C4 + live stay blocked until reconciled. | — | — |
@@ -293,19 +307,21 @@ requires a PRD revision plus a new ledger entry (METHODOLOGY §1).
       the G1 gate, because G1 reconciles against whatever mapping the backtest path
       uses; the two must use the identical rule.
 - [ ] **Fill convention + cost-model matching for G2.** The Phase 1 simulator fills
-      next-bar with a bps cost model (`cost-model.md`). The paper engine (LEAN or
-      Alpaca-paper) has its own fill/fee model. G2 *requires* configuring the engine to
+      next-bar with a bps cost model (`cost-model.md`). The paper engine (Alpaca paper;
+      LEAN deferred) has its own fill/fee model. G2 *requires* configuring the engine to
       match (next-bar fill, equivalent cost), then *decomposing* the residual. Whether
-      LEAN can be configured to the exact bps model or only approximated (per-share fee)
-      is an M3 finding; if only approximated, the approximation is a *named* residual
+      the engine can be configured to the exact bps model or only approximated (per-share
+      fee) is an M3 finding; if only approximated, the approximation is a *named* residual
       component, not an unexplained gap.
-- [ ] **Platform fallback timing (§8.3).** LEAN local first; the 2-day install-friction
-      budget is timed and recorded in `lean-setup.md`. If the budget is exceeded, the
-      `AlpacaPaperBridge` impl is the path and the `ExecutionBridge` Protocol makes it a
-      swap. The decision and the elapsed time are both recorded (audit trail).
+- [x] **Platform fallback timing (§8.3) — RESOLVED in C2-M1.** LEAN-local was attempted
+      first and hit a categorical blocker (paid QuantConnect seat for local data/live),
+      satisfying the >2-day-friction trigger a fortiori, so the `AlpacaPaperBridge` impl
+      is the path and the `ExecutionBridge` Protocol keeps the future LEAN swap a swap.
+      The decision and the friction-budget assessment are recorded in `lean-setup.md`
+      (§1 + Appendix B; audit trail).
 - [ ] **Position-state persistence format (G3).** Daily runs must persist holdings so
       run N+1 opens where run N closed, and so the live engine's view matches ours
-      (C3-M3 later reconciles against LEAN's holdings). MVP: a small on-disk state file
+      (C3-M3 later reconciles against the broker's reported holdings). MVP: a small on-disk state file
       (format pinned in C2-M2); a richer store is a C5 concern, flagged not built.
 - [ ] **Reconciliation window selection.** G2 replays over a *shared historical
       window* spanning ≥ 2 regimes (reusing the regime axis from `backtest/regimes.py`).
@@ -317,8 +333,8 @@ requires a PRD revision plus a new ledger entry (METHODOLOGY §1).
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | Execution skew: paper P&L silently diverges from the backtest (G2 fails) | Medium | **Very High** | G2 is a pre-committed merge-blocking reconciliation gate (≤1% with a *fully decomposed* residual). A failure is a *valid negative* that blocks C3/C4 + live until reconciled — C2 never ships a divergent engine. Matched cost + fill assumptions are the structural mitigation. |
-| Cost-model / fill-convention mismatch between LEAN and the Phase 1 simulator | High | High | Expected and designed-for: G2 *requires* matching, then *naming* the residual. The first reconciliation run surfacing the mismatch is the milestone's value, not a defect. Anything unnameable fails the gate (METHODOLOGY §9). |
-| LEAN local install friction (Docker, mono runtime, data format) exceeds budget | Medium | Medium | Ratified fallback (§8.3): time-box to 2 days, then switch to the `AlpacaPaperBridge` impl behind the same `ExecutionBridge` Protocol — a swap, not a rewrite. Recorded in C2-M1. |
+| Cost-model / fill-convention mismatch between the paper engine and the Phase 1 simulator | High | High | Expected and designed-for: G2 *requires* matching, then *naming* the residual. The first reconciliation run surfacing the mismatch is the milestone's value, not a defect. Anything unnameable fails the gate (METHODOLOGY §9). |
+| LEAN local install friction exceeds budget | — | — | **Realized and resolved in C2-M1**: LEAN-local's CLI gates local data/live behind a paid QuantConnect seat (friction > the 2-day budget a fortiori), so the ratified §8.3 fallback was taken — Alpaca paper behind the same `ExecutionBridge` Protocol. The future LEAN swap stays a swap, not a rewrite. Recorded in C2-M1 (`lean-setup.md`). |
 | Signal skew: the bridge emits a different decision than the backtest (G1 fails) | Low | **Very High** | G1 is a deterministic 0-mismatch gate — same forecast + same `build_features(asof)` row ⇒ same target position. The model lives *outside* the engine (one code path for the forecast), so a G1 failure points at the position-mapping rule, which is pinned once and shared. |
 | Trading on a non-parity same-day feed reintroduces train/serve skew | Low | High | Resolved in Open Q 1: C2 trades the parity-safe Tiingo T+1 source (C1 G2 holds). The Alpaca T-evening path is explicitly deferred to `C1-M2-ALPACA-FRESHNESS`, not wired in C2. |
 | Going live prematurely (before reconciliation) | Low | **Very High** | Live capital is out of scope; the live transition is gated on a documented G2 pass (Phase 4 Sub-track B exit criterion). C2 papers only. |
@@ -328,9 +344,9 @@ requires a PRD revision plus a new ledger entry (METHODOLOGY §1).
 ## Sequencing notes
 
 - **C2-M1 ships the platform contract before C2-M2/M3 write engine code**
-  (METHODOLOGY §4). The LEAN-vs-Alpaca decision and the install runbook are the
-  contract the bridge commits to; the bridge Protocol is what keeps the fallback a
-  swap.
+  (METHODOLOGY §4). The LEAN-vs-Alpaca decision (resolved to Alpaca paper) and the
+  setup runbook are the contract the bridge commits to; the bridge Protocol is what
+  keeps the future LEAN swap a swap.
 - **C2-M2 ships the G1 gate function with the 0-mismatch threshold pinned before any
   parity is measured** (METHODOLOGY §2); **C2-M3 ships the G2 reconciliation gate with
   the 1% tolerance pinned before any reconciliation runs** (METHODOLOGY §1). No

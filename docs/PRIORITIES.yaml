@@ -652,7 +652,7 @@ tasks:
 
   - id: C2-M2
     rank: 20
-    title: "C2-M2: ARIMA(1,0,0) daily signal feeds LEAN paper account"
+    title: "C2-M2: ARIMA(1,0,0) daily signal feeds Alpaca paper account"
     project: C
     sub_project: C2
     status: done
@@ -674,11 +674,14 @@ tasks:
       PRIMARY impl (the PRD frames it as the fallback; the decision promotes it to
       primary), `LeanBridge` deferred as the future swap. Reuse the C2-M1 helpers
       in scripts/c2_hello_world.py (build_paper_client / build_hello_order pattern).
-      Open module-name question (flagged in C2-DOC-PLATFORM-SYNC): the deliverable
-      path is `lean_bridge.py` but the module is now Alpaca-first — keep the
-      LEAN-agnostic ExecutionBridge name or rename to e.g. execution/bridge.py;
-      resolve before committing. The title still says "LEAN paper account" pending
-      the C2-DOC-PLATFORM-SYNC wording sweep.
+      Module-name question RESOLVED by C2-DOC-PLATFORM-SYNC: the deliverable path
+      `src/quant/execution/lean_bridge.py` and the LEAN-agnostic `ExecutionBridge`
+      Protocol name are RETAINED — the pinned-path-retention precedent set by C2-M1
+      (lean-setup.md kept its name though Alpaca was chosen; see lean-setup.md
+      §"The filename is lean-setup.md because…"). Renaming would be a cross-module
+      refactor of already-shipped, imported code (scripts/reconcile_paper_backtest.py,
+      tests, C6 PRD) for no behavioural gain. The title was corrected to "Alpaca paper
+      account" by C2-DOC-PLATFORM-SYNC.
 
   - id: C2-M3
     rank: 21
@@ -1563,8 +1566,9 @@ tasks:
     title: "Sync the LEAN→Alpaca platform decision across the C2 PRD, ROADMAP §7, and C2-M2/M3 task wording"
     project: C
     sub_project: C2
-    status: in_progress
+    status: done
     started_at: 2026-06-29T04:36:49Z
+    completed_at: 2026-06-29
     depends_on: [C2-M1]
     blocks: []
     deliverable:
@@ -3749,3 +3753,31 @@ tasks:
       task (AGENT_OPERATION scope-creep guidance: surface, don't expand). Re-add to
       E1-CLOSE.depends_on if a future decision makes 320px topbar parity a closeout
       requirement.
+
+  - id: C2-PRD-STATUS-REFRESH
+    rank: 130
+    title: "Refresh the C2 PRD footer status (DRAFT/Next line) now that C2-M1/M2/M3 are all done"
+    project: C
+    sub_project: C2
+    status: ready
+    depends_on: [C2-M3]
+    blocks: []
+    deliverable:
+      file: .claude/prds/c2-lean-paper.prd.md
+    references:
+      primary: docs/PRIORITIES.yaml
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-DOC-PLATFORM-SYNC (commit syncing the LEAN→Alpaca
+      platform decision across the PRD/ROADMAP/M2 title). The platform-sync left the
+      PRD footer stale: it still reads "*Status: DRAFT (2026-06-28) … Next: /plan
+      turns C2-M1 into an implementation plan.*" even though C2-M1, C2-M2, and C2-M3
+      are all `done`. Out of scope for a platform-wording sync (that task did not
+      touch delivery status), so surfaced as a follow-up per AGENT_OPERATION
+      scope-creep guidance. Fix: update the footer to reflect C2's milestones
+      complete (DRAFT → e.g. RATIFIED/DELIVERED) and replace the stale "Next" line.
+      The pinned thresholds clause (G1=0, G2≤1%, G3≥5, matched cost/fill) must stay
+      verbatim (METHODOLOGY §1). Doc hygiene only; non-gating; intentionally NOT added
+      to C-CLOSE.depends_on (mirrors the C2-DOC-PLATFORM-SYNC / C1-M*-* doc-hardening
+      precedent — must not deadlock closeout).

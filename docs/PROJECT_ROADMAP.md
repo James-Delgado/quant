@@ -147,7 +147,7 @@ the "found edge in backtest, never shipped" failure mode.
 | Sub-project | Outcome |
 |---|---|
 | **C1 — Live data + same-day inference pipeline** | A "today's data" reader that returns the most recent point-in-time-correct bar for any universe symbol; freshness SLA monitored; nightly batch supplemented (or replaced) by same-day pull |
-| **C2 — Execution layer (LEAN local + paper)** | LEAN local installed; placeholder algorithm consumes model predictions from outside LEAN; paper-trading runs daily; results reconcile with the Phase 1 backtest |
+| **C2 — Execution layer (Alpaca paper; LEAN deferred)** | Paper engine stood up (Alpaca paper per §8.3 — LEAN-local is paywalled, see C2-M1); placeholder algorithm consumes model predictions from outside the engine; paper-trading runs daily; results reconcile with the Phase 1 backtest. LEAN preserved as a documented future swap behind the `ExecutionBridge` Protocol (`docs/concepts/lean-setup.md` Appendix A) |
 | **C3 — Position sizing + risk management** | Vol-targeted sizing replaces the simulator's 1-share-uniform; max-position caps; drawdown stops; live-mode position state |
 | **C4 — Confidence calibration** | Models emit prediction + calibrated confidence (conformal prediction or quantile regression); sizing logic consumes confidence |
 | **C5 — Monitoring + reconciliation** *(superseded by Project E3)* | Daily dashboard: positions, P&L, regime indicator, paper-vs-backtest delta, model output histogram. **Superseded by [Project E3 — Live Monitoring](#project-e--human-interface--observability)**: live monitoring + paper-vs-backtest reconciliation now ship in the console (`docs/project-e/E3-live-monitoring.prd.md`) on top of the E2 API. |
@@ -324,11 +324,19 @@ These are *sketches*, not PRDs. Each becomes a full PRD via the same
 | M2 | Today's-bar reader | A function `get_pit_bar(symbol, asof)` returning the most recent point-in-time-correct bar; integrated with `build_features()` |
 | M3 | Freshness monitor | Cron + alert if any feed is stale beyond its SLA |
 
-### C2 — Execution layer (LEAN local + paper)
+### C2 — Execution layer (Alpaca paper; LEAN deferred)
+
+> **Platform resolved (C2-M1, 2026-06-28):** the ratified §8.3 fallback was
+> triggered — LEAN-local's CLI gates local data/live behind a paid QuantConnect
+> seat, friction beyond the 2-day budget a fortiori — so C2 runs on **Alpaca paper
+> trading** (pure-Python, zero Docker). LEAN is preserved as a documented future
+> swap behind the broker-agnostic `ExecutionBridge` Protocol
+> (`docs/concepts/lean-setup.md` Appendix A). The milestone outcomes below read
+> "the paper engine" generically; the concrete engine is Alpaca paper.
 
 | # | Milestone | Outcome |
 |---|---|---|
-| M1 | LEAN local installed + hello-world algorithm runs | Model lives outside LEAN; LEAN consumes predictions via signal feed. **Platform decision (ratified §8.3)**: LEAN local first; fall back to Alpaca paper adapter only if LEAN install friction exceeds 2 days. |
+| M1 | Paper engine installed + hello-world algorithm runs | Model lives outside the engine; the engine consumes predictions via signal feed. **Platform decision (ratified §8.3, resolved in C2-M1)**: LEAN-local attempted first, found paywalled, so Alpaca paper adapter selected per the >2-day-friction fallback. |
 | M2 | ARIMA(1,0,0) daily signal in paper | **Placeholder decision (ratified §8.4)**: ARIMA(1,0,0) daily — exercises prediction emission, signal feed, paper execution, position state, and (later) calibration/sizing. GBM placeholder is intentionally rejected — it adds ~25 min/backtest of compute without exercising any deployment infrastructure ARIMA doesn't. |
 | M3 | Reconciliation harness | Daily paper-trading P&L reconciles with the Phase 1 backtest for the same period; any >1% delta investigated |
 
@@ -408,6 +416,10 @@ Updates require a roadmap revision, not an in-PRD override.)*
    selects, not the researcher.
 3. **C2 platform**: LEAN local first. Fall back to Alpaca paper adapter
    only if LEAN install friction exceeds 2 days. Documented in C2-M1.
+   **Resolved (C2-M1, 2026-06-28):** fallback triggered — LEAN-local data/live
+   is paywalled behind a paid QuantConnect seat, so **Alpaca paper** is the
+   chosen platform; LEAN preserved as a documented future swap behind the
+   `ExecutionBridge` Protocol (`docs/concepts/lean-setup.md`).
 4. **C2 placeholder strategy**: ARIMA(1,0,0) daily. GBM intentionally
    rejected as a placeholder — it adds ~25 min/backtest of compute
    without exercising additional deployment infrastructure.
