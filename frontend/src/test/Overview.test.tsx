@@ -120,6 +120,28 @@ describe("Overview panel", () => {
     expect(hero).not.toHaveTextContent(/it is not fabricated here/);
   });
 
+  it("hosts the Breadth + yield-curve ⓘ tips on the conditions snapshot, pending honestly (E1-M5-OVERVIEW-CONDITION-TIPS)", async () => {
+    renderOverview();
+    await screen.findByText(/Research mode\./);
+    // The two condition tips moved here from Data & Market to match the mockup's
+    // single home for them — carried on aria-label so AT reads the definition.
+    const breadth = screen.getByRole("button", {
+      name: /Breadth: Share of the universe trading above its 200-day/,
+    });
+    expect(breadth).toHaveClass("info");
+    const yieldCurve = screen.getByRole("button", {
+      name: /Yield curve: 2s10s: the 10-year minus 2-year Treasury yield/,
+    });
+    expect(yieldCurve).toHaveClass("info");
+    // Neither metric is ingested yet, so the panel states the pending reason
+    // rather than fabricating a value (METHODOLOGY §9).
+    expect(
+      screen.getByText(
+        /2s10s spread and market breadth are not yet ingested \(planned for E4\)/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("retrofits an inline ⓘ tooltip onto the Sharpe figure (E1-M5)", async () => {
     renderOverview();
     await screen.findByText(/Research mode\./);
