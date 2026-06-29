@@ -38,6 +38,10 @@ function Detail({
   const delta = detail.metrics.sharpe - control.metrics.sharpe;
   const isControl = detail.id === control.id;
   const stroke = lineTone(detail.metrics.sharpe);
+  // SPY buy-and-hold overlay, drawn only when the service layer computed one
+  // (E1-STRATEGY-DETAIL-BENCHMARK; honest "no overlay" when empty).
+  const hasBenchmark = detail.benchmark_equity.length > 0;
+  const benchmarkName = "SPY";
 
   return (
     <>
@@ -84,24 +88,29 @@ function Detail({
           </div>
           <LineChart
             height={170}
-            series={
-              isControl
+            series={[
+              ...(hasBenchmark
                 ? [
                     {
-                      values: values(detail.equity),
-                      className: "ln-port",
-                      stroke,
+                      values: values(detail.benchmark_equity),
+                      className: "ln-spy",
                     },
                   ]
+                : []),
+              ...(isControl
+                ? []
                 : [
-                    { values: values(control.equity), className: "ln-bench" },
                     {
-                      values: values(detail.equity),
-                      className: "ln-port",
-                      stroke,
+                      values: values(control.equity),
+                      className: "ln-bench",
                     },
-                  ]
-            }
+                  ]),
+              {
+                values: values(detail.equity),
+                className: "ln-port",
+                stroke,
+              },
+            ]}
             ariaLabel={`Cumulative return of ${detail.name}`}
           />
           <div className="legend">
@@ -113,6 +122,12 @@ function Detail({
               <span>
                 <i className="swatch" style={{ background: "var(--steel)" }} />{" "}
                 ARIMA
+              </span>
+            )}
+            {hasBenchmark && (
+              <span>
+                <i className="swatch" style={{ background: "var(--warnc)" }} />{" "}
+                {benchmarkName} buy &amp; hold
               </span>
             )}
           </div>

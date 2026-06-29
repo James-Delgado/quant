@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-29  # merged Project E1 (E1-CLOSE done) into main alongside A/B work; done E1 tasks re-ranked 80/81 -> 128/129 to clear collision with B3-M1/B3-M2
+last_updated: 2026-06-29  # E1-STRATEGY-DETAIL-BENCHMARK done; appended E1-DETAIL-BENCHMARK-NAME (rank 131) follow-up
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -3693,8 +3693,9 @@ tasks:
     title: "E1-M3-OVERVIEW-BENCHMARK follow-up: overlay the SPY benchmark on the per-strategy detail equity chart"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T06:34:54Z
+    completed_at: 2026-06-29
     depends_on: [E1-M3-OVERVIEW-BENCHMARK]
     blocks: []
     deliverable:
@@ -3979,3 +3980,34 @@ tasks:
       verbatim (METHODOLOGY §1). Doc hygiene only; non-gating; intentionally NOT added
       to C-CLOSE.depends_on (mirrors the C2-DOC-PLATFORM-SYNC / C1-M*-* doc-hardening
       precedent — must not deadlock closeout).
+
+  - id: E1-DETAIL-BENCHMARK-NAME
+    rank: 132
+    title: "E1-STRATEGY-DETAIL-BENCHMARK follow-up: carry benchmark_name on StrategyDetail so the detail legend names the computed series"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-STRATEGY-DETAIL-BENCHMARK]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-STRATEGY-DETAIL-BENCHMARK post-task review (commit adding
+      StrategyDetail.benchmark_equity). The detail equity chart now overlays the SPY
+      buy-and-hold line, but its legend label is the frontend constant `benchmarkName
+      = "SPY"` in frontend/src/pages/Strategies.tsx — the exact staleness risk that
+      E1-M3-BENCHMARK-COST-NAME (refinement b) fixed for the Overview hero by carrying
+      StrategyCard.benchmark_name from the service layer. For parity, add
+      `benchmark_name: str | None` to StrategyDetail (populated like StrategyCard:
+      sources.benchmark_name when the overlay was drawn, else None) and have the detail
+      legend name whatever the service computed instead of the hardcoded constant. So if
+      the pinned BENCHMARK_SYMBOL (sources.py) ever changes, the detail legend can never
+      silently go stale. NON-GATING / NOT in E1-CLOSE.depends_on (mirrors the
+      E1-M3-BENCHMARK-COST-NAME and E1-STRATEGY-DETAIL-BENCHMARK non-gating precedent:
+      the overlay itself is delivered with the correct SPY series; this is a legend-label
+      provenance hardening).
