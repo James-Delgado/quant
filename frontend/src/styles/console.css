@@ -1,0 +1,906 @@
+/* Research Console design system — ported from docs/project-e/mockups/console.css
+   (the frozen visual + interaction contract). Shell chrome is used by E1-M2;
+   panel-body classes are carried forward verbatim for M3/M4. The only additions
+   over the mockup are the mobile nav slide-over (.menu-btn / .side.open / .scrim)
+   so navigation stays reachable below 920px — an a11y floor the static mockup,
+   which simply hid the sidebar, did not meet. */
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+body {
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.mono {
+  font-family: var(--mono);
+  font-feature-settings: "tnum";
+}
+.num {
+  font-family: var(--mono);
+  font-feature-settings: "tnum";
+  text-align: right;
+}
+a {
+  color: var(--series);
+  text-decoration: none;
+}
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--series);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 236px 1fr;
+  height: 100vh;
+}
+
+/* Sidebar */
+.side {
+  background: #0b0e13;
+  border-right: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.brand {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--hair);
+}
+.brand .nm {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.brand .mk {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--series);
+  border-radius: 3px;
+  position: relative;
+}
+.brand .mk::after {
+  content: "";
+  position: absolute;
+  inset: 3px 3px auto auto;
+  width: 4px;
+  height: 4px;
+  background: var(--gain);
+  border-radius: 50%;
+}
+.brand .sub {
+  color: var(--dim);
+  font-size: 10.5px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  margin-top: 4px;
+  font-family: var(--mono);
+}
+.nav {
+  padding: 10px;
+  overflow-y: auto;
+  flex: 1;
+}
+.nav .grp {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  margin: 16px 12px 6px;
+  font-family: var(--mono);
+}
+.nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  color: var(--steel);
+  font-size: 13.5px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.nav a:hover {
+  background: var(--slate);
+  color: var(--bone);
+}
+.nav a.active {
+  background: var(--slate-2);
+  color: var(--bone);
+  border-left-color: var(--series);
+}
+.nav .ic {
+  width: 15px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--steel);
+}
+.side .ft {
+  padding: 12px 18px;
+  border-top: 1px solid var(--hair);
+  font-size: 11px;
+  color: var(--dim);
+  font-family: var(--mono);
+}
+
+/* Topbar */
+.main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 52px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--hair);
+}
+.top .ttl {
+  font-size: 14px;
+  font-weight: 600;
+}
+.top .sp {
+  flex: 1;
+}
+.meta {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.dotlive {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--steel);
+  padding: 4px 10px;
+  border: 1px solid var(--hair-2);
+  border-radius: 20px;
+}
+.dotlive i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warnc);
+  box-shadow: 0 0 8px var(--warnc);
+}
+.content {
+  overflow-y: auto;
+  padding: 24px;
+  flex: 1;
+}
+.maxw {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* Mobile nav menu button — hidden on desktop */
+.menu-btn {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--hair-2);
+  color: var(--steel);
+  border-radius: var(--r-sm);
+  width: 32px;
+  height: 32px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.menu-btn:hover {
+  color: var(--bone);
+}
+.scrim {
+  display: none;
+}
+
+/* Banner */
+.banner {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--slate);
+  border: 1px solid var(--hair-2);
+  border-left: 2px solid var(--warnc);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--steel);
+  margin-bottom: 18px;
+}
+.banner b {
+  color: var(--bone);
+}
+
+/* Headings */
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  margin: 2px 0 0;
+}
+.lead {
+  color: var(--steel);
+  margin-top: 6px;
+  max-width: 74ch;
+  font-size: 13.5px;
+}
+.sec {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 26px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sec .ln {
+  height: 1px;
+  background: var(--hair);
+  flex: 1;
+}
+
+/* Grid + panels */
+.grid {
+  display: grid;
+  gap: 14px;
+}
+.c2 {
+  grid-template-columns: 1fr 1fr;
+}
+.c3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.c4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.hero {
+  grid-template-columns: 1.7fr 1fr;
+}
+.panel {
+  background: var(--slate);
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  padding: 16px 18px;
+}
+.panel.flush {
+  padding: 0;
+  overflow: hidden;
+}
+.phead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.phead .t {
+  font-size: 13px;
+  font-weight: 600;
+}
+.phead .s {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* Stat / figure */
+.fig {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fig .lab {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.fig .val {
+  font-family: var(--mono);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+.fig .sub {
+  font-size: 11.5px;
+  color: var(--steel);
+}
+.figrow {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+
+.gain { color: var(--gain); }
+.loss { color: var(--loss); }
+.ser { color: var(--series); }
+.steel { color: var(--steel); }
+.dim { color: var(--dim); }
+.small { font-size: 12px; }
+
+/* Status pill */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--hair-2);
+  color: var(--steel);
+}
+.pill.ok { color: var(--gain); border-color: rgba(91, 214, 164, 0.3); background: var(--gain-bg); }
+.pill.bad { color: var(--loss); border-color: rgba(242, 113, 90, 0.3); background: var(--loss-bg); }
+.pill.idle { color: var(--dim); }
+.pill.warn { color: var(--warnc); border-color: rgba(224, 177, 92, 0.3); }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.tag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--raise);
+  color: var(--steel);
+  border: 1px solid var(--hair);
+}
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 500;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hair);
+}
+td { padding: 11px 14px; border-bottom: 1px solid var(--hair); font-size: 12.5px; }
+td.num, th.num { text-align: right; font-family: var(--mono); }
+tr:last-child td { border-bottom: none; }
+tbody tr.clk { cursor: pointer; }
+tbody tr.clk:hover { background: var(--slate-2); }
+
+.note { font-size: 12px; color: var(--dim); margin-top: 10px; font-style: italic; }
+
+/* Placeholder (scaffold-only, M2) — a quiet "panel arrives later" surface.
+   Honest empty state: no faked data, just the panel's frame + status. */
+.ph {
+  border: 1px dashed var(--hair-2);
+  border-radius: var(--r);
+  padding: 28px;
+  color: var(--dim);
+  font-size: 13px;
+  background: var(--slate);
+  margin-top: 18px;
+}
+.ph .pill { margin-bottom: 12px; }
+
+/* Responsive — mockup contract: collapse multi-column grids; sidebar becomes a
+   slide-over toggled from the topbar (a11y addition over the static mockup). */
+@media (max-width: 920px) {
+  .app { grid-template-columns: 1fr; }
+  .hero, .c2, .c3, .c4 { grid-template-columns: 1fr; }
+  .menu-btn { display: inline-flex; align-items: center; justify-content: center; }
+  .side {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 236px;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+  }
+  .side.open { transform: translateX(0); }
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 8, 11, 0.6);
+    z-index: 30;
+  }
+}
+
+/* ── Instrument charts (E1-M3) — ported verbatim from the frozen mockup
+   (docs/project-e/mockups/console.css). The charting "library" is bespoke SVG:
+   the design language is hairline grids + mono ticks + stress shading, and the
+   service layer emits neutral chart-ready series, so a heavyweight chart lib is
+   neither needed nor budget-friendly. Swapping one in later is presentation-only. */
+.chart { width: 100%; display: block; }
+.chart text { font-family: var(--mono); fill: var(--dim); font-size: 9px; }
+.grid-l { stroke: var(--hair); stroke-width: 1; }
+.axis { stroke: var(--hair-2); stroke-width: 1; }
+.band-vol { fill: rgba(242, 113, 90, 0.06); }
+.band-stress { fill: rgba(242, 113, 90, 0.12); }
+.ln-port { fill: none; stroke: var(--series); stroke-width: 1.75; }
+.ln-bench { fill: none; stroke: var(--steel); stroke-width: 1.25; stroke-dasharray: 3 3; }
+.ln-gain { fill: none; stroke: var(--gain); stroke-width: 1.75; }
+.dd-area { fill: rgba(242, 113, 90, 0.18); stroke: var(--loss); stroke-width: 1; }
+.spark { fill: none; stroke-width: 1.4; }
+.bar-pos { fill: var(--gain); }
+.bar-neg { fill: var(--loss); }
+.legend {
+  display: flex;
+  gap: 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--steel);
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 14px; height: 2px; display: inline-block; }
+
+/* Lineage / key-value list (one item per line — DECISIONS #5) */
+.lin { list-style: none; margin: 0; padding: 0; }
+.lin li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hair);
+  font-size: 12.5px;
+}
+.lin li:last-child { border: none; }
+.lin .k { color: var(--dim); font-family: var(--mono); font-size: 11.5px; }
+.lin .v { font-family: var(--mono); font-size: 12px; text-align: right; }
+
+/* Enforced-status rows — leakage controls + harness self-tests (Provenance).
+   Ported verbatim from the mockup (docs/project-e/mockups/console.css): a quiet
+   checked row with a right-aligned mono meta tag. NOT a war story — just status. */
+.ctrl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hair);
+  font-size: 12.5px;
+  color: var(--steel);
+}
+.ctrl:last-child { border: none; }
+.ctrl .ck { color: var(--gain); font-family: var(--mono); }
+.ctrl .meta2 { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
+/* Trial Registry luck-bar gauge — bespoke SVG instrument (deflation threshold
+   vs best observed Sharpe). The track is a hairline; the marker is the luck
+   bar, the fill reads gain/loss by whether best clears it. */
+.luckbar { margin: 4px 0 2px; }
+.luckbar .track { fill: var(--slate-2); stroke: var(--hair); }
+.luckbar .fill { opacity: 0.55; }
+.luckbar .mark { stroke: var(--warnc); stroke-width: 1.5; }
+
+/* Heatmap */
+.heat td { text-align: center; font-family: var(--mono); font-size: 11.5px; color: var(--bone); }
+.heat td.lbl { text-align: left; color: var(--steel); }
+
+/* Strategy roster */
+.roster { display: flex; flex-direction: column; gap: 8px; }
+.rost {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 15px;
+  border: 1px solid var(--hair);
+  border-left: 2px solid transparent;
+  border-radius: var(--r);
+  background: var(--slate);
+  cursor: pointer;
+}
+.rost:hover { border-color: var(--hair-2); }
+.rost.sel { border-left-color: var(--series); background: var(--slate-2); }
+.rost .nm { font-weight: 600; font-size: 13px; }
+.rost .ds { color: var(--steel); font-size: 12px; margin-top: 3px; max-width: 66ch; }
+.rost .rt { text-align: right; flex: none; font-family: var(--mono); }
+.rost .rt .v { font-size: 14px; }
+
+/* Strategy Portfolio (E-STRATEGIES-PANEL) — deployment registry cards */
+.pf-list { display: flex; flex-direction: column; gap: 12px; }
+.pf-card { padding: 16px 18px; }
+.pf-desc {
+  color: var(--steel);
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 6px 0 14px;
+  max-width: 80ch;
+}
+.pf-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px 22px;
+}
+.pf-kv { display: flex; flex-direction: column; gap: 3px; }
+.pf-k {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.pf-v { font-size: 12.5px; color: var(--bone); }
+.pf-tags { display: inline-flex; flex-wrap: wrap; gap: 5px; }
+
+/* Cross-link summary tile (E1-OVERVIEW-PORTFOLIO-TILE) — a keyboard-focusable
+   block that navigates to another panel. The table-row `.clk` is scoped to
+   tbody; this is its block-level sibling for hero summary tiles. */
+.xtile {
+  display: block;
+  margin: 0 -6px;
+  padding: 4px 6px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.xtile:hover { background: var(--slate-2); }
+.xtile:focus-visible { outline: 2px solid var(--series); outline-offset: 1px; }
+.xtile .xlink { color: var(--series); }
+@media (prefers-reduced-motion: reduce) {
+  .xtile { transition: none; }
+}
+
+/* Catalog distribution mini (used by the M4 catalog panel; class lives here
+   with the rest of the instrument system) */
+.dist rect { fill: var(--series); opacity: 0.65; }
+
+/* ── Inline ⓘ tooltip (E1-M5) — ported verbatim from the mockup
+   (docs/project-e/mockups/console.css lines 144–147): the circular ⓘ, the
+   `.info.open` pinned state, and the `::after` data-tip bubble. The only
+   additions reset native <button> chrome, since InfoTip renders a real button
+   (focusable + Enter/Space) instead of the mockup's <span>. */
+.info {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--dim);
+  color: var(--dim);
+  font-size: 9px;
+  font-family: var(--mono);
+  cursor: help;
+  vertical-align: middle;
+  margin-left: 5px;
+  position: relative;
+  /* native button resets so the trigger looks identical to the mockup span */
+  padding: 0;
+  background: transparent;
+  line-height: 1;
+}
+.info:hover,
+.info.open {
+  border-color: var(--series);
+  color: var(--series);
+}
+.info::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: 155%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 236px;
+  background: #0b0e13;
+  border: 1px solid var(--hair-2);
+  border-radius: 6px;
+  padding: 9px 11px;
+  font-family: var(--sans);
+  font-weight: 400;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--steel);
+  text-align: left;
+  letter-spacing: normal;
+  text-transform: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s;
+  z-index: 30;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.info:hover::after,
+.info.open::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ── Per-source freshness disclosure (E1-M2-TOPBAR-FRESHNESS-DISCLOSURE) — the
+   accessible companion to the Topbar export stamp. Reuses the .info ⓘ trigger;
+   the popover mirrors the .info::after bubble but holds structured per-source
+   rows so keyboard / screen-reader users reach what previously rode on a native
+   `title` (WCAG 1.3.1 / 4.1.2). `.info.warn` + the `behind` badge flag a source
+   whose mtime lags the export run by > STALE_LAG_DAYS — factual lag, not a
+   value claim. */
+.fresh {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.info.warn {
+  border-color: var(--warnc);
+  color: var(--warnc);
+}
+.info.warn:hover,
+.info.warn.open {
+  border-color: var(--warnc);
+  color: var(--warnc);
+}
+.fresh-pop {
+  position: absolute;
+  top: 150%;
+  right: 0;
+  /* Each row stacks source over "updated <mtime> [badge]", so the popover sizes
+     to the time line (the widest element) and the badge never overflows. */
+  width: max-content;
+  min-width: 220px;
+  max-width: 300px;
+  background: #0b0e13;
+  border: 1px solid var(--hair-2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  z-index: 30;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+.fresh-pop ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fresh-pop li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--steel);
+  padding: 4px 0;
+}
+.fresh-pop .fs-src {
+  color: var(--dim);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.fresh-pop .fs-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.fresh-pop .fs-time {
+  white-space: nowrap;
+}
+.fresh-pop li.behind .fs-time {
+  color: var(--warnc);
+}
+.fresh-pop .fs-badge {
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--warnc);
+  border: 1px solid var(--warnc);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+/* Explanations reading cards (E1-M5) — serif reading view (DECISIONS #4).
+   Ported verbatim from the mockup (docs/project-e/mockups/console.css). */
+.read { font-family: var(--serif); }
+.read h4 { font-family: var(--sans); font-size: 14px; margin: 0 0 6px; }
+.read p { margin: 0; color: var(--steel); font-size: 13.5px; line-height: 1.6; }
+.read .more {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--series);
+  margin-top: 10px;
+  display: inline-block;
+}
+
+/* Responsive dense-table scroll region (E1-M5 a11y/responsive pass). The flush
+   panel clips with `overflow: hidden`; this inner region restores horizontal
+   reach so no column is hidden at 320px while the page never overflows. */
+.table-scroll-wrap { position: relative; }
+.table-scroll { overflow-x: auto; }
+
+/* Horizontal-scroll discoverability cue (E1-M5-TABLE-SCROLL-AFFORDANCE). The
+   focus ring tells keyboard users the region scrolls; these edge fades tell
+   mouse/touch users. TableScroll toggles data-scroll-left/right on the wrapper
+   from measured overflow, so a cue shows ONLY when that side has off-screen
+   columns and hides once the edge is reached or the table fits. Decorative +
+   non-interactive (aria-hidden span, pointer-events: none) so it never blocks a
+   click on the cell beneath or gets announced. The fade is the panel surface
+   (var(--slate)) dissolving into the content. */
+.table-scroll-cue {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  z-index: 1;
+}
+.table-scroll-cue--left {
+  left: 0;
+  background: linear-gradient(to right, var(--slate), rgba(22, 26, 33, 0));
+}
+.table-scroll-cue--right {
+  right: 0;
+  background: linear-gradient(to left, var(--slate), rgba(22, 26, 33, 0));
+}
+.table-scroll-wrap[data-scroll-left] .table-scroll-cue--left { opacity: 1; }
+.table-scroll-wrap[data-scroll-right] .table-scroll-cue--right { opacity: 1; }
+
+/* Report button + capture modal + toast (E1-M6). UI surface is the button +
+   modal ONLY — no tracker panel (DECISIONS #11). Ported from the mockup
+   (docs/project-e/mockups/console.css ~163–182). */
+.report-btn {
+  margin: 0 12px 10px;
+  padding: 9px 12px;
+  background: var(--slate-2);
+  color: var(--bone);
+  border: 1px solid var(--hair-2);
+  border-radius: var(--r-sm);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.report-btn:hover { border-color: var(--series); color: var(--series); }
+.report-btn:focus-visible {
+  outline: 2px solid var(--series);
+  outline-offset: 2px;
+}
+
+.modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 8, 11, 0.66);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  width: 440px;
+  max-width: 92vw;
+  background: var(--slate);
+  border: 1px solid var(--hair-2);
+  border-radius: var(--r);
+  padding: 20px 22px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+}
+.modal h3 { margin: 0 0 4px; font-size: 15px; }
+.modal .ctx {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  margin-bottom: 14px;
+}
+
+.field { display: block; margin-bottom: 12px; }
+.field label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 5px;
+}
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  background: var(--ink);
+  border: 1px solid var(--hair-2);
+  border-radius: var(--r-sm);
+  color: var(--bone);
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  outline: 2px solid var(--series);
+  outline-offset: 1px;
+}
+.field textarea { min-height: 78px; resize: vertical; }
+.frow { display: flex; gap: 12px; }
+.frow .field { flex: 1; }
+.mact { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+
+.btn {
+  padding: 8px 14px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-family: var(--sans);
+  cursor: pointer;
+  border: 1px solid var(--hair-2);
+  background: transparent;
+  color: var(--steel);
+}
+.btn:hover { color: var(--bone); }
+.btn:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.primary {
+  background: var(--series);
+  border-color: var(--series);
+  color: #08111f;
+  font-weight: 600;
+}
+
+.pill.task {
+  color: var(--series);
+  border-color: rgba(110, 155, 242, 0.3);
+  background: rgba(110, 155, 242, 0.1);
+}
+.linkbtn {
+  background: none;
+  border: none;
+  color: var(--series);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.toast {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--slate-2);
+  border: 1px solid var(--hair-2);
+  border-left: 2px solid var(--gain);
+  color: var(--bone);
+  font-size: 13px;
+  padding: 11px 16px;
+  border-radius: var(--r-sm);
+  max-width: 90vw;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.18s;
+  z-index: 60;
+}
+.toast.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: none; }
+}
