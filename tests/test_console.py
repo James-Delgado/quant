@@ -794,6 +794,143 @@ def test_load_feature_panel_returns_none_without_lake(monkeypatch):
     assert sources_mod._load_feature_panel() is None
 
 
+# ── feature-panel disk cache (E1-M1-FEATURE-MONITOR-EXPORT-COST) ──────────────
+
+
+def _tiny_panel() -> pd.DataFrame:
+    return pd.DataFrame(
+        {"f": [1.0, 2.0, 3.0]},
+        index=pd.date_range("2020-01-01", periods=3, freq="D"),
+    )
+
+
+def _seed_lake(processed_dir: Path, *, dataset: str = "equity_eod_tiingo", nbytes: int = 16) -> Path:
+    """Write a stand-in processed parquet so the lake fingerprint is non-trivial.
+
+    The file is only ever ``stat()``-ed by the fingerprint, never read as parquet,
+    so arbitrary bytes are fine.
+    """
+    part = processed_dir / dataset / "year=2020" / "month=01" / "part-0.parquet"
+    part.parent.mkdir(parents=True, exist_ok=True)
+    part.write_bytes(b"x" * nbytes)
+    return part
+
+
+def test_lake_fingerprint_stable_and_sensitive(tmp_path):
+    processed = tmp_path / "processed"
+    _seed_lake(processed, dataset="macro_fred", nbytes=10)
+    f1 = sources_mod._lake_fingerprint(processed, ("macro_fred",))
+    assert f1 == sources_mod._lake_fingerprint(processed, ("macro_fred",))  # stable
+    # An absent dataset contributes nothing (no raise, different from the seeded one).
+    assert sources_mod._lake_fingerprint(processed, ("nope",)) != f1
+    # A new/larger file under the dataset changes the digest.
+    _seed_lake(processed, dataset="macro_fred", nbytes=99)
+    other = processed / "macro_fred" / "year=2021" / "month=01" / "part-0.parquet"
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_bytes(b"y" * 5)
+    assert sources_mod._lake_fingerprint(processed, ("macro_fred",)) != f1
+
+
+def _cache_kwargs(tmp_path, universe=("AAA", "BBB")):
+    processed = tmp_path / "processed"
+    _seed_lake(processed)
+    return {
+        "cache_dir": tmp_path / "cache",
+        "processed_dir": processed,
+        "universe": universe,
+    }
+
+
+def test_cached_feature_panel_reuses_disk_cache(tmp_path):
+    kw = _cache_kwargs(tmp_path)
+    calls = {"n": 0}
+
+    def build():
+        calls["n"] += 1
+        return _tiny_panel()
+
+    p1 = sources_mod._cached_feature_panel(build, **kw)
+    p2 = sources_mod._cached_feature_panel(build, **kw)
+    assert calls["n"] == 1  # second call served from the disk cache, no rebuild
+    assert list((kw["cache_dir"]).glob("feature_panel_*.parquet"))  # a cache file exists
+    pd.testing.assert_frame_equal(p1, p2, check_freq=False)
+
+
+def test_cached_feature_panel_invalidates_on_lake_change(tmp_path):
+    kw = _cache_kwargs(tmp_path)
+    calls = {"n": 0}
+
+    def build():
+        calls["n"] += 1
+        return _tiny_panel()
+
+    sources_mod._cached_feature_panel(build, **kw)
+    # A re-ingest (a different-size part file) changes the lake fingerprint → key.
+    _seed_lake(kw["processed_dir"], nbytes=64)
+    sources_mod._cached_feature_panel(build, **kw)
+    assert calls["n"] == 2  # new fingerprint forced a rebuild
+
+
+def test_cached_feature_panel_invalidates_on_universe_change(tmp_path):
+    calls = {"n": 0}
+
+    def build():
+        calls["n"] += 1
+        return _tiny_panel()
+
+    base = _cache_kwargs(tmp_path, universe=("AAA",))
+    sources_mod._cached_feature_panel(build, **base)
+    base["universe"] = ("AAA", "BBB")  # different universe → different key
+    sources_mod._cached_feature_panel(build, **base)
+    assert calls["n"] == 2
+
+
+def test_cached_feature_panel_rebuilds_on_corrupt_cache(tmp_path):
+    kw = _cache_kwargs(tmp_path, universe=("AAA",))
+    key = sources_mod._feature_panel_cache_key(("AAA",), kw["processed_dir"])
+    kw["cache_dir"].mkdir(parents=True, exist_ok=True)
+    (kw["cache_dir"] / f"feature_panel_{key}.parquet").write_bytes(b"not a parquet")
+    calls = {"n": 0}
+
+    def build():
+        calls["n"] += 1
+        return _tiny_panel()
+
+    panel = sources_mod._cached_feature_panel(build, **kw)
+    assert calls["n"] == 1 and panel is not None  # corrupt cache → honest rebuild
+
+
+def test_cached_feature_panel_does_not_cache_empty_or_none(tmp_path):
+    kw = _cache_kwargs(tmp_path, universe=("AAA",))
+    assert sources_mod._cached_feature_panel(lambda: None, **kw) is None
+    assert sources_mod._cached_feature_panel(lambda: pd.DataFrame(), **kw).empty
+    # Neither a None nor an empty panel writes a cache file (nothing to reuse).
+    if kw["cache_dir"].exists():
+        assert not list((kw["cache_dir"]).glob("*.parquet"))
+
+
+def test_cached_feature_panel_resolves_settings(monkeypatch, tmp_path):
+    # The all-defaults path reads settings for the cache dir / universe / lake.
+    fake = types.SimpleNamespace(
+        processed_dir=tmp_path / "processed",
+        data_root=tmp_path / "data",
+        equity_universe=["AAA"],
+    )
+    _seed_lake(fake.processed_dir)
+    monkeypatch.setattr("quant.config.settings", fake)
+    panel = sources_mod._cached_feature_panel(lambda: _tiny_panel())
+    assert panel is not None
+    cache_dir = fake.data_root / sources_mod.CACHE_DIR_NAME
+    assert list(cache_dir.glob("feature_panel_*.parquet"))  # wrote under data_root
+
+
+def test_cached_feature_panel_builds_uncached_when_settings_unavailable(monkeypatch):
+    # settings missing the needed attributes → build uncached, never raise.
+    monkeypatch.setattr("quant.config.settings", object())
+    sentinel = _tiny_panel()
+    assert sources_mod._cached_feature_panel(lambda: sentinel) is sentinel
+
+
 def _spy_rows() -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -1165,11 +1302,28 @@ def test_validator_accepts_nullable():
 def test_cli_export(monkeypatch, sources, tmp_path, capsys):
     from quant.console import __main__ as cli
 
-    monkeypatch.setattr(ConsoleSources, "default", classmethod(lambda cls: sources))
+    monkeypatch.setattr(ConsoleSources, "default", classmethod(lambda cls, **kw: sources))
     rc = cli.main(["export", "--out", str(tmp_path / "cli")])
     assert rc == 0
     # 11 schema-validated payloads + the freshness manifest side artifact.
     assert "Wrote 12 export files" in capsys.readouterr().out
+
+
+def test_cli_export_no_monitor_passes_flag(monkeypatch, sources, tmp_path):
+    from quant.console import __main__ as cli
+
+    captured = {}
+
+    def fake_default(cls, *, feature_monitor=True):
+        captured["feature_monitor"] = feature_monitor
+        return sources
+
+    monkeypatch.setattr(ConsoleSources, "default", classmethod(fake_default))
+    assert cli.main(["export", "--no-monitor", "--out", str(tmp_path / "nm")]) == 0
+    assert captured["feature_monitor"] is False
+    # Default (no flag) keeps the monitor wired on.
+    assert cli.main(["export", "--out", str(tmp_path / "m")]) == 0
+    assert captured["feature_monitor"] is True
 
 
 # ── production sources wiring ─────────────────────────────────────────────────
@@ -1184,6 +1338,13 @@ def test_default_sources_constructs():
     assert src.strategy_roots[0].name == "phase4a"
     assert src.registry_path is not None
     assert src.registry_path.name == "strategy_registry.yaml"
+
+
+def test_default_sources_feature_monitor_toggle():
+    # Default wires the lake-backed monitor; --no-monitor (feature_monitor=False)
+    # leaves it unset so the export skips the full feature-panel build.
+    assert ConsoleSources.default().feature_monitor_fn is not None
+    assert ConsoleSources.default(feature_monitor=False).feature_monitor_fn is None
 
 
 # ── feedback: capture payload + issue construction (E1-M6) ───────────────────

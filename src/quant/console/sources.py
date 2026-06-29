@@ -13,6 +13,7 @@ view-model assembly in :mod:`quant.console.readers` stays readable.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -118,8 +119,17 @@ class ConsoleSources:
     now_fn: NowFn | None = None
 
     @classmethod
-    def default(cls) -> ConsoleSources:
-        """Production sources wired to ``settings`` + the storage lake."""
+    def default(cls, *, feature_monitor: bool = True) -> ConsoleSources:
+        """Production sources wired to ``settings`` + the storage lake.
+
+        ``feature_monitor=False`` (the ``console export --no-monitor`` gate,
+        E1-M1-FEATURE-MONITOR-EXPORT-COST) leaves ``feature_monitor_fn`` unset, so
+        ``load_catalog`` renders registry-only rows and the export skips the ~1–2
+        min full-panel build entirely — a fast schema-only export. The default
+        (``True``) wires the lake-backed monitor over the *disk-cached* panel
+        provider so repeat exports reuse a previously built panel when the lake
+        and universe are unchanged.
+        """
         # Imported lazily so importing the view-model/schema layer never pulls in
         # settings validation (which requires API credentials at import time).
         from quant.config import settings
@@ -151,11 +161,15 @@ class ConsoleSources:
             market_value_fn=_market,
             market_series_fn=_market_series,
             benchmark_price_fn=_benchmark_price,
-            # Lake-backed monitor (E1-M1-FEATURE-MONITOR). ``_load_feature_panel``
-            # is invoked lazily on the first ``load_catalog`` call and memoized, so
-            # constructing the sources stays cheap and a missing lake degrades to
-            # registry-only rows rather than failing the export.
-            feature_monitor_fn=build_feature_monitor(_load_feature_panel),
+            # Lake-backed monitor (E1-M1-FEATURE-MONITOR) over the disk-cached panel
+            # provider (E1-M1-FEATURE-MONITOR-EXPORT-COST). The panel build is invoked
+            # lazily on the first ``load_catalog`` call and memoized per process; the
+            # disk cache reuses it across processes (repeat exports) until the lake or
+            # universe changes. A missing lake degrades to registry-only rows rather
+            # than failing the export. ``feature_monitor=False`` disables it outright.
+            feature_monitor_fn=(
+                build_feature_monitor(_cached_feature_panel) if feature_monitor else None
+            ),
             now_fn=lambda: dt.datetime.now(dt.timezone.utc),
         )
 
@@ -490,6 +504,122 @@ def _load_feature_panel() -> pd.DataFrame | None:
     except Exception:
         pass  # the xs-rank survivor is optional; monitor the base columns anyway
     return _panel_from_features(features)
+
+
+# ── Feature-panel disk cache (E1-M1-FEATURE-MONITOR-EXPORT-COST) ──────────────
+#
+# Building the production feature panel (build_features over the full universe +
+# FRED + sentiment) costs ~1–2 min. ``console export`` runs in a fresh process
+# each time, so ``build_feature_monitor``'s per-process memo never helps a repeat
+# export. This disk cache lets repeat exports reuse a previously built panel as
+# long as the lake inputs and the universe are unchanged.
+#
+# Correctness over speed (METHODOLOGY §9): the cache key folds in the universe and
+# a fingerprint of the processed parquet feeding the panel, so ANY re-ingest
+# (``write_processed`` rewrites part files → new size/mtime) or universe change
+# changes the key and forces a rebuild — a stale panel is never served. Every
+# cache read/write is guarded: a corrupt file, an unwritable dir, or unresolved
+# settings falls back to a fresh (uncached) build and never raises. The cache is
+# an optimization, not a correctness dependency.
+
+# Bump when the panel-build logic (columns produced, build_features semantics)
+# changes shape, so an old cache file is never reused under new code. Pinned §1.
+FEATURE_PANEL_CACHE_VERSION = 1
+# Processed lake datasets whose freshness invalidates the cached panel — exactly
+# the inputs ``_load_feature_panel`` reads (prices + FRED + sentiment). Pinned §1.
+PANEL_LAKE_DATASETS: tuple[str, ...] = (
+    "equity_eod_tiingo",
+    "macro_fred",
+    "sentiment_scored",
+)
+# Cache directory name under the data root (a sibling of the phase4a checkpoints).
+CACHE_DIR_NAME = "console_cache"
+
+
+def _lake_fingerprint(processed_dir: Path, datasets: tuple[str, ...]) -> str:
+    """Stable digest of the processed parquet feeding the panel (size + mtime).
+
+    Hashes the sorted ``relpath:size:mtime_ns`` of every ``*.parquet`` under each
+    dataset directory. A re-ingest (``write_processed`` rewrites part files) bumps
+    size/mtime and changes the digest; an unchanged lake yields the same digest on
+    every call. Absent dataset dirs and unreadable files contribute nothing.
+    """
+    parts: list[str] = []
+    for dataset in datasets:
+        base = processed_dir / dataset
+        if not base.exists():
+            continue
+        for pq in sorted(base.rglob("*.parquet")):
+            try:
+                st = pq.stat()
+            except OSError:
+                continue
+            rel = pq.relative_to(processed_dir)
+            parts.append(f"{rel}:{st.st_size}:{st.st_mtime_ns}")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _feature_panel_cache_key(universe: tuple[str, ...], processed_dir: Path) -> str:
+    """Cache key folding the version, the sorted universe, and the lake digest."""
+    payload = "|".join(
+        (
+            f"v{FEATURE_PANEL_CACHE_VERSION}",
+            ",".join(sorted(universe)),
+            _lake_fingerprint(processed_dir, PANEL_LAKE_DATASETS),
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _cached_feature_panel(
+    panel_fn: FeaturePanelFn = _load_feature_panel,
+    *,
+    cache_dir: Path | None = None,
+    processed_dir: Path | None = None,
+    universe: tuple[str, ...] | None = None,
+) -> pd.DataFrame | None:
+    """Disk-cached wrapper around ``panel_fn`` keyed by universe + lake freshness.
+
+    On a cache hit the stored parquet is read and returned (no rebuild). On a miss
+    the panel is built via ``panel_fn`` and best-effort written for next time. The
+    three keying inputs default to ``settings`` (production); tests inject them to
+    drive the cache over a synthetic lake. Any failure — unresolved settings, a
+    corrupt/unreadable cache file, an unwritable cache dir — degrades to a fresh
+    build and never raises (METHODOLOGY §9).
+    """
+    if processed_dir is None or universe is None or cache_dir is None:
+        try:
+            from quant.config import settings
+
+            if processed_dir is None:
+                processed_dir = settings.processed_dir
+            if universe is None:
+                universe = tuple(settings.equity_universe)
+            if cache_dir is None:
+                cache_dir = settings.data_root / CACHE_DIR_NAME
+        except Exception:
+            return panel_fn()  # cannot resolve cache context → build uncached
+
+    try:
+        key = _feature_panel_cache_key(universe, processed_dir)
+        cache_path = cache_dir / f"feature_panel_{key}.parquet"
+    except Exception:
+        return panel_fn()
+
+    if cache_path.exists():
+        try:
+            return pd.read_parquet(cache_path)
+        except Exception:
+            pass  # corrupt / stale-format cache → rebuild below
+
+    panel = panel_fn()
+    if panel is not None and not panel.empty:
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            panel.to_parquet(cache_path)
+        except Exception:
+            pass  # write is best-effort; the built panel is still returned
+    return panel
 
 
 # ── Low-level checkpoint readers ─────────────────────────────────────────────

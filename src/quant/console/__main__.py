@@ -2,7 +2,7 @@
 
 Canonical invocation (no reinstall needed):
 
-    python -m quant.console export [--out DIR]
+    python -m quant.console export [--out DIR] [--no-monitor]
     python -m quant.console feedback promote <issue> [--priorities PATH]
     python -m quant.console feedback submit --title T --type bug --severity high \\
         --description D
@@ -32,6 +32,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--out",
         default=None,
         help="Output directory (default: src/quant/console/export/)",
+    )
+    export_parser.add_argument(
+        "--no-monitor",
+        action="store_true",
+        help=(
+            "Skip the lake-backed feature monitor for a fast schema-only export "
+            "(the Feature Catalog panel renders registry-only rows). Avoids the "
+            "~1-2 min full feature-panel build."
+        ),
     )
 
     feedback_parser = sub.add_parser(
@@ -85,8 +94,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         # One sources instance shared by the write + the coverage probe. The
         # lake-backed feature monitor memoizes its panel build per instance, so
         # the second build_export() below reuses it instead of rebuilding the
-        # full feature panel (no double full-panel cost).
-        sources = ConsoleSources.default()
+        # full feature panel (no double full-panel cost). ``--no-monitor`` skips
+        # the panel build entirely for a fast schema-only export.
+        sources = ConsoleSources.default(feature_monitor=not args.no_monitor)
         written = write_export(out_dir=args.out, sources=sources)
         print(f"Wrote {len(written)} export files:")
         for path in written:
