@@ -65,6 +65,15 @@ FEATURE_STALE_BARS = 21  # ≈ one trading month
 # Sentiment aggregation window for the monitor's feature build — matches the
 # Phase 3 / Phase 4A runner convention so the monitored columns equal production.
 FEATURE_SENTIMENT_LOOKBACK_DAYS = 30
+# Cross-sectional source columns the monitor ranks. Deriving xs_rank_<col> for
+# each gives EXACTLY the three cross_sectional-family features registered in
+# features/catalog.yaml (xs_rank_ret_21d, xs_rank_ret_252d, xs_rank_vol_21d), so
+# the Feature Catalog panel monitors every registered cross-sectional rank — not
+# only the M3 survivor xs_rank_vol_21d, which would leave the other two rendering
+# registry-only/unmonitored (E1-FEATURE-MONITOR-XSRANK). Pinned per METHODOLOGY
+# §1; a drift test (tests/test_console.py) asserts this set equals the catalog's
+# cross_sectional family in both directions (§6).
+MONITORED_XS_RANK_SOURCE_COLUMNS: tuple[str, ...] = ("ret_21d", "ret_252d", "vol_21d")
 
 
 @dataclass(frozen=True)
@@ -612,8 +621,9 @@ def _load_feature_panel(asof: pd.Timestamp | None = None) -> pd.DataFrame | None
     """Production feature-panel provider: build the full universe from the lake.
 
     Loads ``settings.equity_universe`` prices, builds the production feature
-    matrix (``build_features`` + the M3 cross-sectional survivor), and pools it.
-    Returns ``None`` when the lake has no usable bars so the monitor stays empty.
+    matrix (``build_features`` + every registered cross-sectional rank, per
+    ``MONITORED_XS_RANK_SOURCE_COLUMNS``), and pools it. Returns ``None`` when the
+    lake has no usable bars so the monitor stays empty.
 
     ``asof`` (E1-FEATURE-MONITOR-ASOF) is threaded straight into ``build_features``:
     when set (a tz-aware UTC instant), each price frame is truncated to bars with
@@ -648,9 +658,11 @@ def _load_feature_panel(asof: pd.Timestamp | None = None) -> pd.DataFrame | None
         asof=asof,
     )
     try:
-        features = add_cross_sectional_features(features, columns=("vol_21d",))
+        features = add_cross_sectional_features(
+            features, columns=MONITORED_XS_RANK_SOURCE_COLUMNS
+        )
     except Exception:
-        pass  # the xs-rank survivor is optional; monitor the base columns anyway
+        pass  # the xs-rank columns are optional; monitor the base columns anyway
     return _panel_from_features(features)
 
 
