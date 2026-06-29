@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -710,6 +710,51 @@ def checkpoint_git_sha_index(sources: ConsoleSources) -> dict[str, str]:
         if isinstance(config_hash, str) and is_git_sha(git_sha):
             index[config_hash] = git_sha
     return index
+
+
+def artifacts_git_sha(
+    sources: ConsoleSources,
+    config_hash: str | None,
+    artifacts: Sequence[str],
+) -> str | None:
+    """Resolve a run's git commit via its ledger ``artifacts`` paths.
+
+    The fallback for :func:`checkpoint_git_sha_index`, which only sees checkpoints
+    *under* ``data_root`` (its ``rglob``). A run whose checkpoint lives OUTSIDE the
+    data root still records that directory in its ledger ``artifacts``; this reads
+    the commit from there. Each ``artifacts`` entry is resolved relative to
+    ``data_root.parent`` — the repo root the ledger records paths against (e.g.
+    ``data/phase4a/arima/``) — then the ``metadata.json`` beside it is read: the
+    directory itself for a directory artifact, the parent directory for a file
+    artifact. Its ``git_sha`` is returned only when the metadata's ``config_hash``
+    equals the entry's — the same content-hash join key
+    :func:`checkpoint_git_sha_index` uses, so an unrelated checkpoint sitting at
+    the path never yields a spurious link. The first matching artifact wins.
+
+    Honest degrade (METHODOLOGY §9): a missing ``config_hash``, an empty artifact
+    list, a path that does not exist, an absent/unreadable ``metadata.json``, a
+    ``config_hash`` mismatch, or a non-git-sha-shaped ``git_sha`` all contribute
+    nothing — the row stays link-less rather than pointing at a non-commit.
+    """
+    if not config_hash:
+        return None
+    repo_root = sources.data_root.parent
+    for art in artifacts:
+        if not art:
+            continue
+        candidate = repo_root / art
+        meta_dir = candidate if candidate.is_dir() else candidate.parent
+        meta_path = meta_dir / "metadata.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = read_metadata(meta_path)
+        except Exception:
+            continue
+        git_sha = meta.get("git_sha")
+        if meta.get("config_hash") == config_hash and is_git_sha(git_sha):
+            return git_sha
+    return None
 
 
 def read_oos_returns(path: Path) -> pd.Series:
