@@ -2790,7 +2790,8 @@ tasks:
     title: "E1-M1-CONDITIONS-MARKET-AXIS follow-up: market-level trend axis (third DECISIONS §6 axis) on the benchmark series"
     project: E
     sub_project: E1
-    status: ready  # unblocked 2026-06-28: E1-M3-OVERVIEW-BENCHMARK done (benchmark series now in export)
+    status: in_progress
+    started_at: 2026-06-28T20:30:00Z
     depends_on: [E1-M3-OVERVIEW-BENCHMARK]
     blocks: [E1-CLOSE]
     deliverable:
