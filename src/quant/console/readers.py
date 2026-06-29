@@ -51,10 +51,13 @@ _STRESS_WINDOWS: tuple[tuple[str, str, str], ...] = (
     ("2022 rate selloff", "2022-01-01", "2022-10-31"),
 )
 
-# Market-level, live-computable condition axes (E1-M1-CONDITIONS-MARKET-AXIS).
-# The volatility axis is the market VIX bucketed by VIXThresholdDetector's pinned
-# thresholds; the rates axis is the trailing change in the 10-year Treasury yield.
+# Market-level, live-computable condition axes (E1-M1-CONDITIONS-MARKET-AXIS +
+# the E1-CONDITIONS-TREND-AXIS follow-up). The three DECISIONS §6 axes:
+#   - volatility: the market VIX bucketed by VIXThresholdDetector's pinned thresholds
+#   - trend:      the benchmark (SPY) above/below its trailing 200-bar moving average
+#   - rates:      the trailing change in the 10-year Treasury yield
 _VOL_CONDITIONS = ["low_vol", "mid_vol", "high_vol"]
+_TREND_CONDITIONS = ["uptrend", "downtrend"]
 _RATES_CONDITIONS = ["rates_falling", "rates_steady", "rates_rising"]
 
 # FRED series ids backing the two market axes (pinned; METHODOLOGY §1).
@@ -67,6 +70,12 @@ RATES_SERIES_ID = "DGS10"
 # uses only past observations, so labelling date D never peeks past D.
 RATES_CHANGE_WINDOW = 63  # bars (≈ one quarter)
 RATES_DEADBAND = 0.25  # percentage points (±25 bps) around zero = "steady"
+
+# Trend-axis tunable (pinned; METHODOLOGY §1). The benchmark's position relative
+# to its trailing 200-bar (≈ 200-trading-day) moving average classifies the market
+# trend — the mockup's "MA200" gauge. Point-in-time: the average uses only closes
+# up to and including date D, so labelling D never peeks past D.
+TREND_MA_WINDOW = 200  # bars (≈ 200 trading days)
 
 
 # ── Small helpers ────────────────────────────────────────────────────────────
@@ -438,6 +447,29 @@ def _rates_labels(dgs10_on_dates: pd.Series) -> pd.Series:
     return labels
 
 
+def _trend_labels(price_on_dates: pd.Series) -> pd.Series:
+    """Trend-regime labels from the benchmark price vs its trailing MA.
+
+    ``uptrend`` when the benchmark closes above its trailing ``TREND_MA_WINDOW``-bar
+    moving average, ``downtrend`` at or below it — the live-computable third axis
+    DECISIONS §6 intends (a true *market* trend on the benchmark price, not the
+    retired equity-vs-MA proxy). Point-in-time: the moving average references only
+    closes up to each date, so labelling date D never peeks past D. The leading
+    ``TREND_MA_WINDOW``-1 dates have no average yet and are dropped — an honest gap,
+    never a faked label (METHODOLOGY §9).
+    """
+    price = price_on_dates.dropna()
+    if price.empty:
+        return pd.Series(dtype=object)
+    ma = price.rolling(TREND_MA_WINDOW).mean().dropna()
+    if ma.empty:
+        return pd.Series(dtype=object)
+    price_on_ma = price.reindex(ma.index)
+    labels = pd.Series("downtrend", index=ma.index, dtype=object)
+    labels[price_on_ma > ma] = "uptrend"
+    return labels
+
+
 def _aggregate_returns(per_strategy: dict[str, pd.Series]) -> pd.Series:
     """Equal-weight mean across strategies, aligned by date (outer join)."""
     if not per_strategy:
@@ -464,20 +496,32 @@ _MarketAxis = tuple[str, list[str], pd.Series]
 def _market_axes(sources: ConsoleSources, dates: pd.DatetimeIndex) -> list[_MarketAxis]:
     """Build the available market-level condition axes over ``dates``.
 
-    An axis is included only when its backing FRED series is present and yields
-    at least one label after alignment — otherwise it is omitted (not faked),
-    so an unconfigured/absent feed degrades honestly (METHODOLOGY §9).
+    An axis is included only when its backing series is present and yields at
+    least one label after alignment — otherwise it is omitted (not faked), so an
+    unconfigured/absent feed degrades honestly (METHODOLOGY §9). The volatility
+    and rates axes read FRED via ``market_series_fn``; the trend axis reads the
+    benchmark price via ``benchmark_price_fn``, so each degrades independently.
+    Order is fixed at vol / trend / rates per DECISIONS §6.
     """
-    fn = sources.market_series_fn
-    if fn is None or len(dates) == 0:
+    if len(dates) == 0:
         return []
+    fn = sources.market_series_fn
     axes: list[_MarketAxis] = []
-    vix = fn(VIX_SERIES_ID)
+    vix = fn(VIX_SERIES_ID) if fn is not None else None
     if vix is not None:
         vol_labels = _vol_labels(_align_market(_by_date(vix), dates))
         if not vol_labels.empty:
             axes.append(("volatility", list(_VOL_CONDITIONS), vol_labels))
-    rates = fn(RATES_SERIES_ID)
+    # Trend axis (E1-CONDITIONS-TREND-AXIS) — built from the benchmark *price*
+    # series (a separate source from the FRED ``fn`` above), ordered between
+    # volatility and rates per DECISIONS §6 ("vol / trend / rates").
+    price_fn = sources.benchmark_price_fn
+    price = price_fn() if price_fn is not None else None
+    if price is not None:
+        trend_labels = _trend_labels(_align_market(_by_date(price), dates))
+        if not trend_labels.empty:
+            axes.append(("trend", list(_TREND_CONDITIONS), trend_labels))
+    rates = fn(RATES_SERIES_ID) if fn is not None else None
     if rates is not None:
         rates_labels = _rates_labels(_align_market(_by_date(rates), dates))
         if not rates_labels.empty:
@@ -489,9 +533,10 @@ def load_conditions(sources: ConsoleSources | None = None) -> vm.ConditionsView:
     """Sharpe by *market* condition + strategy×condition heatmap + stress windows.
 
     Attribution axes are live-computable, point-in-time market conditions
-    (volatility from the VIX, rates from the 10-year yield) aligned to the OOS
-    calendar — not the strategy's own returns. The labels are global (one per
-    date), so the heatmap measures each strategy within the same market regimes.
+    (volatility from the VIX, trend from the benchmark vs its 200-bar moving
+    average, rates from the 10-year yield) aligned to the OOS calendar — not the
+    strategy's own returns. The labels are global (one per date), so the heatmap
+    measures each strategy within the same market regimes.
     """
     sources = sources or ConsoleSources.default()
     per_strategy: dict[str, pd.Series] = {}
