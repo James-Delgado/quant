@@ -20,6 +20,27 @@ describe("Conditions panel", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the trend axis (the third live-computable axis)", async () => {
+    const { container } = render(<Conditions />);
+    await screen.findByText("Sharpe by condition");
+    const chart = container.querySelector(".chart") as SVGElement;
+    expect(
+      within(chart as unknown as HTMLElement).getByText("uptrend"),
+    ).toBeInTheDocument();
+    expect(
+      within(chart as unknown as HTMLElement).getByText("downtrend"),
+    ).toBeInTheDocument();
+  });
+
+  it("lead text names all three DECISIONS §6 axes (vol / trend / rates)", async () => {
+    render(<Conditions />);
+    await screen.findByText("Sharpe by condition");
+    const lead = document.querySelector(".lead") as HTMLElement;
+    expect(lead.textContent).toMatch(/volatility \(VIX\)/);
+    expect(lead.textContent).toMatch(/trend/);
+    expect(lead.textContent).toMatch(/rates \(10-year Treasury\)/);
+  });
+
   it("renders the strategy × condition heatmap", async () => {
     render(<Conditions />);
     expect(await screen.findByText("Strategy × condition")).toBeInTheDocument();
