@@ -694,6 +694,17 @@ PANEL_LAKE_DATASETS: tuple[str, ...] = (
 )
 # Cache directory name under the data root (a sibling of the phase4a checkpoints).
 CACHE_DIR_NAME = "console_cache"
+# Max distinct feature_panel_*.parquet files the cache dir retains. Each lake
+# re-ingest, universe change, or asof variant writes a NEW keyed file and the old
+# one is otherwise never deleted, so the dir grows unbounded over time
+# (E1-FEATURE-MONITOR-CACHE-PRUNE). On each cache write we keep only the most
+# recent ``FEATURE_PANEL_CACHE_RETAIN`` files by mtime and prune the rest.
+# Operational disk-hygiene parameter (NOT a research/methodology threshold): the
+# realistic working set is the full-history E1 catalog panel plus a handful of
+# recent asof point-in-time variants (E3/E4) and recent lake/universe variants; 8
+# comfortably covers that while bounding disk. Best-effort + guarded; the
+# just-written entry is never pruned. Pinned per METHODOLOGY §1.
+FEATURE_PANEL_CACHE_RETAIN = 8
 
 
 def _lake_fingerprint(processed_dir: Path, datasets: tuple[str, ...]) -> str:
@@ -754,6 +765,46 @@ def _feature_panel_cache_key(
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
+def _prune_feature_panel_cache(cache_dir: Path, current: Path, *, keep: int) -> None:
+    """Bound the cache dir to the ``keep`` most-recent panel files (best-effort).
+
+    Lists ``feature_panel_*.parquet`` in ``cache_dir``, keeps the ``keep`` most
+    recently modified, and unlinks the rest. ``current`` (the file the calling
+    write just produced) is ALWAYS retained and counts toward the budget, so a
+    concurrent newer write racing in cannot cause this call to delete the entry it
+    just created — even if ``current`` is the oldest by mtime at prune time. The
+    ``keep`` most-recent of the *other* files therefore reduces to ``keep - 1``.
+
+    Honest-degrade discipline matching the cache itself (METHODOLOGY §9): every
+    filesystem touch is guarded — a missing dir, an unreadable listing, or a failed
+    ``unlink`` (locked/already-gone file) is swallowed and never raises. Pruning is
+    an optimization, never a correctness dependency.
+    """
+    try:
+        others = [
+            p
+            for p in cache_dir.glob("feature_panel_*.parquet")
+            if p != current
+        ]
+    except OSError:
+        return
+    if len(others) <= keep - 1:
+        return  # current + others already within budget → nothing to prune
+
+    def _mtime(path: Path) -> int:
+        try:
+            return path.stat().st_mtime_ns
+        except OSError:
+            return -1
+
+    others.sort(key=_mtime, reverse=True)
+    for stale in others[keep - 1:]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass  # locked / already removed → leave it; never raise
+
+
 def _cached_feature_panel(
     panel_fn: FeaturePanelFn = _load_feature_panel,
     *,
@@ -811,6 +862,12 @@ def _cached_feature_panel(
         try:
             cache_dir.mkdir(parents=True, exist_ok=True)
             panel.to_parquet(cache_path)
+            # Garbage-collect superseded keyed files so the dir stays bounded
+            # (E1-FEATURE-MONITOR-CACHE-PRUNE). Read the retain budget at call time
+            # so it is monkeypatchable; never prunes the just-written ``cache_path``.
+            _prune_feature_panel_cache(
+                cache_dir, cache_path, keep=FEATURE_PANEL_CACHE_RETAIN
+            )
         except Exception:
             pass  # write is best-effort; the built panel is still returned
     return panel
