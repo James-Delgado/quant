@@ -50,7 +50,7 @@ from quant.backtest.statistics import (
     deflated_sharpe_ratio,
     diebold_mariano,
 )
-from quant.ledger import cumulative_trial_count
+from quant.ledger import cumulative_trial_count, observed_sharpe_std
 
 MIN_DM_OBS = 4
 
@@ -251,7 +251,7 @@ def dsr_aware_gate_report(
     regime_labels: pd.Series,
     *,
     n_trials: int | None = None,
-    sharpe_std: float = DEFAULT_SHARPE_STD,
+    sharpe_std: float | None = None,
     dsr_threshold: float = DSR_THRESHOLD,
     regimes_required: tuple[str, ...] = DEFAULT_REGIMES_REQUIRED,
     min_pass: int = 2,
@@ -279,8 +279,15 @@ def dsr_aware_gate_report(
         Deflation N. ``None`` (default) reads ``cumulative_trial_count()`` from
         the ledger; pass an int to deflate against a fixed N (used in tests).
     sharpe_std:
-        Annualised cross-trial Sharpe dispersion for the expected-max benchmark
-        (default ``DEFAULT_SHARPE_STD``).
+        Annualised cross-trial Sharpe dispersion for the expected-max benchmark.
+        ``None`` (default) reads the **empirical** dispersion from the ledger via
+        ``quant.ledger.observed_sharpe_std()`` and falls back to the pinned
+        ``DEFAULT_SHARPE_STD`` scalar when the ledger carries fewer than two
+        sharpe-bearing trials (``observed_sharpe_std`` returns ``None``). The
+        fallback is checked with ``is None`` so a genuine zero-dispersion ledger
+        (``0.0``) is used as-is, not mistaken for "missing". Pass a float to
+        override the ledger and deflate against a fixed dispersion. PINNED
+        (METHODOLOGY §1): the fallback rule is fixed, not a tuning knob.
     dsr_threshold:
         DSR pass threshold (default ``DSR_THRESHOLD`` = 0.5).
 
@@ -293,6 +300,10 @@ def dsr_aware_gate_report(
     * ``dsr_passed``    — bool — ``dsr > dsr_threshold``
     * ``dsr_result``    — ``DSRResult`` — full DSR detail (SR_obs, SR_benchmark, …)
     * ``n_trials``      — int — the deflation N actually used
+    * ``sharpe_std``    — float — the cross-trial Sharpe dispersion actually used
+    * ``sharpe_std_source`` — str — where it came from:
+      ``"empirical"`` (ledger ``observed_sharpe_std``), ``"default_scalar"``
+      (the pinned ``DEFAULT_SHARPE_STD`` fallback), or ``"explicit"`` (caller-supplied)
     * ``sr_observed``   — float — GBM aggregate annualised Sharpe
     * ``sr_benchmark``  — float — expected best-of-N annualised Sharpe under null
 
@@ -311,6 +322,20 @@ def dsr_aware_gate_report(
     if n_trials is None:
         n_trials = cumulative_trial_count()
 
+    if sharpe_std is None:
+        # Mirror the n_trials plumbing: read the empirical cross-trial dispersion
+        # from the ledger, falling back to the pinned scalar when too few trials
+        # carry a Sharpe. Check `is None` explicitly — 0.0 is a valid result.
+        empirical_std = observed_sharpe_std()
+        if empirical_std is None:
+            sharpe_std = DEFAULT_SHARPE_STD
+            sharpe_std_source = "default_scalar"
+        else:
+            sharpe_std = empirical_std
+            sharpe_std_source = "empirical"
+    else:
+        sharpe_std_source = "explicit"
+
     dsr_result: DSRResult = deflated_sharpe_ratio(
         gbm_result.oos_returns,
         n_trials,
@@ -327,6 +352,8 @@ def dsr_aware_gate_report(
         "dsr_passed": dsr_result.passed,
         "dsr_result": dsr_result,
         "n_trials": int(n_trials),
+        "sharpe_std": float(sharpe_std),
+        "sharpe_std_source": sharpe_std_source,
         "sr_observed": dsr_result.sr_observed,
         "sr_benchmark": dsr_result.sr_benchmark,
         "gate_passed": combined_passed,

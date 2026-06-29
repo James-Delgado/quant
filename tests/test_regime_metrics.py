@@ -13,7 +13,7 @@ from quant.backtest.regime_metrics import (
     phase4a_gate_report,
     regime_dm_test,
 )
-from quant.backtest.statistics import DMResult
+from quant.backtest.statistics import DEFAULT_SHARPE_STD, DMResult
 from quant.features.targets import TARGET_CATALOG
 from quant.ledger import cumulative_trial_count
 
@@ -314,6 +314,68 @@ class TestDsrAwareGateReport:
         wrapped = dsr_aware_gate_report(gbm, arima, labels, n_trials=5)
         assert wrapped["stage1_passed"] == stage1["gate_passed"]
         assert wrapped["pass_count"] == stage1["pass_count"]
+
+    def test_sharpe_std_empirical_from_ledger(self, monkeypatch) -> None:
+        """With sharpe_std=None and a ≥2-Sharpe ledger, the gate uses the empirical
+        cross-trial dispersion and labels the source ``empirical``."""
+        gbm, arima, labels = _stage1_pass_fixture()
+        empirical = 0.5123
+        monkeypatch.setattr(
+            "quant.backtest.regime_metrics.observed_sharpe_std",
+            lambda: empirical,
+        )
+        report = dsr_aware_gate_report(gbm, arima, labels, n_trials=10)
+        assert report["sharpe_std_source"] == "empirical"
+        assert report["sharpe_std"] == empirical
+        assert report["dsr_result"].sharpe_std == empirical
+
+    def test_sharpe_std_falls_back_to_default_scalar(self, monkeypatch) -> None:
+        """With sharpe_std=None and a sharpe-less ledger (observed_sharpe_std →
+        None), the gate falls back to the pinned DEFAULT_SHARPE_STD scalar."""
+        gbm, arima, labels = _stage1_pass_fixture()
+        monkeypatch.setattr(
+            "quant.backtest.regime_metrics.observed_sharpe_std",
+            lambda: None,
+        )
+        report = dsr_aware_gate_report(gbm, arima, labels, n_trials=10)
+        assert report["sharpe_std_source"] == "default_scalar"
+        assert report["sharpe_std"] == DEFAULT_SHARPE_STD
+        assert report["dsr_result"].sharpe_std == DEFAULT_SHARPE_STD
+
+    def test_sharpe_std_zero_dispersion_is_not_fallback(self, monkeypatch) -> None:
+        """A genuine zero-dispersion ledger returns 0.0 (not None); the gate must
+        use it as empirical, not silently treat falsy 0.0 as 'missing'."""
+        gbm, arima, labels = _stage1_pass_fixture()
+        monkeypatch.setattr(
+            "quant.backtest.regime_metrics.observed_sharpe_std",
+            lambda: 0.0,
+        )
+        report = dsr_aware_gate_report(gbm, arima, labels, n_trials=10)
+        assert report["sharpe_std_source"] == "empirical"
+        assert report["sharpe_std"] == 0.0
+
+    def test_explicit_sharpe_std_overrides_ledger(self, monkeypatch) -> None:
+        """An explicit sharpe_std bypasses the ledger entirely and is labelled
+        ``explicit`` for the audit trail."""
+        gbm, arima, labels = _stage1_pass_fixture()
+        # observed_sharpe_std must NOT be consulted on the explicit path.
+        monkeypatch.setattr(
+            "quant.backtest.regime_metrics.observed_sharpe_std",
+            lambda: (_ for _ in ()).throw(
+                AssertionError("ledger must not be read on explicit path")
+            ),
+        )
+        report = dsr_aware_gate_report(gbm, arima, labels, n_trials=10, sharpe_std=0.42)
+        assert report["sharpe_std_source"] == "explicit"
+        assert report["sharpe_std"] == 0.42
+        assert report["dsr_result"].sharpe_std == 0.42
+
+    def test_report_carries_sharpe_std_keys(self) -> None:
+        gbm, arima, labels = _stage1_pass_fixture()
+        report = dsr_aware_gate_report(gbm, arima, labels, n_trials=10)
+        assert "sharpe_std" in report
+        assert "sharpe_std_source" in report
+        assert report["sharpe_std_source"] in {"empirical", "default_scalar", "explicit"}
 
 
 # ─── b1_gate_report ──────────────────────────────────────────────────────────
