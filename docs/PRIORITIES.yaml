@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-29  # E1-M2-TOPBAR-FRESHNESS done; gating deps re-ranked to front (80/81)
+last_updated: 2026-06-29  # E1-CONDITIONS-TREND-COPY done; E1-CLOSE still gated on E1-M2-TOPBAR-FRESHNESS-DISCLOSURE (81)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1914,6 +1914,13 @@ tasks:
       E1-CLOSE open (AGENT_OPERATION Step 7 corollary). For a UI project the
       validation artifact is a scripted build+render check rather than a Jupyter
       notebook; document the chosen form in the report.
+      Closeout check (added by E1-CONDITIONS-TREND-COPY 2026-06-29): after the
+      fresh export, confirm conditions.json carries the `trend` axis (uptrend/
+      downtrend, benchmark vs its 200-bar MA) so the Conditions lead copy
+      (vol/trend/rates) matches the rendered bars. The current stale checkpoint
+      lacks it; load_conditions emits it once benchmark_price_fn (wired in
+      ConsoleSources.default) reads the lake. If absent after regen, treat as an
+      integration defect per the corollary above.
 
   # ---- E2 — Console API (gated on C1) ----
 
@@ -3227,8 +3234,9 @@ tasks:
     title: "E1-CONDITIONS-TREND-AXIS follow-up: Conditions panel lead-text names all three axes (vol/trend/rates)"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T03:11:41Z
+    completed_at: 2026-06-29
     depends_on: [E1-CONDITIONS-TREND-AXIS]
     blocks: [E1-CLOSE]
     deliverable:

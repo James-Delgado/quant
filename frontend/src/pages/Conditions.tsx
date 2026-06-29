@@ -19,9 +19,10 @@ export function Conditions() {
       <div className="h1">Condition attribution</div>
       <div className="lead">
         Where each strategy earns or bleeds, by market condition. Axes are
-        live-computable, point-in-time market conditions — volatility (VIX) and
-        rates (10-year Treasury) — aligned to the out-of-sample calendar. Named
-        historical episodes are kept separately as stress windows.
+        live-computable, point-in-time market conditions — volatility (VIX),
+        trend (benchmark vs its 200-day moving average), and rates (10-year
+        Treasury) — aligned to the out-of-sample calendar. Named historical
+        episodes are kept separately as stress windows.
       </div>
 
       {state.status === "loading" && <Loading label="Loading conditions…" />}
