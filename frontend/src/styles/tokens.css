@@ -1,0 +1,27 @@
+/* Design tokens — ported verbatim from docs/project-e/mockups/console.css.
+   Cool graphite chrome; saturation appears ONLY inside data. IBM Plex family
+   with system fallbacks (token survives IBM Plex being offline — risk §12). */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital@0;1&display=swap");
+
+:root {
+  --ink: #0e1116;
+  --slate: #161a21;
+  --slate-2: #1b212b;
+  --raise: #222a36;
+  --hair: #232b35;
+  --hair-2: #303a48;
+  --bone: #e7ecf1;
+  --steel: #929fae;
+  --dim: #5b6573;
+  --gain: #5bd6a4;
+  --loss: #f2715a;
+  --series: #6e9bf2;
+  --warnc: #e0b15c;
+  --gain-bg: rgba(91, 214, 164, 0.12);
+  --loss-bg: rgba(242, 113, 90, 0.12);
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --serif: "IBM Plex Serif", Georgia, serif;
+  --r: 8px;
+  --r-sm: 5px;
+}

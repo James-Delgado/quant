@@ -1,0 +1,13 @@
+# dependencies
+node_modules
+
+# build output
+dist
+*.tsbuildinfo
+
+# synced static data (reproducible from `src/quant/console/` via npm run sync-data)
+public/data
+
+# logs / editor
+*.log
+.DS_Store

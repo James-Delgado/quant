@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28
+last_updated: 2026-06-29  # merged Project E1 (E1-CLOSE done) into main alongside A/B work; done E1 tasks re-ranked 80/81 -> 128/129 to clear collision with B3-M1/B3-M2
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1806,7 +1806,9 @@ tasks:
     title: "E1-M1: Console service layer + static JSON export"
     project: E
     sub_project: E1
-    status: ready
+    status: done
+    started_at: 2026-06-28T08:20:00Z
+    completed_at: 2026-06-28
     depends_on: []
     blocks: [E1-M2, E1-CLOSE]
     deliverable:
@@ -1834,7 +1836,9 @@ tasks:
     title: "E1-M2: Frontend scaffold (Vite + React + TS + Tailwind/shadcn shell)"
     project: E
     sub_project: E1
-    status: blocked
+    status: done
+    started_at: 2026-06-28T09:05:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M1]
     blocks: [E1-M3, E1-M4, E1-CLOSE]
     deliverable:
@@ -1852,17 +1856,33 @@ tasks:
       "Trust" — DECISIONS.md), routing, and a thin static data client reading
       the M1 export/*.json. Acceptance: app builds; shell + nav match the
       mockup at 320/768/1024/1440; keyboard nav + reduced-motion + visible
-      focus. CONVENTION DECISION (AGENT_OPERATION "new directory" pause): the
-      exact frontend directory location is a build-time decision for this, the
-      first frontend task — `frontend/` is a placeholder; pick and document the
-      real path here.
+      focus.
+      CONVENTION DECISION RECORDED (AGENT_OPERATION "new directory" pause):
+      the frontend lives at repo-root `frontend/` (canonical Vite location;
+      keeps the disposable UI cleanly separated from the durable Python core
+      under src/quant/). See frontend/README.md "Directory decision".
+      DELIVERED (commit on branch worktree-e1-m2-frontend): Vite 6 + React 18 +
+      TS + Tailwind 3 + shadcn foundation (components.json + cn util); tokens +
+      instrument design system ported verbatim from console.css into
+      frontend/src/styles/; app shell (Sidebar groups Monitor/Evidence/
+      Reference, Topbar with honest "live execution · not connected" + real
+      data_status asof, footer real git SHA); HashRouter over 8 placeholder
+      panels; typed static data client (frontend/src/lib/dataClient.ts) mirroring
+      schemas.py; export synced to public/data via scripts/copy-export.mjs
+      (predev/prebuild/pretest). Verified: `npm run build` green; 15 Vitest tests
+      green (component + routing + dataClient + a contract/drift smoke that reads
+      the real export); breakpoints 320/768/1024/1440 screenshot-checked +
+      mobile slide-over nav; 0 console errors; ruff clean (no Python changed).
+      Report button is present-but-disabled (modal/submission is M6).
 
   - id: E1-M3
     rank: 48
     title: "E1-M3: Monitor panels — Overview, Strategies (roster->detail), Conditions"
     project: E
     sub_project: E1
-    status: blocked
+    status: done
+    started_at: 2026-06-28T19:05:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M2]
     blocks: [E1-M5, E1-CLOSE]
     deliverable:
@@ -1884,12 +1904,41 @@ tasks:
       fed neutral chart-ready series from the service layer. Acceptance: render
       from export/*.json at mockup parity; one consistent instrument style.
 
+      CHARTING-LIBRARY DECISION (the DECISIONS.md "still open" item, settled
+      here): chose BESPOKE SVG instrument primitives (frontend/src/components/
+      charts/* + frontend/src/lib/chartGeometry.ts), NOT Plotly/ECharts.
+      Rationale: (a) the frozen mockup IS hand-authored SVG in a specific
+      instrument language (hairline grids, mono ticks, stress shading,
+      small-multiples) that a heavyweight chart lib would fight; (b) Plotly
+      (~1MB+ gz) / ECharts (~150kb+ gz) blow the microsite-class bundle budget
+      for what are line/area/bar/histogram/sparkline primitives — the shipped
+      build is 62kB gz JS / 3.9kB gz CSS; (c) the service layer already emits
+      NEUTRAL chart-ready series, so the choice stays fully reversible — a later
+      swap to Plotly/ECharts is presentation-only (nothing upstream changes).
+
+      DELIVERED (commit on branch worktree-e1-m1-console): three Monitor pages
+      (Overview/Strategies/Conditions) replacing the M2 placeholders, fed by the
+      existing static data client; bespoke SVG chart primitives (Sparkline,
+      LineChart w/ stress bands + zero axis + area fill, Histogram, ConditionBars,
+      Heatmap); format + chartGeometry helpers; a useAsyncData hook with honest
+      loading/error states; the instrument CSS classes M2 omitted, ported verbatim
+      from console.css. Strategies is roster->detail with ?pick= URL-state +
+      ARIMA-control overlay. Verified: npm run build green; 37 Vitest tests green
+      (15 prior + 22 new); /browse parity at 320/768/1024/1440; 0 console errors;
+      ruff clean (no Python changed). HONEST GAPS surfaced in-UI (METHODOLOGY §9),
+      NOT faked: Overview hero renders the candidate equity only (no SPY overlay —
+      the export has no benchmark series; see E1-M3-OVERVIEW-BENCHMARK) with a
+      visible note; Conditions renders the vol+trend axes the export contains
+      (rates axis arrives with E1-M1-CONDITIONS-MARKET-AXIS); ⓘ tooltips are E1-M5.
+
   - id: E1-M4
     rank: 49
     title: "E1-M4: Evidence panels — Provenance, Feature Catalog, Trial Registry, Data & Market"
     project: E
     sub_project: E1
-    status: blocked
+    status: done
+    started_at: 2026-06-28T19:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M2]
     blocks: [E1-M5, E1-CLOSE]
     deliverable:
@@ -1915,7 +1964,9 @@ tasks:
     title: "E1-M5: Explanations panel + tooltips + a11y/responsive polish"
     project: E
     sub_project: E1
-    status: blocked
+    status: done
+    started_at: 2026-06-28T16:49:13Z
+    completed_at: 2026-06-28
     depends_on: [E1-M3, E1-M4]
     blocks: [E1-M6, E1-CLOSE]
     deliverable:
@@ -1935,7 +1986,9 @@ tasks:
     title: "E1-M6: Issue reporting button + GitHub-issue submission + feedback->PRIORITIES promotion"
     project: E
     sub_project: E1
-    status: blocked
+    status: done
+    started_at: 2026-06-28T18:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M5]
     blocks: [E1-CLOSE]
     deliverable:
@@ -1962,8 +2015,10 @@ tasks:
     title: "E1-CLOSE: E1 closeout — E2E build+render from fresh real artifacts + closeout report"
     project: E
     sub_project: E1
-    status: blocked
-    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6]
+    status: done
+    started_at: 2026-06-29T00:20:00Z
+    completed_at: 2026-06-29
+    depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE, E1-CONDITIONS-TREND-AXIS, E1-M2-TOPBAR-FRESHNESS, E1-M2-TOPBAR-FRESHNESS-DISCLOSURE, E1-CONDITIONS-TREND-COPY]
     blocks: [E2-M1]
     deliverable:
       report: docs/project-e/E1_CLOSEOUT.md
@@ -1973,13 +2028,21 @@ tasks:
     est_complexity: small
     notes: |
       PRD §7 E1-CLOSE / METHODOLOGY §21. End-to-end validation that the console
-      builds and renders ALL eight panels from freshly exported real artifacts
+      builds and renders ALL nine panels (incl. the Strategy Portfolio) from
+      freshly exported real artifacts
       (export -> static fetch -> panels), plus a one-page closeout report
       stating delivered scope + deferred items (E3/E4 live tiles). Any
       integration defect the validation surfaces becomes a new task and keeps
       E1-CLOSE open (AGENT_OPERATION Step 7 corollary). For a UI project the
       validation artifact is a scripted build+render check rather than a Jupyter
       notebook; document the chosen form in the report.
+      Closeout check (added by E1-CONDITIONS-TREND-COPY 2026-06-29): after the
+      fresh export, confirm conditions.json carries the `trend` axis (uptrend/
+      downtrend, benchmark vs its 200-bar MA) so the Conditions lead copy
+      (vol/trend/rates) matches the rendered bars. The current stale checkpoint
+      lacks it; load_conditions emits it once benchmark_price_fn (wired in
+      ConsoleSources.default) reads the lake. If absent after regen, treat as an
+      integration defect per the corollary above.
 
   # ---- E2 — Console API (gated on C1) ----
 
@@ -1988,7 +2051,7 @@ tasks:
     title: "E2-M1: FastAPI scaffold + read endpoints at export-schema parity"
     project: E
     sub_project: E2
-    status: blocked
+    status: ready
     depends_on: [E1-CLOSE, C1-M2]
     blocks: [E2-M2, E2-CLOSE]
     deliverable:
@@ -2250,6 +2313,13 @@ tasks:
       drift stats to a live, alerting surface. Acceptance: market env matches
       the condition machinery; the drift monitor flags a seeded distribution
       shift.
+      BREADCRUMB (from E1-M5-OVERVIEW-CONDITION-TIPS, 2026-06-28): once breadth +
+      2s10s are ingested, un-hardcode the pending "—" placeholders that read from
+      market.json — the Overview "Market snapshot" Breadth/Yield-curve rows
+      (frontend/src/pages/Overview.tsx) and the Data & Market Breadth/2s10s tiles
+      (frontend/src/pages/DataMarket.tsx) — by adding the fields to the
+      MarketSnapshot export schema and rendering the real values. The InfoTip
+      copy already lives on the Overview; this is a value-wiring step only.
 
   - id: E4-CLOSE
     rank: 65
@@ -2293,6 +2363,609 @@ tasks:
       the Phase 5 milestone backlog (which gets appended to this file at that
       time, not before — Phase 5's design depends on what B and C surfaced).
 
+  # ------ E1-M1 discovered follow-ups (post-task review of E1-M1) ------
+  # Ranks 100+ are append-order hints; depends_on is the hard ordering constraint.
+  # The two CLOSE-blocking refinements are in E1-CLOSE.depends_on (Step 7 corollary).
+
+  - id: E1-M1-CONDITIONS-MARKET-AXIS
+    rank: 100
+    title: "E1-M1 follow-up: market-level Conditions axes (VIX-detector vol + rates) replacing the return-vol proxy"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M1]
+    blocks: [E1-CLOSE, E1-M5-OVERVIEW-CONDITION-TIPS]
+    deliverable:
+      file: src/quant/console/readers.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      decisions: docs/project-e/DECISIONS.md
+    est_complexity: medium
+    notes: |
+      Discovered in E1-M1 post-task review (DECLARED DEVIATION, METHODOLOGY §9).
+      load_conditions currently derives the volatility axis from each return
+      series' OWN rolling vol and the trend axis from its equity-vs-MA — a
+      self-contained M1 proxy that needs no lake/tz alignment. PRD §5/§11 +
+      DECISIONS §6 intend MARKET-level, live-computable conditions: reuse the
+      repo's VIXThresholdDetector (vol from VIX) and ADD a rates axis (FRED
+      DGS10 / yield_curve). Requires aligning VIX/FRED to the OOS calendar
+      (the documented NY-vs-UTC tz pitfall — see project_lake_tz_alignment memory
+      + run_b1_arms._to_naive_utc). Keep the service layer emitting neutral
+      chart-ready series. Blocks E1-CLOSE so the Conditions panel certifies on
+      the intended axes, not the proxy.
+
+  - id: E1-M1-FEATURE-MONITOR
+    rank: 101
+    title: "E1-M1 follow-up: lake-backed feature monitor (coverage, mu/sigma, distribution, stability/drift)"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T21:30:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M1]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      decisions: docs/project-e/DECISIONS.md
+    est_complexity: medium
+    notes: |
+      Discovered in E1-M1 post-task review. E1-M1 ships the Feature Catalog
+      REGISTRY plus an injectable `feature_monitor_fn` hook, but the production
+      ConsoleSources.default() wires it to None, so coverage / mean / std /
+      distribution / stability render empty. DECISIONS §8 + PRD §5 want the
+      catalog to be a MONITORING surface (per-feature coverage, mu/sigma, a
+      distribution mini, and a stable/drifting/stale status with a nightly drift
+      check). Implement a lake-backed monitor (read each registered feature's
+      column from build_features / the processed lake; compute the stats and a
+      drift/staleness verdict) and wire it into default(). Reuses the same
+      tz-alignment care as the conditions follow-up. Blocks E1-CLOSE so the
+      Feature Catalog panel certifies with real monitoring stats (the panel
+      acceptance in PRD §7 M4 requires drift/stale status).
+
+  - id: E1-M1-FEATURE-MONITOR-EXPORT-COST
+    rank: 113
+    title: "E1-M1-FEATURE-MONITOR follow-up: cache/gate the export-time feature-panel build (+ richer drift options)"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-29T01:17:16Z
+    completed_at: 2026-06-29
+    depends_on: [E1-M1-FEATURE-MONITOR]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-FEATURE-MONITOR post-task review (commit of
+      src/quant/console/sources.py). Wiring build_feature_monitor(_load_feature_panel)
+      into ConsoleSources.default() makes `python -m quant.console export` build the
+      full settings.equity_universe feature panel (build_features over ~33 symbols ×
+      ~5k bars + FRED + sentiment), adding ~1-2 min of wall-time to every export (the
+      monitor is memoized per-process, but each export is a fresh process). Honest +
+      correct today — load_catalog now shows 25/27 features with real coverage/
+      mu-sigma/distribution/stability (live run: 24 stable / 1 drifting / 0 stale,
+      mean_coverage 0.99) — just slower. Options, none gating:
+        (a) cache the built panel to the lake/processed tree (or a parquet under
+            data/) keyed by the universe + lake mtime, so repeat exports reuse it;
+        (b) a `--no-monitor` / env flag on the export CLI for fast schema-only exports;
+        (c) richer drift: the verdict is a standardized MEAN-shift on the per-date
+            cross-sectional mean (sources._stability_verdict) and won't catch a
+            variance/shape shift with stable mean — a PSI or KS distribution metric
+            would; pin the new threshold per METHODOLOGY §1 + a ledger note if added;
+        (d) point-in-time monitoring: _load_feature_panel builds full history;
+            build_features already takes `asof`, so an asof-aware monitor would let
+            E3/E4 show the feature state knowable at a date.
+        (e) two registered xs_rank_* features stay unmonitored (the panel adds only
+            the M3 survivor xs_rank_vol_21d) and render registry-only — add the
+            others if the catalog should monitor them.
+      NON-GATING / NOT in E1-CLOSE.depends_on (mirrors E1-M1-LEDGER-COMMIT-LINKS /
+      E1-M1-EXPORT-FRESHNESS-STAMP): the Feature Catalog panel already certifies with
+      real monitoring stats, so this polish must not deadlock closeout.
+
+  - id: E1-M1-LEDGER-COMMIT-LINKS
+    rank: 102
+    title: "E1-M1 follow-up: resolvable Trial Registry commit links for content-hash runs"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T22:07:40Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M1]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1 post-task review. load_ledger only emits a commit_url
+      when an entry's config_hash is a 40-hex git SHA; the M6 / B1 / B2 entries
+      use 64-hex CONTENT hashes, so those Trial Registry rows have no link even
+      though the real git_sha lives in the matching checkpoint metadata.json.
+      Join ledger entries to checkpoints (by the `artifacts` path or config_hash)
+      and surface the checkpoint git_sha so every run row gets a resolvable
+      github.com/James-Delgado/quant commit link (DECISIONS §5). Non-blocking
+      polish; the current behaviour is honest (no broken links), just incomplete.
+
+      DELIVERED (commit on branch worktree-e1-m1-console): sources.is_git_sha (the
+      shared 40-hex-git predicate, replacing readers._looks_like_git_sha) +
+      sources.checkpoint_git_sha_index (scans every metadata.json under data_root,
+      maps content config_hash -> git_sha); readers.load_ledger now resolves each
+      row's commit = config_hash when it IS a git SHA (the reconstructed M1-M5
+      rows) else the joined checkpoint git_sha, and the displayed short hash equals
+      the link target (no content-hash prefix masquerading as a commit). Honest
+      degrade (METHODOLOGY §9): a checkpoint with git_sha: null (the C2 audit) or
+      no matching checkpoint -> no link. Verified on the REAL ledger + checkpoints:
+      14/15 runs now link (was 5/15 — only M1-M5); the C2 audit honestly shows "—".
+      Frontend kept faithful: Ledger.tsx footer note corrected, mockExport + the
+      Ledger Vitest updated (content-hash run links via checkpoint; audit run
+      dashes). 60 console tests + 78 Vitest green; npm build green; ruff clean.
+
+  - id: E1-LEDGER-ARTIFACTS-PATH-JOIN
+    rank: 114
+    title: "E1-M1-LEDGER-COMMIT-LINKS follow-up: artifacts-path fallback join for checkpoints outside data_root"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-29T01:57:35Z
+    completed_at: 2026-06-29
+    depends_on: [E1-M1-LEDGER-COMMIT-LINKS]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-LEDGER-COMMIT-LINKS post-task review (commit of
+      src/quant/console/sources.py). The task spec said "join ... by the `artifacts`
+      path OR config_hash"; the shipped join uses config_hash (the content hash
+      recorded verbatim in both the ledger entry and the checkpoint metadata),
+      which fully resolves all 14 linkable runs today because every checkpoint
+      lives under data_root keyed by config_hash. The `artifacts`-path half is the
+      deferred robustness case: a ledger entry whose checkpoint is stored OUTSIDE
+      data_root (so checkpoint_git_sha_index's data_root.rglob misses it) would
+      stay link-less even though its metadata.json carries a git_sha. Add an
+      artifacts-path fallback in load_ledger: for an unresolved content-hash entry,
+      resolve each `artifacts` path (relative to data_root.parent), read the
+      metadata.json in that dir (or the parent of a file artifact), and use its
+      git_sha when config_hash matches. NON-GATING and deliberately NOT in
+      E1-CLOSE.depends_on (mirrors E1-M1-EXPORT-FRESHNESS-STAMP /
+      E1-M1-FEATURE-MONITOR-EXPORT-COST): the panel already certifies with 14/15
+      real links + an honest dash, so this must not deadlock closeout. Low priority.
+
+  - id: E1-M1-EXPORT-FRESHNESS-STAMP
+    rank: 103
+    title: "E1-M1 follow-up: export freshness stamp for the UI (kept out of the idempotency surface)"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M1]
+    blocks: [E1-M2-TOPBAR-FRESHNESS]
+    deliverable:
+      file: src/quant/console/export.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1 post-task review. The export is deliberately
+      byte-idempotent (no embedded timestamp) so re-running over unchanged
+      artifacts is a no-op diff. PRD §12 risk table wants a "freshness stamp
+      shown in the UI". Add a SEPARATE manifest (e.g. export/_manifest.json with
+      generated_at + per-source artifact mtimes) that the idempotency check
+      excludes, so the UI can show staleness without breaking the deterministic
+      payload contract. Non-blocking polish.
+      NOTE (E1-M2): the M2 Topbar already shows "data exported <data_status.asof>"
+      as an interim freshness proxy; swap it to the manifest's generated_at when
+      this lands.
+
+  - id: E1-M2-FE-LINT
+    rank: 104
+    title: "E1-M2 follow-up: ESLint + Prettier for the frontend (web coding-style standards)"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T23:30:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M2]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M2 post-task review. The frontend scaffold ships
+      TypeScript (tsc strict) + Vitest but NO JS linter/formatter — the repo's
+      lint gate (ruff) only covers Python. Web coding-style rules expect ESLint
+      (typescript-eslint, react-hooks, jsx-a11y) + Prettier. Add flat-config
+      ESLint + Prettier + `npm run lint` to frontend/, fix any findings, and
+      wire it into whatever CI runs the frontend build/test. Blocks E1-CLOSE so
+      closeout certifies a linted frontend. Non-urgent; current code is
+      tsc-strict clean.
+
+      DELIVERED (commit on branch worktree-e1-m1-console): ESLint 9 flat config
+      (frontend/eslint.config.js) = @eslint/js + typescript-eslint + react-hooks
+      + jsx-a11y + react-refresh, with eslint-config-prettier applied last so
+      Prettier owns formatting; Prettier 3 (.prettierrc.json: semi, double-quote,
+      trailing-comma all, printWidth 80) + .prettierignore. New scripts: lint,
+      lint:fix, format, format:check. Fixed all findings: 2 jsx-a11y issues
+      resolved in SOURCE via justified inline disables (TableScroll's deliberately
+      focusable role="region" scroll container; ReportButton's mouse-only backdrop
+      click-to-dismiss, keyboard already covered by Esc/focus-trap) — NOT by
+      weakening the config (honors the repo config-protection guard). One-time
+      `prettier --write` reformatted 40 source files (pure reflow; 78/78 Vitest
+      still green). Verified: `npm run lint` exit 0, `npm run format:check` clean,
+      `npm run build` green, 78 Vitest tests green, ruff clean (no Python touched).
+      Declared scoping (METHODOLOGY §9): root vite/tailwind .config.ts left out of
+      ESLint scope (already tsc -b-checked); src/styles/*.css prettier-ignored to
+      keep the verbatim-from-mockup provenance. No .github/workflows exists, so the
+      gate runs locally (frontend/README.md documents it) — CI wiring is the
+      E1-CI-WORKFLOW follow-up.
+
+  - id: E1-CI-WORKFLOW
+    rank: 116
+    title: "E1-M2-FE-LINT follow-up: GitHub Actions CI running the Python suite + the frontend lint/build/test gate"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M2-FE-LINT]
+    blocks: []
+    deliverable:
+      app: .github/workflows/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M2-FE-LINT (commit of frontend/eslint.config.js +
+      .prettierrc.json). The task said "wire it into whatever CI runs the frontend
+      build/test", but the repo has NO .github/workflows yet — so the frontend gate
+      (npm run lint && format:check && build && test) and the Python gate
+      (pytest tests/ + ruff check) both run locally only. Add a CI workflow that
+      runs BOTH: the Python suite (METHODOLOGY §18, currently un-automated) and the
+      frontend gate. Cross-project infra, not an E1 panel concern — deliberately
+      NOT in E1-CLOSE.depends_on (the frontend lint gate is runnable locally now;
+      gating E1 closeout on standing up repo-wide CI would be scope-inflation —
+      mirrors the E1-M1-FEATURE-MONITOR-EXPORT-COST / E1-LEDGER-ARTIFACTS-PATH-JOIN
+      non-gating exclusions). Low priority.
+      Pointer (added during E1-CLOSE): the closeout shipped a reproducible
+      build+render gate at scripts/e1_closeout_check.sh (fresh export -> artifact
+      validation -> build -> frontend tests -> console tests). CI should invoke it
+      (FAST=1 to skip the ~90s lake-backed feature monitor) as the E1 end-to-end job
+      so a contract/render regression fails CI, not just local runs.
+
+  - id: E1-M2-EXPORT-DETAIL
+    rank: 105
+    title: "E1-M2 follow-up: ensure per-strategy + provenance export fan-out populates for M3/M4 panels"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M1, E1-M2]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+      file: src/quant/console/export.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M2. `python -m quant.console export` in a fresh checkout
+      wrote only the 6 top-level files (strategies/conditions/catalog/ledger/
+      data_status/market); the per-strategy `strategy/<id>.json` and
+      `provenance/<run>.json` fan-out depends on the phase4a parquet checkpoints
+      under data/phase4a/* being present, which they are not in a clean clone.
+      The M3 Strategies-detail panel and the M4 Provenance panel render those
+      detail files, and E1-CLOSE requires "ALL panels from freshly exported real
+      artifacts". Before M3/M4/E1-CLOSE, regenerate the checkpoints (scripts/
+      run_phase4a_arms.py) or otherwise guarantee the detail/provenance exports
+      populate — and document the data-prep step so closeout is reproducible.
+      Blocks E1-CLOSE.
+
+  - id: E1-M3-OVERVIEW-BENCHMARK
+    rank: 106
+    title: "E1-M3 follow-up: benchmark (SPY / buy-and-hold) series in the export for the Overview hero overlay"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T23:13:14Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M1, E1-M3]
+    blocks: [E1-CLOSE, E1-CONDITIONS-TREND-AXIS]
+    deliverable:
+      file: src/quant/console/readers.py
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: small
+    notes: |
+      Discovered in E1-M3. PRD §5 specs the Overview hero as a "portfolio hero
+      chart vs benchmark (stress-shaded)" and the mockup overlays an SPY line, but
+      the M1 export emits no benchmark series — so the M3 hero renders the
+      deployable-candidate equity ONLY, with a visible in-UI note that the
+      benchmark overlay is not fabricated (METHODOLOGY §9, declared deviation).
+      Close the gap: add a benchmark equity series to the service layer (the
+      repo's BuyAndHoldBaseline / an SPY buy-and-hold cumulative over the same OOS
+      span) as a NEUTRAL chart-ready series on strategies.json or a dedicated
+      overview payload, and overlay it as a second `ln-bench` line in
+      frontend/src/pages/Overview.tsx (the LineChart already supports multi-series
+      + dashed bench styling). Keep the stress-band shading. Blocks E1-CLOSE so
+      closeout certifies the intended hero (vs-benchmark), not the candidate-only
+      proxy. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  - id: E1-M4-PROVENANCE-HYPERPARAMS
+    rank: 107
+    title: "E1-M4 follow-up: expose hyperparameter-search config (n_iter / inner folds) in the Provenance run-config"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T23:35:57Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M1, E1-M4]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: src/quant/console/readers.py
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: small
+    notes: |
+      Discovered in E1-M4 (declared deviation, METHODOLOGY §9). The mockup's
+      Provenance run-configuration panel shows a "hyperparameter search · 50 iters
+      · 3 inner folds" row, but the service layer's RunConfigView (from M1) does
+      not carry the search budget — only train/test/step/embargo/label_horizon/
+      costs. The M4 Provenance panel (frontend/src/pages/Provenance.tsx) therefore
+      renders the real config rows and OMITS the hyperparameter-search row rather
+      than fabricate it. For the GBM arms the budget is real (n_iter=50,
+      n_splits=3); ARIMA has none. Add the search config (n_iter, inner_folds,
+      nullable) to RunConfigView + the provenance reader, then render it as an
+      additional `.lin` row in the Provenance run-config (skip when null). Blocks
+      E1-CLOSE so closeout certifies full Provenance parity. Added to
+      E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  # ------ E1-M5 discovered follow-ups (post-task review of E1-M5) ------
+
+  - id: E1-M5-OVERVIEW-CONDITION-TIPS
+    rank: 108
+    title: "E1-M5 follow-up: move Breadth + yield-curve ⓘ tips onto the Overview conditions-now axis once it lands"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T23:53:57Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M1-CONDITIONS-MARKET-AXIS]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: small
+    notes: |
+      Discovered in E1-M5 (declared deviation, METHODOLOGY §9). The frozen mockup
+      places the Breadth and Yield-curve (2s10s) ⓘ tooltips in the Overview
+      "Conditions now" list, but the real Overview diverged in E1-M3 to a Market
+      snapshot (VIX / 10Y / Fed funds) with no Breadth/yield-curve rows — so those
+      two tips were retrofitted onto the Data & Market panel's pending Breadth/2s10s
+      tiles instead (where the labels actually render). When
+      E1-M1-CONDITIONS-MARKET-AXIS adds the market-level conditions axis to the
+      Overview, add (or move) the Breadth + yield-curve InfoTips there too, matching
+      the mockup placement. The reusable InfoTip (src/components/ui/InfoTip.tsx) and
+      the verbatim tip copy already exist; this is a placement-parity follow-up only.
+      Blocks E1-CLOSE so closeout certifies tooltip placement against the mockup.
+      Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+  - id: E1-M5-TABLE-SCROLL-AFFORDANCE
+    rank: 109
+    title: "E1-M5 follow-up: visible horizontal-scroll affordance on the dense-table scroll regions"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T22:30:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M5]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M5 post-task review. The a11y/responsive pass wrapped the
+      dense `.panel.flush` tables in a focusable `.table-scroll` region
+      (src/components/ui/TableScroll.tsx) so no column is hidden at 320px and the
+      page never overflows (verified at 320/768/1024/1440). Keyboard users get the
+      shared focus ring, but mouse/touch users have NO visual cue that the table
+      scrolls horizontally when columns overflow. Add a discoverability affordance
+      (e.g. an edge fade/shadow that appears only while `scrollWidth > clientWidth`,
+      or a subtle "← scroll →" hint) so the off-screen columns are obviously
+      reachable. Pure CSS/markup polish; the scroll itself already works. Blocks
+      E1-CLOSE so closeout certifies the responsive treatment is discoverable, not
+      just functional. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7
+      corollary.
+
+      DELIVERED (commit on branch worktree-e1-m1-console): TableScroll now measures
+      real overflow (scrollWidth > clientWidth) + scroll position and toggles
+      data-scroll-left/right on a position:relative wrapper, so CSS fades in an edge
+      cue (var(--slate) -> transparent, 26px, aria-hidden + pointer-events:none) ONLY
+      on the side that still has off-screen columns — and hides it entirely when the
+      table fits or the edge is reached (re-measured on scroll, window resize, and
+      ResizeObserver where available; RO guarded for jsdom). 4 new Vitest tests
+      (frontend/src/test/TableScroll.test.tsx) cover fits->no-cue, start->right,
+      mid->both, end->left-only, and preserved a11y attrs. Verified live at 320px on
+      the Trial Registry table: right cue at scrollLeft 0, both mid, left-only at max
+      (METHODOLOGY §9 — measured, never faked). npm run lint/format:check/build green;
+      89 Vitest tests green; ruff clean (no Python touched). Files: TableScroll.tsx,
+      styles/console.css, test/TableScroll.test.tsx.
+
+  - id: E1-M6-FEEDBACK-LABEL
+    rank: 110
+    title: "E1-M6 follow-up: create the `feedback` GitHub label in James-Delgado/quant"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T23:59:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M6]
+    blocks: [E1-CLOSE]
+    deliverable:
+      doc: src/quant/console/feedback.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M6 (commit of src/quant/console/feedback.py +
+      frontend/src/lib/feedback.ts). Both submission paths build a pre-filled
+      issues/new URL carrying `labels=feedback`, but GitHub SILENTLY DROPS an
+      unknown `labels=` query param — so until the `feedback` label exists in the
+      repo, a submitted report files an *unlabeled* issue and the tracker query
+      `label:feedback` (which IS the tracker, DECISIONS #11) is incomplete. The
+      one-time creation is documented in feedback.py's module docstring:
+        gh label create feedback --repo James-Delgado/quant \
+            --description "Reported via the Research Console" --color B60205
+      `gh` was unavailable in the E1-M6 session, so the label could not be created
+      there. Run it once (gh or the web UI). Blocks E1-CLOSE so closeout certifies
+      the labeled-issue acceptance is real, not just URL-encoded. Added to
+      E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+      DELIVERED (commit on branch worktree-e1-m1-console): the `feedback` label
+      now exists in James-Delgado/quant (color B60205, description "Reported via
+      the Research Console") — created via the GitHub REST API
+      (POST /repos/James-Delgado/quant/labels, HTTP 201) using git's stored
+      credential, since `gh` is not installed and there is no create-label MCP
+      tool. Confirmed via mcp github get_label (id LA_kwDOSmpa4M8AAAACpVmYuA).
+      feedback.py's module docstring updated to record the label exists in the
+      canonical repo and to generalise the recreate-on-fork `gh label create`
+      command. The labeled-issue contract (DECISIONS #11; the `label:feedback`
+      tracker query) is now complete. Verified: 76 test_console.py + 27
+      test_priorities.py green; ruff clean. No new offline test — the deliverable
+      is an external GitHub resource; the `labels=feedback` URL construction it
+      backs is already covered by the existing feedback tests (METHODOLOGY §9).
+
+  - id: E1-M6-GH-SUBMIT
+    rank: 111
+    title: "E1-M6 follow-up (optional): direct gh/REST submission + promote label-guard"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-29T00:45:22Z
+    completed_at: 2026-06-29
+    depends_on: [E1-M6]
+    blocks: []
+    deliverable:
+      file: src/quant/console/feedback.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M6. The E1 submission path is the pre-filled issues/new
+      URL opened in a new tab (no backend, no secret — the declared E1 design
+      default; E2 swaps it for POST /feedback). Two optional enhancements, neither
+      gating: (a) when a GitHub token is present locally, offer a direct
+      `gh issue create`/REST submission so the round-trip is one click instead of
+      two; (b) have `feedback.promote` verify the fetched issue actually carries
+      the `feedback` label before appending a task, so an arbitrary issue number
+      can't be promoted by mistake. CONDITIONAL / non-MVP — intentionally NOT in
+      E1-CLOSE.depends_on so an unbuilt optional enhancement cannot deadlock
+      closeout (mirrors B2-FULLPANEL-AGREEMENT). Low priority.
+
+      DELIVERED (commit on branch worktree-e1-m1-console). Both enhancements shipped
+      in src/quant/console/feedback.py + __main__.py:
+        (a) DIRECT SUBMISSION: submit_issue_via_gh(report) files the issue via
+            `gh issue create --label feedback` (one call vs. the two-click pre-filled
+            issues/new page), wired as `console feedback submit --title --type
+            --severity --description [--panel/--build-sha/--app-version]`. Same
+            issue_title/issue_body construction as the URL path (E2 reuses it
+            server-side). Unlike the URL path (GitHub silently drops an unknown
+            labels= param), `gh issue create --label` fails loudly if the label is
+            missing, so success guarantees a labeled issue. Browser SPA deliberately
+            unchanged — it can't hold a token / shell out to gh (DECISIONS #5/#7);
+            direct submission is a local/CLI-only capability.
+        (b) LABEL-GUARD: promote() now refuses (ValueError) to promote an issue that
+            does not carry the `feedback` label (new require_label=True default; CLI
+            `--allow-unlabeled` overrides), so an arbitrary issue number can't be
+            promoted by mistake (DECISIONS #11). New issue_labels()/has_feedback_label()
+            helpers tolerate both the gh `[{"name":...}]` and plain-string label shapes.
+        Verified: 84 test_console.py (8 new) + 27 test_priorities.py + full suite
+        981 passed / 4 skipped; ruff clean; feedback.py 99% / __main__.py 93% cov.
+        Follow-up E1-M6-REST-SUBMIT appended (gh-free REST variant for E2's server
+        path); not in E1-CLOSE.depends_on (optional, E2-conditional — mirrors parent).
+
+  - id: E1-CONDITIONS-TREND-AXIS
+    rank: 112
+    title: "E1-M1-CONDITIONS-MARKET-AXIS follow-up: market-level trend axis (third DECISIONS §6 axis) on the benchmark series"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M3-OVERVIEW-BENCHMARK]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: src/quant/console/readers.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      decisions: docs/project-e/DECISIONS.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-CONDITIONS-MARKET-AXIS post-task review (DECLARED
+      DEVIATION, METHODOLOGY §9). That task moved Conditions onto two genuinely
+      market-level, point-in-time axes — volatility (VIX) and rates (10Y / DGS10)
+      — and RETIRED the equity-vs-MA trend proxy rather than keep a non-market,
+      circular-for-attribution axis. DECISIONS §6 + PRD §5/§11 + the frozen mockup
+      heatmap (low-vol / trend-up / high-vol / rates-up) intend THREE axes
+      (vol / trend / rates). A true market-level trend needs a market/benchmark
+      PRICE series (e.g. SPY above/below its 200-day MA, or breadth) that the
+      console export does not carry yet — that series is added by
+      E1-M3-OVERVIEW-BENCHMARK (hence the dependency). Once the benchmark equity
+      series lands, add a `trend` ConditionAxis to load_conditions built from it
+      (uptrend / downtrend, point-in-time, aligned to the OOS calendar exactly as
+      the VIX/DGS10 axes are via _by_date / _align_market), with tests. The axis
+      machinery in readers.py (_market_axes, _align_market, _sharpe_under) already
+      generalises to N axes, so this is additive. Blocks E1-CLOSE so closeout
+      certifies all three intended axes, not two. Added to E1-CLOSE.depends_on per
+      AGENT_OPERATION Step 7 corollary.
+
+  # ------ Cross-project tasks merged from main 2026-06-28 (C6 registry + Project C) ------
+  # Project ownership on merge: E* rows are authoritative on this branch; C*/A*/B*
+  # rows are authoritative on main. E-STRATEGIES-PANEL (sub_project E1) is wired
+  # into E1-CLOSE.depends_on per its C6-author note + AGENT_OPERATION Step 7.
+
   # ------ Cross-project: strategy portfolio in the console (C6 → Project E) ------
 
   - id: E-STRATEGIES-PANEL
@@ -2300,7 +2973,9 @@ tasks:
     title: "Project E: strategy-portfolio panel (in-use + idle strategies) from the C6 registry"
     project: E
     sub_project: E1
-    status: ready
+    status: done
+    started_at: 2026-06-28T18:08:58Z
+    completed_at: 2026-06-28
     depends_on: [C6-M1]
     blocks: []
     deliverable:
@@ -2321,6 +2996,32 @@ tasks:
       PROJECT E OWNER (another agent is actively building E1): slot it into the
       right E1 panel and add this id to E1-CLOSE.depends_on — left untouched here
       to avoid a cross-agent PRIORITIES merge conflict in the active E1 region.
+
+  - id: E1-OVERVIEW-PORTFOLIO-TILE
+    rank: 75
+    title: "Project E: Overview cross-link / summary tile to the Strategy Portfolio panel"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T18:32:06Z
+    completed_at: 2026-06-28
+    depends_on: [E-STRATEGIES-PANEL]
+    blocks: []
+    deliverable:
+      file: frontend/src/pages/Overview.tsx
+    references:
+      primary: docs/project-e/E-STRATEGIES-PANEL.md
+      roadmap: docs/PROJECT_ROADMAP.md
+    est_complexity: small
+    notes: |
+      Discovered during E-STRATEGIES-PANEL post-task review (commit adding
+      frontend/src/pages/Portfolio.tsx). The new Strategy Portfolio panel is
+      reachable only via the nav; the Overview "daily job-to-be-done"
+      (DECISIONS #7 — "which live strategies are up/down") would benefit from a
+      small portfolio-summary tile ("N in use / M idle", equal-weight) that
+      cross-links to the Portfolio panel. Keep it honest: counts + a link, no
+      faked live P&L (that is E3). Added to E1-CLOSE.depends_on per the
+      AGENT_OPERATION Step 7 corollary (E1-scoped follow-up).
 
   - id: C2-M3-RECON-CORE-LIFT
     rank: 69
@@ -2642,3 +3343,408 @@ tasks:
       B-CLOSE.depends_on (Step 7 corollary) so closeout does not certify on an
       unresolved port question. LOW PRIORITY — B2's research thread is already a
       documented NO-GO (B2-CONFORMAL-PRD is the live continuation).
+  - id: E1-M2-TOPBAR-FRESHNESS
+    rank: 115
+    title: "Wire the M2 Topbar to consume export/_manifest.json (generated_at + per-source mtimes)"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T22:30:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M1-EXPORT-FRESHNESS-STAMP]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: src/quant/console/export.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M1-EXPORT-FRESHNESS-STAMP (commit of
+      src/quant/console/export.py build_manifest/write_manifest). The export now
+      writes export/_manifest.json — a side artifact OUTSIDE the byte-idempotent
+      payload set — carrying generated_at (export-run time) and per-source artifact
+      mtimes ({source: friendly label, modified_at: ISO-8601 UTC | null}). The
+      E1-M2 Topbar currently shows "data exported <data_status.asof>" as an INTERIM
+      freshness proxy (flagged in this task's own note). Fetch _manifest.json and
+      swap the Topbar stamp to manifest.generated_at; optionally surface the
+      per-source mtimes (e.g. a tooltip "Trial Registry updated <modified_at>") so
+      a stale upstream artifact is visible. Honesty: render "unknown" for a null
+      modified_at, never a guessed time (the python layer already degrades
+      honestly). Copy-export.mjs already globs *.json so the manifest is copied
+      into the SPA public dir with no script change. Added to E1-CLOSE.depends_on
+      per AGENT_OPERATION Step 7 corollary (E1-scoped follow-up). Non-gating polish.
+
+  - id: E1-M2-TOPBAR-FRESHNESS-DISCLOSURE
+    rank: 129
+    title: "E1-M2-TOPBAR-FRESHNESS follow-up: accessible per-source freshness disclosure (+ optional staleness highlighting)"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-28T20:30:00Z
+    completed_at: 2026-06-28
+    depends_on: [E1-M2-TOPBAR-FRESHNESS]
+    blocks: [E1-CLOSE]
+    deliverable:
+      app: frontend/
+    references:
+      primary: frontend/src/components/layout/Topbar.tsx
+      methodology: docs/METHODOLOGY.md
+      decisions: docs/project-e/DECISIONS.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M2-TOPBAR-FRESHNESS post-task review (commit wiring the
+      Topbar to _manifest.json). Two gaps in the freshness disclosure:
+        (a) A11Y. The per-source mtimes ride on a native `title` attribute on the
+            .meta span — keyboard and screen-reader users cannot reliably reach it
+            (WCAG 1.3.1 / 4.1.2). The VISIBLE stamp (manifest.generated_at) IS
+            accessible plain text; only the supplementary per-source breakdown is
+            title-bound. Surface it through a focusable disclosure (reuse the
+            InfoTip ⓘ popover pattern, or an aria-describedby region) so assistive
+            tech reaches each "<source> updated <mtime|unknown>" line.
+        (b) STALENESS HIGHLIGHTING (optional). A source whose modified_at lags
+            generated_at (e.g. Strategy checkpoints 2026-06-13 vs export 2026-06-28)
+            is VISIBLE in the tooltip but not visually FLAGGED. A badge/colour on
+            sources older than a pinned threshold would make a stale upstream
+            artifact pop. Keep the honesty rules: "unknown" for null, no guessed
+            time. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary
+            (a11y is a genuine E1 quality bar — E1-M5 a11y polish — so it gates
+            closeout, unlike the optional E1-EXPORT-FANOUT-CHECK gold-plating).
+      Re-ranked 127 -> 81 on 2026-06-28: one of two remaining E1-CLOSE gating deps,
+      pulled to the front of the pickable band (alongside E1-CONDITIONS-TREND-COPY
+      at 80) so closeout is reached in 3 sessions instead of 13. The rank 116-126
+      non-gating polish now defers behind E1-CLOSE rather than blocking it.
+
+  - id: E1-EXPORT-FANOUT-CHECK
+    rank: 117
+    title: "E1-M2-EXPORT-DETAIL follow-up (optional): CLI --check mode that exits non-zero on incomplete fan-out"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M2-EXPORT-DETAIL]
+    blocks: []
+    deliverable:
+      file: src/quant/console/__main__.py
+      tests: tests/test_console.py
+    references:
+      primary: src/quant/console/export.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M2-EXPORT-DETAIL post-task review (commit adding
+      export.fanout_coverage + the write_export warning). E1-M2-EXPORT-DETAIL made
+      an empty/partial detail+provenance fan-out LOUD (warning log + CLI summary +
+      honest UI empty-state) but does NOT hard-fail: `python -m quant.console
+      export` still exits 0 on a checkpoint-less run. Add an opt-in `--check` (or
+      `--require-fanout`) flag that returns a non-zero exit when
+      fanout_coverage(build_export(sources)).complete is False, so CI or the
+      E1-CLOSE build+render step can GATE on a populated fan-out rather than
+      eyeballing the printed summary. Mirror the existing fanout_coverage tests.
+
+      DELIBERATELY NOT added to E1-CLOSE.depends_on (departure from the
+      AGENT_OPERATION Step 7 corollary, declared per METHODOLOGY §9): this is an
+      optional enforcement enhancement, not pending project work. E1-M2-EXPORT-
+      DETAIL already delivers reproducible data-prep docs (frontend/README.md),
+      the warning, and the CLI coverage summary — closeout can verify the fan-out
+      from that summary without this flag. Gating closeout on gold-plating would
+      needlessly block it. Re-add to E1-CLOSE.depends_on if a future decision makes
+      an automated fan-out gate a closeout requirement.
+
+  - id: E1-M3-BENCHMARK-COST-NAME
+    rank: 118
+    title: "E1-M3-OVERVIEW-BENCHMARK follow-up: cost-consistent benchmark + carry the benchmark name in the export"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M3-OVERVIEW-BENCHMARK]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M3-OVERVIEW-BENCHMARK post-task review (commit of
+      src/quant/console/readers._benchmark_sparkline). TWO minor refinements, both
+      declared (METHODOLOGY §9), neither gating:
+        (a) COST CONSISTENCY. The overlaid benchmark is a GROSS SPY buy-and-hold
+            growth-of-1, while the strategy equity it overlays is cost-NET (the arms
+            run through backtest/simulator.py with commission + slippage). A single
+            buy-and-hold entry incurs ~one round-trip of cost (negligible vs. the
+            arms' per-bar trading), so the gross series very slightly flatters SPY.
+            Standard for a buy-and-hold benchmark, but for strict parity apply the
+            sim cost model to the single SPY entry (≈0 impact) so both sides are
+            cost-net.
+        (b) BENCHMARK NAME IN THE EXPORT. The legend label "SPY · buy & hold" is a
+            frontend constant; the export carries the benchmark_sparkline VALUES but
+            not the benchmark identity (BENCHMARK_SYMBOL lives only in sources.py).
+            If the pinned symbol ever changes, the legend would silently go stale.
+            Carry the benchmark name as an export field so the UI names whatever the
+            service layer actually computed. NON-GATING / NOT in E1-CLOSE.depends_on
+            (mirrors the E1-M1-EXPORT-FRESHNESS-STAMP non-gating precedent): the hero
+            already certifies the vs-benchmark overlay with the correct SPY series.
+
+  - id: E1-STRATEGY-DETAIL-BENCHMARK
+    rank: 119
+    title: "E1-M3-OVERVIEW-BENCHMARK follow-up: overlay the SPY benchmark on the per-strategy detail equity chart"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M3-OVERVIEW-BENCHMARK]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      app: frontend/
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+      mockup: docs/project-e/mockups/research-trust-console.html
+    est_complexity: small
+    notes: |
+      Discovered in E1-M3-OVERVIEW-BENCHMARK post-task review. The benchmark overlay
+      now lands on the Overview HERO (StrategyCard.benchmark_sparkline). The
+      per-strategy DETAIL view (StrategyDetail.equity, rendered in frontend/src/
+      pages/Strategies.tsx) still draws the strategy equity alone. For parity, add a
+      benchmark series to StrategyDetail — the SPY growth-of-1 aligned to that
+      strategy's OOS dates via the same readers._benchmark_sparkline helper, at
+      SERIES_POINTS resolution — and overlay it as an ln-bench line on the detail
+      equity chart. NON-GATING / NOT in E1-CLOSE.depends_on (mirrors the established
+      non-gating follow-up precedent): the task's pinned scope was the Overview hero,
+      which is delivered; the detail overlay is an additive enhancement.
+
+  - id: E1-M6-REST-SUBMIT
+    rank: 120
+    title: "E1-M6-GH-SUBMIT follow-up (optional): gh-free REST submission for the E2 server path"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M6-GH-SUBMIT]
+    blocks: []
+    deliverable:
+      file: src/quant/console/feedback.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M6-GH-SUBMIT post-task review (commit of
+      src/quant/console/feedback.py submit_issue_via_gh). The direct-submission path
+      shells out to the `gh` CLI, which the eventual E2 server context may not have
+      installed/authenticated. Add a REST variant (e.g. submit_issue_via_rest(report,
+      *, repo, token)) that POSTs to /repos/{repo}/issues with a bearer token and the
+      `feedback` label — the server-native form E2's `POST /feedback` reuses. Mirror
+      the existing fail-loud RuntimeError discipline and the shared issue_title/
+      issue_body construction (no second body format). NON-GATING / E2-conditional —
+      NOT in E1-CLOSE.depends_on (mirrors the parent E1-M6-GH-SUBMIT exclusion: an
+      optional, downstream-conditional enhancement must not deadlock closeout). Low
+      priority.
+
+  - id: E1-CONDITIONS-TREND-COPY
+    rank: 128
+    title: "E1-CONDITIONS-TREND-AXIS follow-up: Conditions panel lead-text names all three axes (vol/trend/rates)"
+    project: E
+    sub_project: E1
+    status: done
+    started_at: 2026-06-29T03:11:41Z
+    completed_at: 2026-06-29
+    depends_on: [E1-CONDITIONS-TREND-AXIS]
+    blocks: [E1-CLOSE]
+    deliverable:
+      file: frontend/src/pages/Conditions.tsx
+      tests: frontend/src/test/Conditions.test.tsx
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      decisions: docs/project-e/DECISIONS.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-CONDITIONS-TREND-AXIS post-task review (commit adding the
+      trend axis to src/quant/console/readers.py). The Conditions panel lead text
+      (frontend/src/pages/Conditions.tsx ~line 22) still names only "volatility
+      (VIX) and rates (10-year Treasury)" — it predates the third axis. The
+      heatmap + Sharpe-by-condition bars already render the trend axis dynamically
+      (they map over the export's axes/by_condition), but the prose under-describes
+      the panel now that load_conditions emits a `trend` axis (uptrend/downtrend,
+      benchmark vs its 200-bar MA). One-line copy fix to name all three DECISIONS §6
+      axes; extend Conditions.test.tsx mockExport with a trend axis so the test
+      fixture matches production. GATES E1-CLOSE per AGENT_OPERATION Step 7 corollary
+      so closeout certifies the UI describes all three intended axes, not two.
+      Re-ranked 121 -> 80 on 2026-06-28: this is one of only two remaining
+      E1-CLOSE gating deps, pulled to the front of the pickable band so closeout is
+      reached without first clearing the rank 116-126 non-gating polish (which now
+      defers behind E1-CLOSE). The other gating dep is E1-M2-TOPBAR-FRESHNESS-DISCLOSURE.
+
+  - id: E1-CONDITIONS-TREND-MA-WARMUP
+    rank: 122
+    title: "E1-CONDITIONS-TREND-AXIS follow-up (optional): full-history trend MA to remove the OOS warm-up gap"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-CONDITIONS-TREND-AXIS]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-CONDITIONS-TREND-AXIS post-task review. _trend_labels computes
+      the 200-bar moving average on the OOS-aligned benchmark price (faithful to the
+      task's "exactly as the VIX/DGS10 axes via _by_date / _align_market" instruction;
+      mirrors the rates axis's 63-bar align-then-compute warm-up), so the first
+      TREND_MA_WINDOW-1 (~199) OOS bars carry no trend label — a ~9-month gap at the
+      very start of the OOS span. The benchmark_price_fn returns the FULL pre-OOS SPY
+      history, so computing the 200-bar MA on the full series BEFORE aligning the
+      resulting uptrend/downtrend labels onto the OOS calendar would give full-span
+      trend coverage with no warm-up gap (and is equally point-in-time). NON-GATING
+      polish — current behavior is honest (omits, never fakes, the warm-up region) and
+      consistent with the rates axis; NOT in E1-CLOSE.depends_on. Low priority.
+
+  - id: E1-FEATURE-MONITOR-DRIFT-PSI
+    rank: 123
+    title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): distribution-shape drift metric (PSI/KS) for the feature monitor"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-FEATURE-MONITOR-EXPORT-COST (deferred option (c) of the
+      parent's a–e menu). sources._stability_verdict classifies drift on a
+      standardized MEAN-shift of the per-date cross-sectional mean
+      (FEATURE_DRIFT_Z_THRESHOLD), so a variance/shape shift with a stable mean is
+      not flagged. Add a distribution-shape metric (PSI or a two-sample KS on the
+      recent-vs-baseline windows) as a second drift signal. METHODOLOGY §1: the new
+      drift threshold must be PINNED in code before any verdict is visible and
+      recorded with a ledger note (mirrors the existing FEATURE_DRIFT_Z_THRESHOLD
+      pin). NON-GATING / NOT in E1-CLOSE.depends_on — the Feature Catalog panel
+      already certifies with the mean-shift verdict (mirrors the parent's own
+      non-gating exclusion). Low priority.
+
+  - id: E1-FEATURE-MONITOR-ASOF
+    rank: 124
+    title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): asof-aware feature monitor for point-in-time (E3/E4) state"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-FEATURE-MONITOR-EXPORT-COST (deferred option (d)).
+      _load_feature_panel builds the FULL feature history; build_features already
+      accepts an `asof` argument, so an asof-aware panel provider would let the E3/E4
+      live panels show the feature state knowable AT a given date (point-in-time),
+      not just the full-history snapshot. Thread an optional `asof` through
+      _load_feature_panel / _cached_feature_panel (fold `asof` into the cache key so
+      asof variants cache independently). NON-GATING / NOT in E1-CLOSE.depends_on —
+      this is forward E3/E4 scope; the static E1 catalog panel needs only the
+      full-history monitor. Low priority.
+
+  - id: E1-FEATURE-MONITOR-XSRANK
+    rank: 125
+    title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): monitor the remaining registered xs_rank_* features"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-FEATURE-MONITOR-EXPORT-COST (deferred option (e)).
+      _load_feature_panel adds only the M3 cross-sectional survivor xs_rank_vol_21d
+      (add_cross_sectional_features(columns=("vol_21d",))), so any OTHER registered
+      xs_rank_* feature in catalog.yaml renders registry-only (unmonitored) in the
+      Feature Catalog panel. If the catalog should monitor them, extend the panel
+      build to produce those xs-rank columns too. Confirm first whether the extra
+      xs_rank features are actually in catalog.yaml (the panel honestly leaves
+      unmonitored anything it does not build). NON-GATING / NOT in E1-CLOSE.depends_on.
+      Low priority.
+
+  - id: E1-FEATURE-MONITOR-CACHE-PRUNE
+    rank: 126
+    title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): garbage-collect superseded feature-panel cache files"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered DURING E1-M1-FEATURE-MONITOR-EXPORT-COST implementation (commit of
+      src/quant/console/sources.py _cached_feature_panel). Each lake re-ingest or
+      universe change writes a NEW keyed file
+      (data/console_cache/feature_panel_<key>.parquet) and the old one is never
+      deleted, so the cache dir grows unbounded over time (gitignored under data/, so
+      not a repo concern — just local disk). Add a small prune: on a cache write, keep
+      only the current key's file (or the N most-recent by mtime), removing
+      superseded feature_panel_*.parquet. Best-effort + guarded, same honest-degrade
+      discipline as the cache itself. NON-GATING / NOT in E1-CLOSE.depends_on — disk
+      hygiene, not a panel-correctness concern. Low priority.
+
+  - id: E1-TOPBAR-MOBILE-REFLOW
+    rank: 127
+    title: "E1-M2-TOPBAR-FRESHNESS-DISCLOSURE follow-up (optional): reflow the topbar right cluster so it stays on-screen at 320px"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M2-TOPBAR-FRESHNESS-DISCLOSURE]
+    blocks: []
+    deliverable:
+      app: frontend/
+    references:
+      primary: frontend/src/components/layout/Topbar.tsx
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E1-M2-TOPBAR-FRESHNESS-DISCLOSURE post-task review (commit
+      adding FreshnessDisclosure). At the 320px target breakpoint the topbar's right
+      cluster — the "live execution · not connected" pill, the "data exported …"
+      stamp, and the new freshness ⓘ — overflows horizontally (header content ≈463px
+      > 320) and is clipped off-screen, so the ⓘ trigger is unreachable there. This
+      is a PRE-EXISTING topbar responsive gap: the export stamp already overflowed at
+      320 before this task, there is NO page-level horizontal scroll (bodyScrollWidth
+      stays 320 — the header clips internally), and the disclosure is fully reachable
+      and fits the viewport at 375 / 768 / 1024 / 1440 (browser-verified). Fix:
+      reflow the right cluster on narrow widths (e.g. shorten/icon-ize the live-status
+      pill below ~480px, wrap the meta onto a second row, or move the freshness ⓘ into
+      the mobile nav) so the stamp + disclosure stay on-screen at 320.
+
+      DELIBERATELY NOT added to E1-CLOSE.depends_on (departure from the
+      AGENT_OPERATION Step 7 corollary, declared per METHODOLOGY §9, mirroring the
+      E1-EXPORT-FANOUT-CHECK precedent): the panels render honestly from real
+      artifacts at all breakpoints; this is a chrome responsive edge at the narrowest
+      target that pre-dates this task and affects the stamp too, and the honesty rules
+      (DECISIONS #5/#7 — no file paths, "unknown" for null, no faked times) are all
+      honored. Reworking the topbar layout is E1-M2 scope, not this a11y-disclosure
+      task (AGENT_OPERATION scope-creep guidance: surface, don't expand). Re-add to
+      E1-CLOSE.depends_on if a future decision makes 320px topbar parity a closeout
+      requirement.
