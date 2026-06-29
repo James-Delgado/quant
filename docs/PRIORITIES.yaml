@@ -1600,7 +1600,8 @@ tasks:
     title: "Match the bridge's placeholder sizing to the backtest simulator's cash-fraction sizing (G2 prerequisite)"
     project: C
     sub_project: C2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T04:45:24Z
     depends_on: [C2-M2]
     blocks: [C-CLOSE]
     deliverable:
