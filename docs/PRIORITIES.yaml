@@ -3227,7 +3227,8 @@ tasks:
     title: "E1-CONDITIONS-TREND-AXIS follow-up: Conditions panel lead-text names all three axes (vol/trend/rates)"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T03:11:41Z
     depends_on: [E1-CONDITIONS-TREND-AXIS]
     blocks: [E1-CLOSE]
     deliverable:
