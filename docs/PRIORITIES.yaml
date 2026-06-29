@@ -3693,7 +3693,8 @@ tasks:
     title: "E1-M3-OVERVIEW-BENCHMARK follow-up: overlay the SPY benchmark on the per-strategy detail equity chart"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T06:34:54Z
     depends_on: [E1-M3-OVERVIEW-BENCHMARK]
     blocks: []
     deliverable:
