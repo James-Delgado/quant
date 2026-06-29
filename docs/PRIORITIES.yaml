@@ -1635,7 +1635,8 @@ tasks:
     title: "Strengthen G1 to exercise the actual harness signal-derivation path (not a reimplementation)"
     project: C
     sub_project: C2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T04:52:05Z
     depends_on: [C2-M2]
     blocks: [C-CLOSE]
     deliverable:
