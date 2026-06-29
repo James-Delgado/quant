@@ -1563,7 +1563,8 @@ tasks:
     title: "Sync the LEAN→Alpaca platform decision across the C2 PRD, ROADMAP §7, and C2-M2/M3 task wording"
     project: C
     sub_project: C2
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T04:36:49Z
     depends_on: [C2-M1]
     blocks: []
     deliverable:
