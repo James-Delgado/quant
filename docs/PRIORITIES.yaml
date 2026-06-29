@@ -1504,8 +1504,9 @@ tasks:
     title: "Optional audit-only ledger entry (n_comparisons=0) for the nb13 C1-M2 verdict run"
     project: C
     sub_project: C1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T05:54:43Z
+    completed_at: 2026-06-29
     depends_on: [C1-M2]
     blocks: []
     deliverable:

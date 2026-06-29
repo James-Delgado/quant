@@ -263,3 +263,21 @@
   artifacts:
   - data/c2/reconciliation/reconciliation_report.md
   notes: C2-M3 backtest↔paper reconciliation (G2). Audit-only; no edge claim.
+- id: ledger-2026-06-29-0001
+  prd: c1
+  milestone: C1-M2
+  agent: human
+  preregistration: .claude/prds/c1-live-data.prd.md#pre-committed-gate
+  config_hash: 19a0b405bc8c48bf660c7d890ba5989cf12925ca
+  n_comparisons: 0
+  started_at: '2026-06-29T05:54:43Z'
+  completed_at: '2026-06-29T05:54:43Z'
+  verdict: gate_passed
+  artifacts:
+  - notebooks/13_c1_live_data.ipynb
+  notes: 'C1-M2 same-day PIT reader nb13 verdict (G1 no-look-ahead + G2 train/serve
+    parity, both PASS). Audit-only; no edge claim (n_comparisons=0 — C1 makes no Sharpe
+    claim, per C1 PRD ''Ledger discipline''). config_hash + run window are the C1-M2
+    commit 19a0b40 (reconstructed convention: nb13 is a notebook deliverable, no runner
+    metadata.json); started_at/completed_at are the audit record time because the
+    append-only ledger is monotonically dated past the commit time.'
