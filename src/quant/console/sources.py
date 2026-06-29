@@ -502,7 +502,11 @@ def _compute_feature_stats(
 
 
 # A function returning a pooled, date-indexed feature panel (or None/empty).
-FeaturePanelFn = Callable[[], "pd.DataFrame | None"]
+# Callable[...] (not strictly nullary): ``build_feature_monitor`` and the
+# default ``_load_feature_panel`` are invoked with no args, but the asof-aware
+# provider (E1-FEATURE-MONITOR-ASOF) additionally accepts an optional ``asof``
+# keyword — broadening the alias keeps both call shapes type-honest.
+FeaturePanelFn = Callable[..., "pd.DataFrame | None"]
 
 
 def build_feature_monitor(
@@ -604,12 +608,19 @@ def _panel_from_features(features_by_symbol: dict[str, pd.DataFrame]) -> pd.Data
     return pd.concat(frames, axis=0).sort_index()
 
 
-def _load_feature_panel() -> pd.DataFrame | None:
+def _load_feature_panel(asof: pd.Timestamp | None = None) -> pd.DataFrame | None:
     """Production feature-panel provider: build the full universe from the lake.
 
     Loads ``settings.equity_universe`` prices, builds the production feature
     matrix (``build_features`` + the M3 cross-sectional survivor), and pools it.
     Returns ``None`` when the lake has no usable bars so the monitor stays empty.
+
+    ``asof`` (E1-FEATURE-MONITOR-ASOF) is threaded straight into ``build_features``:
+    when set (a tz-aware UTC instant), each price frame is truncated to bars with
+    ``timestamp <= asof`` *before* features are computed, so the panel reflects the
+    feature state knowable AT that instant with no look-ahead — the point-in-time
+    view the E3/E4 live panels need. Default ``None`` keeps the full-history batch
+    behaviour bit-for-bit (the static E1 catalog panel's only requirement).
     """
     from quant.config import settings
     from quant.features.cross_sectional import add_cross_sectional_features
@@ -634,6 +645,7 @@ def _load_feature_panel() -> pd.DataFrame | None:
         sentiment_df=sentiment_arg,
         sentiment_lookback_days=FEATURE_SENTIMENT_LOOKBACK_DAYS,
         fred_publication_lags=FRED_PUBLICATION_LAGS,
+        asof=asof,
     )
     try:
         features = add_cross_sectional_features(features, columns=("vol_21d",))
@@ -695,21 +707,45 @@ def _lake_fingerprint(processed_dir: Path, datasets: tuple[str, ...]) -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
-def _feature_panel_cache_key(universe: tuple[str, ...], processed_dir: Path) -> str:
-    """Cache key folding the version, the sorted universe, and the lake digest."""
-    payload = "|".join(
-        (
-            f"v{FEATURE_PANEL_CACHE_VERSION}",
-            ",".join(sorted(universe)),
-            _lake_fingerprint(processed_dir, PANEL_LAKE_DATASETS),
-        )
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+def _asof_cache_token(asof: pd.Timestamp) -> str:
+    """Canonical UTC isoformat for an ``asof`` cache-key segment.
+
+    A naive instant is localized to UTC; an aware one is converted to UTC — the
+    same normalization ``build_features`` applies — so two equivalent instants
+    (e.g. ``2020-01-01`` and ``2020-01-01 00:00+00:00``) map to ONE cache key and
+    never rebuild redundantly, while genuinely different asofs key apart.
+    """
+    ts = pd.Timestamp(asof)
+    ts = ts.tz_localize("UTC") if ts.tz is None else ts.tz_convert("UTC")
+    return ts.isoformat()
+
+
+def _feature_panel_cache_key(
+    universe: tuple[str, ...],
+    processed_dir: Path,
+    *,
+    asof: pd.Timestamp | None = None,
+) -> str:
+    """Cache key folding the version, the sorted universe, and the lake digest.
+
+    ``asof`` (E1-FEATURE-MONITOR-ASOF) is appended ONLY when set, so a full-history
+    (``asof=None``) build keeps the legacy key byte-for-byte — existing caches are
+    not invalidated — while each point-in-time variant caches under its own key.
+    """
+    parts = [
+        f"v{FEATURE_PANEL_CACHE_VERSION}",
+        ",".join(sorted(universe)),
+        _lake_fingerprint(processed_dir, PANEL_LAKE_DATASETS),
+    ]
+    if asof is not None:
+        parts.append(f"asof={_asof_cache_token(asof)}")
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
 def _cached_feature_panel(
     panel_fn: FeaturePanelFn = _load_feature_panel,
     *,
+    asof: pd.Timestamp | None = None,
     cache_dir: Path | None = None,
     processed_dir: Path | None = None,
     universe: tuple[str, ...] | None = None,
@@ -722,7 +758,17 @@ def _cached_feature_panel(
     drive the cache over a synthetic lake. Any failure — unresolved settings, a
     corrupt/unreadable cache file, an unwritable cache dir — degrades to a fresh
     build and never raises (METHODOLOGY §9).
+
+    ``asof`` (E1-FEATURE-MONITOR-ASOF) selects a point-in-time panel: it is baked
+    into the ``panel_fn`` call AND folded into the cache key, so each asof variant
+    caches independently and never collides with the full-history panel. When
+    ``asof`` is ``None`` the provider is invoked with no args, preserving the
+    nullary ``FeaturePanelFn`` contract every existing caller relies on.
     """
+    build: Callable[[], "pd.DataFrame | None"] = (
+        (lambda: panel_fn(asof=asof)) if asof is not None else panel_fn
+    )
+
     if processed_dir is None or universe is None or cache_dir is None:
         try:
             from quant.config import settings
@@ -734,13 +780,13 @@ def _cached_feature_panel(
             if cache_dir is None:
                 cache_dir = settings.data_root / CACHE_DIR_NAME
         except Exception:
-            return panel_fn()  # cannot resolve cache context → build uncached
+            return build()  # cannot resolve cache context → build uncached
 
     try:
-        key = _feature_panel_cache_key(universe, processed_dir)
+        key = _feature_panel_cache_key(universe, processed_dir, asof=asof)
         cache_path = cache_dir / f"feature_panel_{key}.parquet"
     except Exception:
-        return panel_fn()
+        return build()
 
     if cache_path.exists():
         try:
@@ -748,7 +794,7 @@ def _cached_feature_panel(
         except Exception:
             pass  # corrupt / stale-format cache → rebuild below
 
-    panel = panel_fn()
+    panel = build()
     if panel is not None and not panel.empty:
         try:
             cache_dir.mkdir(parents=True, exist_ok=True)

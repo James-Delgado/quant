@@ -3891,8 +3891,9 @@ tasks:
     title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): asof-aware feature monitor for point-in-time (E3/E4) state"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T00:00:00Z
+    completed_at: 2026-06-29
     depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
     blocks: []
     deliverable:

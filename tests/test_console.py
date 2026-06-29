@@ -1231,6 +1231,111 @@ def test_cached_feature_panel_builds_uncached_when_settings_unavailable(monkeypa
     assert sources_mod._cached_feature_panel(lambda: sentinel) is sentinel
 
 
+# ── asof-aware feature panel (E1-FEATURE-MONITOR-ASOF) ────────────────────────
+
+
+def test_load_feature_panel_threads_asof_to_build_features(monkeypatch):
+    # The asof passed to _load_feature_panel must flow into build_features so the
+    # panel reflects only the feature state knowable AT that instant (point-in-time).
+    captured: dict = {}
+    fake_prices = {
+        "AAA": pd.DataFrame(
+            {"close": [1.0, 1.1]},
+            index=pd.date_range("2020-01-02", periods=2, freq="B"),
+        )
+    }
+    monkeypatch.setattr(sources_mod, "_load_prices_for_panel", lambda *a, **k: fake_prices)
+
+    def fake_build_features(symbols, prices, **kwargs):
+        captured["asof"] = kwargs.get("asof")
+        return {
+            s: pd.DataFrame(
+                {"f": [1.0]}, index=pd.DatetimeIndex(["2020-01-02"])
+            )
+            for s in symbols
+        }
+
+    monkeypatch.setattr("quant.features.engineering.build_features", fake_build_features)
+
+    asof = pd.Timestamp("2020-06-01", tz="UTC")
+    panel = sources_mod._load_feature_panel(asof=asof)
+    assert captured["asof"] == asof
+    assert panel is not None and not panel.empty
+
+
+def test_load_feature_panel_default_asof_is_none(monkeypatch):
+    # The default (no asof) preserves the full-history batch behaviour: asof=None.
+    captured: dict = {}
+    fake_prices = {
+        "AAA": pd.DataFrame(
+            {"close": [1.0, 1.1]},
+            index=pd.date_range("2020-01-02", periods=2, freq="B"),
+        )
+    }
+    monkeypatch.setattr(sources_mod, "_load_prices_for_panel", lambda *a, **k: fake_prices)
+
+    def fake_build_features(symbols, prices, **kwargs):
+        captured["asof"] = kwargs.get("asof", "MISSING")
+        return {s: pd.DataFrame({"f": [1.0]}, index=pd.DatetimeIndex(["2020-01-02"])) for s in symbols}
+
+    monkeypatch.setattr("quant.features.engineering.build_features", fake_build_features)
+    sources_mod._load_feature_panel()
+    assert captured["asof"] is None
+
+
+def test_feature_panel_cache_key_asof_variants_independent(tmp_path):
+    processed = tmp_path / "processed"
+    _seed_lake(processed)
+    # asof=None keeps the legacy key byte-for-byte (no needless cache invalidation).
+    k_none = sources_mod._feature_panel_cache_key(("AAA",), processed)
+    assert k_none == sources_mod._feature_panel_cache_key(("AAA",), processed, asof=None)
+    # Distinct asofs produce distinct keys, both distinct from the full-history key.
+    a1 = sources_mod._feature_panel_cache_key(
+        ("AAA",), processed, asof=pd.Timestamp("2020-01-01", tz="UTC")
+    )
+    a2 = sources_mod._feature_panel_cache_key(
+        ("AAA",), processed, asof=pd.Timestamp("2021-01-01", tz="UTC")
+    )
+    assert len({k_none, a1, a2}) == 3
+    # Equivalent instants (naive localizes to UTC) share a key — canonicalized.
+    a1_naive = sources_mod._feature_panel_cache_key(
+        ("AAA",), processed, asof=pd.Timestamp("2020-01-01")
+    )
+    assert a1_naive == a1
+
+
+def test_cached_feature_panel_asof_variants_cache_independently(tmp_path):
+    kw = _cache_kwargs(tmp_path)
+    calls = {"full": 0, "asof": 0}
+
+    def build(asof=None):
+        calls["asof" if asof is not None else "full"] += 1
+        return _tiny_panel()
+
+    asof = pd.Timestamp("2020-06-01", tz="UTC")
+    sources_mod._cached_feature_panel(build, **kw)  # full → build
+    sources_mod._cached_feature_panel(build, **kw)  # full → cache hit
+    sources_mod._cached_feature_panel(build, asof=asof, **kw)  # asof → build (own key)
+    sources_mod._cached_feature_panel(build, asof=asof, **kw)  # asof → cache hit
+    assert calls == {"full": 1, "asof": 1}
+    # Two independent cache files: one full-history, one asof variant.
+    assert len(list(kw["cache_dir"].glob("feature_panel_*.parquet"))) == 2
+
+
+def test_cached_feature_panel_asof_none_uses_nullary_panel_fn(tmp_path):
+    # asof=None must call the provider with NO args (preserving the nullary
+    # FeaturePanelFn contract every existing caller relies on).
+    kw = _cache_kwargs(tmp_path)
+    seen: dict = {}
+
+    def build():  # nullary — would raise if called with asof
+        seen["called"] = True
+        return _tiny_panel()
+
+    assert sources_mod._cached_feature_panel(build, **kw) is not None
+    assert seen.get("called") is True
+
+
 def _spy_rows() -> pd.DataFrame:
     return pd.DataFrame(
         {
