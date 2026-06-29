@@ -872,6 +872,157 @@ def test_feature_monitor_none_panel_is_empty():
     assert sources_mod.build_feature_monitor(None)("ret_1d") is None
 
 
+# ── distribution-shape PSI drift (E1-FEATURE-MONITOR-DRIFT-PSI) ───────────────
+
+
+def test_population_stability_index_identical_distributions_is_near_zero():
+    rng = np.random.default_rng(11)
+    base = rng.normal(0.0, 1.0, size=2000)
+    recent = rng.normal(0.0, 1.0, size=2000)
+    psi = sources_mod._population_stability_index(
+        base, recent, bins=10, epsilon=1e-4
+    )
+    # Same generating distribution → well under the "stable" band (0.1).
+    assert psi is not None
+    assert psi < 0.1
+
+
+def test_population_stability_index_shifted_distribution_exceeds_significant_band():
+    rng = np.random.default_rng(12)
+    base = rng.normal(0.0, 1.0, size=2000)
+    recent = rng.normal(3.0, 1.0, size=2000)  # mean shifted 3 sigma
+    psi = sources_mod._population_stability_index(
+        base, recent, bins=10, epsilon=1e-4
+    )
+    assert psi is not None
+    assert psi > sources_mod.FEATURE_PSI_DRIFT_THRESHOLD  # > 0.25 "significant"
+
+
+def test_population_stability_index_variance_shift_with_stable_mean_flags():
+    # Mean unchanged (both centered at 0), variance blown up 25x → shape shift.
+    rng = np.random.default_rng(13)
+    base = rng.normal(0.0, 0.2, size=2000)
+    recent = rng.normal(0.0, 5.0, size=2000)
+    psi = sources_mod._population_stability_index(
+        base, recent, bins=10, epsilon=1e-4
+    )
+    assert psi is not None
+    assert psi > sources_mod.FEATURE_PSI_DRIFT_THRESHOLD
+
+
+def test_population_stability_index_edge_cases():
+    rng = np.random.default_rng(14)
+    base = rng.normal(0.0, 1.0, size=100)
+    # Empty window → None (cannot compare).
+    assert (
+        sources_mod._population_stability_index(
+            base, np.array([]), bins=10, epsilon=1e-4
+        )
+        is None
+    )
+    assert (
+        sources_mod._population_stability_index(
+            np.array([]), base, bins=10, epsilon=1e-4
+        )
+        is None
+    )
+    # Degenerate (constant) baseline → no distribution shape → None.
+    const = np.full(100, 3.0)
+    assert (
+        sources_mod._population_stability_index(
+            const, base, bins=10, epsilon=1e-4
+        )
+        is None
+    )
+
+
+def _shape_shift_panel() -> pd.DataFrame:
+    """Panel whose recent window changes SHAPE at constant mean AND variance.
+
+    ``shape_feat``'s baseline is a bell (Normal(0, 0.05)); its recent window is a
+    two-point ±0.05 (Rademacher) distribution — identical mean (0) and identical
+    variance (0.05²), but a totally different shape (all mass at the extremes).
+    The per-date cross-sectional mean and its noise are therefore unchanged, so
+    the mean-shift signal (FEATURE_DRIFT_Z_THRESHOLD) reads *stable* — only the
+    PSI distribution-shape signal can catch this. Uses 8 symbols so each window
+    clears the PSI min-per-bin sample guard (recent: 10 dates × 8 = 80 obs ≥
+    FEATURE_PSI_BINS × FEATURE_PSI_MIN_PER_BIN). ``calm_feat`` keeps the same
+    distribution throughout (a stable control).
+    """
+    rng = np.random.default_rng(21)
+    dates = pd.date_range("2020-01-01", periods=60, freq="B")
+    symbols = ("S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7")
+    frames = []
+    for _sym in symbols:
+        shape = rng.normal(0.0, 0.05, size=60)
+        shape[-10:] = rng.choice([-0.05, 0.05], size=10)  # same mean/var, new shape
+        calm = rng.normal(0.0, 0.05, size=60)  # unchanged distribution
+        frames.append(
+            pd.DataFrame({"shape_feat": shape, "calm_feat": calm}, index=dates)
+        )
+    return pd.concat(frames, axis=0).sort_index()
+
+
+def test_drift_psi_insufficient_history_returns_none():
+    # 5 dates, recent_bars=10 → not enough baseline to split → None.
+    col = pd.Series(
+        [0.1, 0.2, 0.3, 0.4, 0.5],
+        index=pd.date_range("2020-01-01", periods=5, freq="B"),
+    )
+    assert (
+        sources_mod._drift_psi(col, recent_bars=10, psi_bins=10, psi_epsilon=1e-4)
+        is None
+    )
+    # Entirely-null column → None.
+    nan_col = pd.Series(
+        [np.nan, np.nan, np.nan],
+        index=pd.date_range("2020-01-01", periods=3, freq="B"),
+    )
+    assert (
+        sources_mod._drift_psi(nan_col, recent_bars=1, psi_bins=10, psi_epsilon=1e-4)
+        is None
+    )
+
+
+def test_feature_monitor_flags_variance_shape_shift_via_psi():
+    monitor = _monitor(_shape_shift_panel)
+    stats = monitor("shape_feat")
+    # The mean-shift signal alone would NOT flag this (means equal across windows),
+    # but the PSI distribution-shape signal does.
+    assert stats["psi"] is not None
+    assert stats["psi"] > sources_mod.FEATURE_PSI_DRIFT_THRESHOLD
+    assert stats["stability"] == "drifting"
+    # Sanity: the mean-shift verdict on its own (PSI disabled) reads stable.
+    mean_only = sources_mod._stability_verdict(
+        _shape_shift_panel()["shape_feat"],
+        recent_bars=10,
+        drift_z_threshold=1.0,
+        stale_bars=5,
+        psi=None,
+        psi_drift_threshold=sources_mod.FEATURE_PSI_DRIFT_THRESHOLD,
+    )
+    assert mean_only == "stable"
+
+
+def test_feature_monitor_reports_psi_for_stable_feature():
+    stats = _monitor(_shape_shift_panel)("calm_feat")
+    # An unchanged distribution carries a small, finite PSI under the drift band.
+    assert stats["psi"] is not None
+    assert stats["psi"] < sources_mod.FEATURE_PSI_DRIFT_THRESHOLD
+    assert stats["stability"] == "stable"
+    # Empty features have no comparable windows → psi is None.
+    assert _monitor(_feature_panel)("empty_feat")["psi"] is None
+
+
+def test_feature_monitor_psi_degrades_to_none_on_small_samples():
+    # The 2-symbol fixture's recent window (10 dates × 2 = 20 obs) is below the
+    # PSI min-per-bin guard (bins × min_per_bin), so PSI is not trusted → None,
+    # and the verdict falls back to the mean-shift signal alone.
+    stats = _monitor(_feature_panel)("stable_feat")
+    assert stats["psi"] is None
+    assert stats["stability"] == "stable"
+
+
 def test_panel_from_features_normalizes_timezone_and_aligns_by_date():
     # NY-close stamps must collapse onto the same calendar date as a naive frame.
     ny = pd.DataFrame(
