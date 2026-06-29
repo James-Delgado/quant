@@ -1886,7 +1886,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C2-M2-G1-REIMPL-REVIEW, C6-REGISTRY-CONCEPT-DOC]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C2-M2-G1-REIMPL-REVIEW, C6-REGISTRY-CONCEPT-DOC, C3-M1, C3-M2, C3-M3, C4-M1, C4-M2, C4-M3]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
@@ -2284,7 +2284,7 @@ tasks:
     project: E
     sub_project: E3
     status: blocked
-    depends_on: [E2-CLOSE, C2-M2, C3-PRD]
+    depends_on: [E2-CLOSE, C2-M2, C3-PRD, C3-M1, C3-M2, C3-M3]
     blocks: [E3-M2, E3-CLOSE]
     deliverable:
       app: frontend/
@@ -4070,3 +4070,168 @@ tasks:
       E1-M3-BENCHMARK-COST-NAME and E1-STRATEGY-DETAIL-BENCHMARK non-gating precedent:
       the overlay itself is delivered with the correct SPY series; this is a legend-label
       provenance hardening).
+
+  # ------ C3 / C4 execution milestones (created 2026-06-29 when C3-PRD + C4-PRD ratified) ------
+  # Ratified DRAFTs: .claude/prds/c3-sizing-risk.prd.md + c4-confidence.prd.md (thresholds
+  # FROZEN, METHODOLOGY §1). Dependency-ordered; the key cross-edge is C4-M2 -> C3-M3 (C4 fills
+  # the sizing seam C3-M3 ships). All six added to C-CLOSE.depends_on; the C3-M* added to
+  # E3-M1.depends_on (the console sizing tiles). Ranks 92-97 are a hint; depends_on is binding.
+
+  - id: C3-M1
+    rank: 92
+    title: "C3-M1: Volatility-targeted sizing policy (SizingPolicy.vol_target + size_strategy branch)"
+    project: C
+    sub_project: C3
+    status: ready
+    depends_on: [C3-PRD, C6-M1]
+    blocks: [C3-M2, C-CLOSE, E3-M1]
+    deliverable:
+      file: src/quant/execution/strategy_registry.py
+      executor: scripts/trade_daily.py
+      tests: tests/test_strategy_registry.py
+      notebook: notebooks/17_c3_sizing.ipynb
+    references:
+      primary: .claude/prds/c3-sizing-risk.prd.md
+      methodology: docs/METHODOLOGY.md
+      contract: src/quant/execution/strategy_registry.py
+    est_complexity: medium
+    notes: |
+      Ratified C3-PRD (2026-06-29). Extend SizingPolicy.method with `vol_target`
+      (weight proportional to target_vol / realised_vol) + params (target_vol, vol look-back,
+      realised-vol floor/cap); implement the matching size_strategy branch reusing
+      backtest/metrics.py vol. Ships the G1 gate (vol-targeting accuracy +/-25% AND strictly
+      beats equal-weight). Extend the C6 bidirectional drift test. Pin vol estimator/look-back/
+      floor + target_vol default + replay window (>=2 regimes) BEFORE measuring (frozen gate,
+      METHODOLOGY §1). Must NOT touch walk-forward split logic (backtest/CLAUDE.md). REVIEW
+      NOTE (carried from ratification): confirm the <=1% G3c reconciliation tolerance is
+      appropriate for vol_target sizing vs the simulator's integer-share deployment; if
+      rounding on small accounts makes 1% infeasible, that is a finding requiring a new ledger
+      entry, not a silent loosening.
+
+  - id: C3-M2
+    rank: 93
+    title: "C3-M2: Binding max-position caps + trailing-drawdown stops"
+    project: C
+    sub_project: C3
+    status: blocked
+    depends_on: [C3-M1]
+    blocks: [C3-M3, C-CLOSE, E3-M1]
+    deliverable:
+      file: src/quant/execution/strategy_registry.py
+      executor: scripts/trade_daily.py
+      tests: tests/test_strategy_registry.py
+      notebook: notebooks/18_c3_risk_limits.ipynb
+    references:
+      primary: .claude/prds/c3-sizing-risk.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      Populate RiskLimits with a binding per-symbol max_position (real cap, not the unit
+      no-op) + a trailing max_drawdown_stop; make the net_targets clamp + an executor stop
+      check load-bearing. Ships the G2 gate (0 cap breaches; stop trips on EXACTLY the breach
+      bars). Pin max_position units + drawdown-stop re-entry rule BEFORE the clamp is
+      load-bearing (METHODOLOGY §1). REVIEW NOTE (carried from ratification): G2b's exact-trip
+      test MUST validate against an INDEPENDENT hand-computed reference fixture, not a sibling
+      reference predicate in the same milestone -- a shared peak/close/re-arm bug would
+      otherwise pass the test while the live stop is wrong.
+
+  - id: C3-M3
+    rank: 94
+    title: "C3-M3: Confidence-consumption seam + real-sizing state reconciliation"
+    project: C
+    sub_project: C3
+    status: blocked
+    depends_on: [C3-M2, C6-M2]
+    blocks: [C4-M2, C-CLOSE, E3-M1]
+    deliverable:
+      file: scripts/trade_daily.py
+      tests: tests/test_trade_daily.py
+      notebook: notebooks/19_c3_state_recon.ipynb
+    references:
+      primary: .claude/prds/c3-sizing-risk.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: medium
+    notes: |
+      Wire the single confidence-multiply seam (sized_weight = vol_target_weight *
+      confidence_scalar, scalar default 1.0 -- INERT until C4); verify persisted position
+      state round-trips + reconciles with broker holdings under real vol_target sizing +
+      binding caps. Ships the G3 gate (drift + placeholder back-compat + vol_target <=1%
+      reconciliation). Assert the seam is a no-op at scalar 1.0 (back-compat with the C6/C3
+      placeholder). This is the seam C4-M2 fills.
+
+  - id: C4-M1
+    rank: 95
+    title: "C4-M1: Calibration method shortlist + theory writeup"
+    project: C
+    sub_project: C4
+    status: ready
+    depends_on: [C4-PRD, C6-M1]
+    blocks: [C4-M2, C-CLOSE]
+    deliverable:
+      file: docs/concepts/confidence-calibration.md
+    references:
+      primary: .claude/prds/c4-confidence.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Ratified C4-PRD (2026-06-29). Pre-commit the calibration method(s): conformal vs
+      quantile vs bootstrap-CI, 1 for ARIMA + 1 for GBM, with rationale (coverage guarantee,
+      OOS-only eval METHODOLOGY §14, fit to output type). Freeze the G1/G2 replay window (>=2
+      regimes) before any coverage is measured (§1). Spec/theory only -- no code. Mirror
+      B2-M1's oos-attribution.md house format.
+
+  - id: C4-M2
+    rank: 96
+    title: "C4-M2: Models emit calibrated intervals + confidence scalar (G1 incl. sharpness G1c)"
+    project: C
+    sub_project: C4
+    status: blocked
+    depends_on: [C4-M1, C3-M3]
+    blocks: [C4-M3, C-CLOSE]
+    deliverable:
+      file: src/quant/models/calibration.py
+      harness: src/quant/backtest/harness.py
+      registry: src/quant/execution/strategy_registry.py
+      tests: tests/test_calibration.py
+      notebook: notebooks/20_c4_calibration.ipynb
+    references:
+      primary: .claude/prds/c4-confidence.prd.md
+      methodology: docs/METHODOLOGY.md
+      sizing_seam: scripts/trade_daily.py
+    est_complexity: large
+    notes: |
+      Extend ConfidenceGate.method with the shortlisted method(s) + params; implement the
+      calibration machinery (models/calibration.py) emitting oos_prediction_intervals + a
+      confidence scalar in (0,1] default 1.0; extend BacktestResult; feed C3's sizing seam.
+      Ships the G1 gate: G1a/G1b coverage (+/-0.05 @ alpha=0.10, beats uncalibrated) AND G1c
+      SHARPNESS + scalar-discrimination (mean width <= 0.90x marginal AND scalar std >= 0.05)
+      -- ADDED at ratification so a calibrated-but-useless (constant wide-band) model FAILS.
+      Carve the conformal calibration set from the TRAIN-window tail under purge/embargo --
+      never the test fold (METHODOLOGY §14, backtest/CLAUDE.md inv. 4); leaking the test fold
+      is the cardinal sin. depends_on C3-M3 (the sizing seam it fills). Must NOT touch
+      walk-forward split logic.
+
+  - id: C4-M3
+    rank: 97
+    title: "C4-M3: Per-regime calibration audit + live calibration-drift detector"
+    project: C
+    sub_project: C4
+    status: blocked
+    depends_on: [C4-M2]
+    blocks: [C-CLOSE]
+    deliverable:
+      file: src/quant/models/calibration.py
+      tests: tests/test_calibration.py
+      notebook: notebooks/21_c4_drift.ipynb
+    references:
+      primary: .claude/prds/c4-confidence.prd.md
+      methodology: docs/METHODOLOGY.md
+      boundary: docs/project-e/E4-data-market-status.prd.md
+    est_complexity: medium
+    notes: |
+      Per-regime OOS coverage audit (G2, +/-0.10 per regime) reusing regime_metrics; live
+      calibration-drift detector (G3c) -- the live extension of the per-regime audit, COMPUTED
+      by C4 and only SURFACED by E3/E4 (binding C4<->E4 boundary: E4 owns feature/data-
+      distribution drift and must NOT duplicate calibration-drift). Pin the live window +
+      DRIFT_TOLERANCE (0.15) before measuring (§1). G3c tested on seeded windows: 0 missed
+      trips on a seeded under-covering window, 0 false alarms on a calibrated one.
