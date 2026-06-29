@@ -10,6 +10,7 @@ import dataclasses
 import datetime as dt
 import json
 import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -1280,6 +1281,109 @@ def test_cached_feature_panel_builds_uncached_when_settings_unavailable(monkeypa
     monkeypatch.setattr("quant.config.settings", object())
     sentinel = _tiny_panel()
     assert sources_mod._cached_feature_panel(lambda: sentinel) is sentinel
+
+
+# ── feature-panel cache pruning (E1-FEATURE-MONITOR-CACHE-PRUNE) ──────────────
+
+
+def _make_cache_file(cache_dir: Path, name: str, *, mtime: float) -> Path:
+    """Write a stand-in cached panel file and stamp its mtime (for ordering)."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / name
+    path.write_bytes(b"panel")
+    os.utime(path, (mtime, mtime))
+    return path
+
+
+def test_prune_keeps_most_recent_and_deletes_older(tmp_path):
+    cache = tmp_path / "cache"
+    # Five panel files, mtimes 1..5 (file5 newest). current = the newest write.
+    files = {
+        i: _make_cache_file(cache, f"feature_panel_{i:02d}.parquet", mtime=float(i))
+        for i in range(1, 6)
+    }
+    sources_mod._prune_feature_panel_cache(cache, files[5], keep=2)
+    survivors = {p.name for p in cache.glob("feature_panel_*.parquet")}
+    # keep=2 → the two most recent by mtime survive (files 5 and 4); 1–3 pruned.
+    assert survivors == {"feature_panel_05.parquet", "feature_panel_04.parquet"}
+
+
+def test_prune_never_deletes_current_even_when_oldest(tmp_path):
+    cache = tmp_path / "cache"
+    # current is the OLDEST by mtime — simulates a concurrent newer write racing in
+    # after this call built its panel. The just-written entry must still survive.
+    current = _make_cache_file(cache, "feature_panel_cur.parquet", mtime=1.0)
+    for i in range(2, 6):
+        _make_cache_file(cache, f"feature_panel_{i:02d}.parquet", mtime=float(i))
+    sources_mod._prune_feature_panel_cache(cache, current, keep=2)
+    survivors = {p.name for p in cache.glob("feature_panel_*.parquet")}
+    assert current.name in survivors  # current never pruned
+    # keep=2 total → current + the single most-recent other (file 5).
+    assert survivors == {"feature_panel_cur.parquet", "feature_panel_05.parquet"}
+
+
+def test_prune_is_noop_on_missing_dir_and_below_threshold(tmp_path):
+    missing = tmp_path / "nope"
+    # Absent dir → no raise, nothing to do.
+    sources_mod._prune_feature_panel_cache(missing, missing / "x.parquet", keep=8)
+    assert not missing.exists()
+    # Fewer files than the retention budget → nothing deleted.
+    cache = tmp_path / "cache"
+    cur = _make_cache_file(cache, "feature_panel_a.parquet", mtime=1.0)
+    _make_cache_file(cache, "feature_panel_b.parquet", mtime=2.0)
+    sources_mod._prune_feature_panel_cache(cache, cur, keep=8)
+    assert len(list(cache.glob("feature_panel_*.parquet"))) == 2
+
+
+def test_prune_swallows_unlink_failure(tmp_path, monkeypatch):
+    cache = tmp_path / "cache"
+    cur = _make_cache_file(cache, "feature_panel_new.parquet", mtime=3.0)
+    _make_cache_file(cache, "feature_panel_old.parquet", mtime=1.0)
+    _make_cache_file(cache, "feature_panel_mid.parquet", mtime=2.0)
+
+    def boom(self, *a, **k):
+        raise OSError("locked")
+
+    monkeypatch.setattr(Path, "unlink", boom)
+    # A failing unlink must not propagate (best-effort, guarded — METHODOLOGY §9).
+    sources_mod._prune_feature_panel_cache(cache, cur, keep=1)
+    # Files remain (unlink was blocked) but no exception escaped.
+    assert len(list(cache.glob("feature_panel_*.parquet"))) == 3
+
+
+def test_cached_feature_panel_prunes_superseded_on_write(tmp_path, monkeypatch):
+    monkeypatch.setattr(sources_mod, "FEATURE_PANEL_CACHE_RETAIN", 2)
+    kw = _cache_kwargs(tmp_path, universe=("AAA",))
+
+    def build():
+        return _tiny_panel()
+
+    # Three distinct lake fingerprints → three distinct keys → three writes.
+    sources_mod._cached_feature_panel(build, **kw)
+    _seed_lake(kw["processed_dir"], nbytes=32)
+    sources_mod._cached_feature_panel(build, **kw)
+    _seed_lake(kw["processed_dir"], nbytes=64)
+    sources_mod._cached_feature_panel(build, **kw)
+
+    files = list(kw["cache_dir"].glob("feature_panel_*.parquet"))
+    assert len(files) == 2  # bounded to the retention budget, oldest pruned
+    # The current key (newest lake state) must be among the survivors.
+    cur_key = sources_mod._feature_panel_cache_key(("AAA",), kw["processed_dir"])
+    assert (kw["cache_dir"] / f"feature_panel_{cur_key}.parquet").exists()
+
+
+def test_cached_feature_panel_keeps_current_write_when_retain_is_one(tmp_path, monkeypatch):
+    # retain=1 ("keep only the current key") must still leave the just-written file.
+    monkeypatch.setattr(sources_mod, "FEATURE_PANEL_CACHE_RETAIN", 1)
+    kw = _cache_kwargs(tmp_path, universe=("AAA",))
+    sources_mod._cached_feature_panel(lambda: _tiny_panel(), **kw)
+    _seed_lake(kw["processed_dir"], nbytes=128)
+    panel = sources_mod._cached_feature_panel(lambda: _tiny_panel(), **kw)
+    assert panel is not None
+    files = list(kw["cache_dir"].glob("feature_panel_*.parquet"))
+    assert len(files) == 1  # only the most-recent (current) key remains
+    cur_key = sources_mod._feature_panel_cache_key(("AAA",), kw["processed_dir"])
+    assert files[0].name == f"feature_panel_{cur_key}.parquet"
 
 
 # ── asof-aware feature panel (E1-FEATURE-MONITOR-ASOF) ────────────────────────
