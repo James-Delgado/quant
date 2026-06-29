@@ -3360,7 +3360,8 @@ tasks:
     title: "Sync METHODOLOGY reference schema: add the optional `sharpe` field to the ledger entry example"
     project: A
     sub_project: methodology-upgrade
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T05:38:26Z
     depends_on: [A-DSR-LEDGER-SHARPE]
     blocks: [A-CLOSE]
     deliverable:
