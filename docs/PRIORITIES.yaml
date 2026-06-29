@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-M5-OVERVIEW-CONDITION-TIPS done
+last_updated: 2026-06-28  # E1-M5-TABLE-SCROLL-AFFORDANCE done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2651,8 +2651,9 @@ tasks:
     title: "E1-M5 follow-up: visible horizontal-scroll affordance on the dense-table scroll regions"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T22:30:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M5]
     blocks: [E1-CLOSE]
     deliverable:
@@ -2674,6 +2675,20 @@ tasks:
       E1-CLOSE so closeout certifies the responsive treatment is discoverable, not
       just functional. Added to E1-CLOSE.depends_on per AGENT_OPERATION Step 7
       corollary.
+
+      DELIVERED (commit on branch worktree-e1-m1-console): TableScroll now measures
+      real overflow (scrollWidth > clientWidth) + scroll position and toggles
+      data-scroll-left/right on a position:relative wrapper, so CSS fades in an edge
+      cue (var(--slate) -> transparent, 26px, aria-hidden + pointer-events:none) ONLY
+      on the side that still has off-screen columns — and hides it entirely when the
+      table fits or the edge is reached (re-measured on scroll, window resize, and
+      ResizeObserver where available; RO guarded for jsdom). 4 new Vitest tests
+      (frontend/src/test/TableScroll.test.tsx) cover fits->no-cue, start->right,
+      mid->both, end->left-only, and preserved a11y attrs. Verified live at 320px on
+      the Trial Registry table: right cue at scrollLeft 0, both mid, left-only at max
+      (METHODOLOGY §9 — measured, never faked). npm run lint/format:check/build green;
+      89 Vitest tests green; ruff clean (no Python touched). Files: TableScroll.tsx,
+      styles/console.css, test/TableScroll.test.tsx.
 
   - id: E1-M6-FEEDBACK-LABEL
     rank: 110

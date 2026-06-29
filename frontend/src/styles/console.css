@@ -652,7 +652,37 @@ tbody tr.clk:hover { background: var(--slate-2); }
 /* Responsive dense-table scroll region (E1-M5 a11y/responsive pass). The flush
    panel clips with `overflow: hidden`; this inner region restores horizontal
    reach so no column is hidden at 320px while the page never overflows. */
+.table-scroll-wrap { position: relative; }
 .table-scroll { overflow-x: auto; }
+
+/* Horizontal-scroll discoverability cue (E1-M5-TABLE-SCROLL-AFFORDANCE). The
+   focus ring tells keyboard users the region scrolls; these edge fades tell
+   mouse/touch users. TableScroll toggles data-scroll-left/right on the wrapper
+   from measured overflow, so a cue shows ONLY when that side has off-screen
+   columns and hides once the edge is reached or the table fits. Decorative +
+   non-interactive (aria-hidden span, pointer-events: none) so it never blocks a
+   click on the cell beneath or gets announced. The fade is the panel surface
+   (var(--slate)) dissolving into the content. */
+.table-scroll-cue {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  z-index: 1;
+}
+.table-scroll-cue--left {
+  left: 0;
+  background: linear-gradient(to right, var(--slate), rgba(22, 26, 33, 0));
+}
+.table-scroll-cue--right {
+  right: 0;
+  background: linear-gradient(to left, var(--slate), rgba(22, 26, 33, 0));
+}
+.table-scroll-wrap[data-scroll-left] .table-scroll-cue--left { opacity: 1; }
+.table-scroll-wrap[data-scroll-right] .table-scroll-cue--right { opacity: 1; }
 
 /* Report button + capture modal + toast (E1-M6). UI surface is the button +
    modal ONLY — no tracker panel (DECISIONS #11). Ported from the mockup
