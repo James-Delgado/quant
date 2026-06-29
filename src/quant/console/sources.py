@@ -115,6 +115,12 @@ class ConsoleSources:
     market_value_fn: MarketValueFn | None = None
     market_series_fn: MarketSeriesFn | None = None
     benchmark_price_fn: BenchmarkPriceFn | None = None
+    # Display identity of the benchmark ``benchmark_price_fn`` computes, carried
+    # into the export so the UI legend names the real series rather than a stale
+    # frontend constant (E1-M3-BENCHMARK-COST-NAME). Defaults to the pinned
+    # ``BENCHMARK_SYMBOL``; co-located with ``benchmark_price_fn`` so a test (or a
+    # re-pin) sets price and name together.
+    benchmark_name: str = BENCHMARK_SYMBOL
     feature_monitor_fn: FeatureMonitorFn | None = None
     now_fn: NowFn | None = None
 

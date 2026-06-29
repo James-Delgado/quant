@@ -62,9 +62,17 @@ class StrategyCard:
     sparkline: list[float]  # downsampled equity curve (growth of 1)
     # SPY buy-and-hold growth-of-1 over the SAME OOS span, downsampled to the
     # same point count so it overlays index-for-index on the Overview hero
-    # (E1-M3-OVERVIEW-BENCHMARK). Empty when the benchmark price is unavailable
-    # or does not fully cover the span — an honest "no overlay", never faked (§9).
+    # (E1-M3-OVERVIEW-BENCHMARK). Cost-net (one buy-and-hold round trip through
+    # the same simulator the arms trade) so it is parity-comparable with the
+    # strategy equity above (E1-M3-BENCHMARK-COST-NAME). Empty when the benchmark
+    # price is unavailable or does not fully cover the span — an honest "no
+    # overlay", never faked (§9).
     benchmark_sparkline: list[float]
+    # Identity of the benchmark above (e.g. "SPY"), so the UI legend names
+    # whatever the service layer actually computed instead of a frontend constant
+    # that could silently go stale if the pinned symbol changes
+    # (E1-M3-BENCHMARK-COST-NAME). ``None`` when no overlay was drawn.
+    benchmark_name: str | None
     n_folds: int
     oos_start: str | None
     oos_end: str | None

@@ -32,8 +32,10 @@ export interface StrategyCard {
   status: string;
   driver: string;
   sparkline: number[];
-  /** SPY buy-and-hold growth-of-1 aligned to the same OOS span; [] when absent. */
+  /** Cost-net SPY buy-and-hold growth-of-1 aligned to the same OOS span; [] when absent. */
   benchmark_sparkline: number[];
+  /** Identity of the benchmark series above (e.g. "SPY"); null when no overlay. */
+  benchmark_name: string | null;
   n_folds: number;
   oos_start: string | null;
   oos_end: string | null;

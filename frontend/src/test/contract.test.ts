@@ -36,6 +36,7 @@ const STRATEGY_KEYS = [
   "driver",
   "sparkline",
   "benchmark_sparkline",
+  "benchmark_name",
 ];
 const PORTFOLIO_KEYS = ["strategies", "n_enabled", "n_idle"];
 const PORTFOLIO_STRATEGY_KEYS = [

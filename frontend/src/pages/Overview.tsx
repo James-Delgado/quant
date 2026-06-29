@@ -102,6 +102,10 @@ export function Overview() {
   // span, downsampled to the same points so it aligns index-for-index). When it
   // is absent the hero stays candidate-only with an honest note — never faked.
   const hasBenchmark = (candidate?.benchmark_sparkline?.length ?? 0) > 0;
+  // Name the benchmark the service layer actually computed (E1-M3-BENCHMARK-COST-NAME):
+  // the export carries the identity so the legend can't go stale if the pinned
+  // symbol changes. Fall back to "SPY" only if an older export omits the field.
+  const benchName = candidate?.benchmark_name ?? "SPY";
   const heroSeries: ChartSeries[] = candidate
     ? [
         { values: candidate.sparkline, className: "ln-port" },
@@ -176,7 +180,7 @@ export function Overview() {
                 ]}
                 ariaLabel={
                   hasBenchmark
-                    ? `Cumulative return of ${candidate.name} versus SPY buy-and-hold`
+                    ? `Cumulative return of ${candidate.name} versus ${benchName} buy-and-hold`
                     : `Cumulative return of ${candidate.name}`
                 }
               />
@@ -198,7 +202,7 @@ export function Overview() {
                         width: 14,
                       }}
                     />{" "}
-                    SPY · buy &amp; hold
+                    {benchName} · buy &amp; hold
                   </span>
                 ) : null}
                 <span>
@@ -211,8 +215,8 @@ export function Overview() {
               </div>
               {hasBenchmark ? (
                 <p className="note">
-                  Benchmark is SPY buy-and-hold over the same out-of-sample span
-                  (growth of 1).
+                  Benchmark is {benchName} buy-and-hold over the same
+                  out-of-sample span (growth of 1, net of costs).
                 </p>
               ) : (
                 <p className="note">
