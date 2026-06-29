@@ -3101,7 +3101,8 @@ tasks:
     title: "Lift the reconciliation core (G2 gate + residual decomposition) to src/quant/execution/reconciliation.py for E3 console reuse"
     project: E
     sub_project: E3
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T04:57:29Z
     depends_on: [C2-M3]
     blocks: []
     deliverable:
