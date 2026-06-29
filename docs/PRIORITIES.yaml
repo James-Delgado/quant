@@ -3947,7 +3947,8 @@ tasks:
     title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): garbage-collect superseded feature-panel cache files"
     project: E
     sub_project: E1
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T07:16:20Z
     depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
     blocks: []
     deliverable:
