@@ -524,7 +524,7 @@ def _rates_labels(dgs10_on_dates: pd.Series) -> pd.Series:
     return labels
 
 
-def _trend_labels(price_on_dates: pd.Series) -> pd.Series:
+def _trend_labels(price: pd.Series) -> pd.Series:
     """Trend-regime labels from the benchmark price vs its trailing MA.
 
     ``uptrend`` when the benchmark closes above its trailing ``TREND_MA_WINDOW``-bar
@@ -534,8 +534,14 @@ def _trend_labels(price_on_dates: pd.Series) -> pd.Series:
     closes up to each date, so labelling date D never peeks past D. The leading
     ``TREND_MA_WINDOW``-1 dates have no average yet and are dropped — an honest gap,
     never a faked label (METHODOLOGY §9).
+
+    Callers pass the *full* benchmark price history (not the OOS-aligned slice) so
+    the MA is warmed up from real pre-OOS closes; :func:`_market_axes` then carries
+    the resulting labels point-in-time onto the OOS calendar
+    (E1-CONDITIONS-TREND-MA-WARMUP). Warming the MA before alignment is what keeps
+    the first OOS bars from carrying a truncated, short-window average.
     """
-    price = price_on_dates.dropna()
+    price = price.dropna()
     if price.empty:
         return pd.Series(dtype=object)
     ma = price.rolling(TREND_MA_WINDOW).mean().dropna()
@@ -595,7 +601,14 @@ def _market_axes(sources: ConsoleSources, dates: pd.DatetimeIndex) -> list[_Mark
     price_fn = sources.benchmark_price_fn
     price = price_fn() if price_fn is not None else None
     if price is not None:
-        trend_labels = _trend_labels(_align_market(_by_date(price), dates))
+        # Warm the 200-bar MA on the FULL benchmark price history, THEN carry the
+        # resulting uptrend/downtrend labels point-in-time onto the OOS calendar
+        # (E1-CONDITIONS-TREND-MA-WARMUP). Averaging before alignment removes the
+        # ~199-bar OOS warm-up gap the align-then-average order produced, and is
+        # equally point-in-time (the MA at date D still references only closes
+        # <= D). Dates the warmed labels do not cover stay an honest gap (§9).
+        full_trend = _trend_labels(_by_date(price))
+        trend_labels = _align_market(full_trend, dates).dropna()
         if not trend_labels.empty:
             axes.append(("trend", list(_TREND_CONDITIONS), trend_labels))
     rates = fn(RATES_SERIES_ID) if fn is not None else None
