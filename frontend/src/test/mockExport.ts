@@ -78,6 +78,13 @@ function detail(
       { date: "2010-01-01", value: sharpe > 0 ? 1.6 : 0.9 },
       { date: "2026-03-30", value: sharpe > 0 ? 2.7 : 0.3 },
     ],
+    // SPY buy-and-hold growth-of-1, aligned index-for-index to `equity`
+    // (E1-STRATEGY-DETAIL-BENCHMARK). Same dates, benchmark values.
+    benchmark_equity: [
+      { date: "2004-06-21", value: 1.0 },
+      { date: "2010-01-01", value: 1.4 },
+      { date: "2026-03-30", value: 2.7 },
+    ],
     drawdown: [
       { date: "2004-06-21", value: 0 },
       { date: "2009-03-01", value: -0.3 },
