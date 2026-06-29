@@ -1838,7 +1838,7 @@ tasks:
     project: B
     sub_project: closeout
     status: blocked
-    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B3-PRD, B3-M1, B3-M2, B3-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-DD-VOLIMPLIED-PANEL-PARITY, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08, B2-G2-DESIGN-MISMATCH, B2-ATTR-SET-DRIFT-TEST]
+    depends_on: [B1-PRD, B1-M1, B1-M2, B1-M3, B2-PRD, B2-M1, B2-M2, B2-M3, B3-PRD, B3-M1, B3-M2, B3-M3, B1-TARGETS-CONCEPT-DOC, B1-TARGETEVAL-DOC, B1-DD-VOLIMPLIED-BASELINE, B1-DD-VOLIMPLIED-PANEL-PARITY, B1-M3-TZTEST, B2-DOC-COLCOUNT, B2-M2-G2-NB08, B2-G2-DESIGN-MISMATCH, B2-ATTR-SET-DRIFT-TEST, B1-RUNNER-LEDGER-SHARPE]
     blocks: []
     deliverable:
       notebook: notebooks/15_project_b_closeout.ipynb
@@ -3323,8 +3323,9 @@ tasks:
     title: "Wire observed_sharpe_std into dsr_aware_gate_report (empirical sharpe_std with scalar fallback)"
     project: A
     sub_project: methodology-upgrade-13
-    status: in_progress
+    status: done
     started_at: 2026-06-29T05:31:25Z
+    completed_at: 2026-06-29
     depends_on: [A-DSR-LEDGER-SHARPE, A-DSR-GATE]
     blocks: [A-CLOSE]
     deliverable:
@@ -3495,6 +3496,39 @@ tasks:
       B-CLOSE.depends_on (Step 7 corollary) so closeout does not certify on an
       unresolved port question. LOW PRIORITY — B2's research thread is already a
       documented NO-GO (B2-CONFORMAL-PRD is the live continuation).
+
+  - id: B1-RUNNER-LEDGER-SHARPE
+    rank: 91
+    title: "run_b1_arms.py: log per-arm sharpe= into the ledger so observed_sharpe_std() has data"
+    project: B
+    sub_project: B1
+    status: ready
+    depends_on: [A-DSR-WIRE-EMPIRICAL-STD]
+    blocks: [B-CLOSE]
+    deliverable:
+      file: scripts/run_b1_arms.py
+    references:
+      primary: src/quant/ledger.py
+      methodology: docs/METHODOLOGY.md
+      consumer: src/quant/backtest/regime_metrics.py
+    est_complexity: small
+    notes: |
+      Discovered during A-DSR-WIRE-EMPIRICAL-STD post-task review (commit wiring
+      observed_sharpe_std into dsr_aware_gate_report). The empirical-std path is now
+      live in the gate, but it stays INERT in production: run_b1_arms.py writes
+      `sharpe_arm_aggregate` (a dict, scripts/run_b1_arms.py:674), while record_run /
+      observed_sharpe_std read the scalar `aggregate_sharpe` (or an explicit
+      `sharpe=`). With no scalar Sharpe per logged trial, the ledger never
+      accumulates per-trial Sharpes, so observed_sharpe_std() returns None and the
+      gate always falls back to DEFAULT_SHARPE_STD (sharpe_std_source ==
+      'default_scalar'). Fix: when a multi-arm runner logs each arm as its own ledger
+      entry, pass `record_run(..., sharpe=<that arm's annualised Sharpe>)` explicitly
+      (the dict has no single scalar `aggregate_sharpe` record_run can default from).
+      Contract-before-consumer (§4): this activates the A-DSR-LEDGER-SHARPE →
+      A-DSR-WIRE-EMPIRICAL-STD data path end-to-end. Non-gating; the scalar default
+      keeps the gate correct meanwhile. LOW PRIORITY — parked at rank 91 in the
+      queued-B band. Added to B-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
   - id: E1-M2-TOPBAR-FRESHNESS
     rank: 115
     title: "Wire the M2 Topbar to consume export/_manifest.json (generated_at + per-source mtimes)"
