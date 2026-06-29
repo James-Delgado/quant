@@ -654,6 +654,37 @@ def test_load_conditions_trend_axis_without_fred(sources):
     assert [a.name for a in cond.axes] == ["trend"]
 
 
+def test_market_axes_trend_warmup_from_full_history(sources):
+    # E1-CONDITIONS-TREND-MA-WARMUP: the 200-bar trend MA is warmed up from the
+    # FULL benchmark price history before the labels are aligned onto the OOS
+    # calendar, so the very first OOS bar already carries a real trend label —
+    # no ~199-bar truncation gap, and the label is not biased by a short window.
+    oos = pd.date_range("2006-01-02", periods=300, freq="B")
+    # 260 business days of HIGH pre-OOS history (well over TREND_MA_WINDOW), then
+    # the OOS span sits BELOW that level: a genuine, point-in-time downtrend the
+    # full trailing MA can see at the first OOS bar.
+    pre = pd.date_range("2005-01-03", periods=260, freq="B")
+    full_idx = pre.append(oos)
+    prices = np.concatenate([np.full(len(pre), 200.0), np.full(len(oos), 150.0)])
+    price = pd.Series(prices, index=full_idx, name="SPY")
+    src = dataclasses.replace(
+        sources, market_series_fn=None, benchmark_price_fn=lambda: price
+    )
+
+    axes = readers._market_axes(src, oos)
+    assert [name for name, _, _ in axes] == ["trend"]
+    _, _, labels = axes[0]
+    # Full-history warm-up: the FIRST OOS bar is labelled, and it is the true
+    # full-history trend (price 150 below the 200-level trailing MA → downtrend).
+    assert oos[0] in labels.index
+    assert labels.loc[oos[0]] == "downtrend"
+    # Contrast: the retired align-then-MA order leaves the first OOS bar (and the
+    # ~199 bars after it) unlabelled — the gap this task removes.
+    old = readers._trend_labels(readers._align_market(readers._by_date(price), oos))
+    assert oos[0] not in old.index
+    assert len(old) == len(oos) - (readers.TREND_MA_WINDOW - 1)
+
+
 def test_align_market_forward_fills_point_in_time():
     series = pd.Series([1.0, 2.0], index=pd.to_datetime(["2020-01-01", "2020-01-05"]))
     dates = pd.DatetimeIndex(pd.to_datetime(["2020-01-01", "2020-01-03", "2020-01-05", "2020-01-06"]))
