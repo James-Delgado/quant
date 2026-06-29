@@ -7,9 +7,14 @@ synthetic OHLCV with no lake or network access; the G3 daily-loop primitive is
 driven through a fake bridge so the position-state round-trip is covered without
 the live paper API.
 
-The harness lives in ``scripts/reconcile_paper_backtest.py`` (the pinned C2-M3
-deliverable path); the repo tests scripts by import, exactly as
-``tests/test_c2_hello_world.py`` does for ``scripts/c2_hello_world.py``.
+The arithmetic CORE was lifted to the package module
+``quant.execution.reconciliation`` (C2-M3-RECON-CORE-LIFT) so the E3 console and
+the CLI runner share one tested implementation; those tests import the module
+directly as ``recon``. The script ``scripts/reconcile_paper_backtest.py`` remains
+the C2-M3 deliverable and a thin CLI consumer (signal generation, report
+rendering, the G3 paper-loop primitive); those tests import it by path as ``rpb``,
+exactly as ``tests/test_c2_hello_world.py`` does for ``scripts/c2_hello_world.py``.
+A drift test asserts the script re-exports the SAME core objects (METHODOLOGY §6).
 """
 
 from __future__ import annotations
@@ -21,6 +26,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+
+from quant.execution import reconciliation as recon
 
 # Import the deliverable script as a module (it is not on the package path).
 # Register in sys.modules before exec so dataclass annotation resolution can find
@@ -64,14 +71,33 @@ def _alternating_signals(idx: pd.DatetimeIndex) -> pd.Series:
 
 
 def test_pinned_constants():
-    assert rpb.G2_MAX_RELATIVE_DELTA == 0.01
-    assert rpb.G3_MIN_CYCLES == 5
+    # Core reconciliation constants live in the lifted package module.
+    assert recon.G2_MAX_RELATIVE_DELTA == 0.01
+    assert recon.UNEXPLAINED_EPS == 1e-9
     # Backtest model is the Phase-1 pinned cost model; paper is commission-free.
-    assert rpb.BACKTEST_COST_MODEL["commission_per_share"] == 0.005
-    assert rpb.PAPER_COST_MODEL["commission_per_share"] == 0.0
+    assert recon.BACKTEST_COST_MODEL["commission_per_share"] == 0.005
+    assert recon.PAPER_COST_MODEL["commission_per_share"] == 0.0
     # Slippage + liquidity cap are matched between the two engines.
-    assert rpb.PAPER_COST_MODEL["slippage_bps"] == rpb.BACKTEST_COST_MODEL["slippage_bps"]
-    assert rpb.PAPER_COST_MODEL["liquidity_cap"] == rpb.BACKTEST_COST_MODEL["liquidity_cap"]
+    assert recon.PAPER_COST_MODEL["slippage_bps"] == recon.BACKTEST_COST_MODEL["slippage_bps"]
+    assert recon.PAPER_COST_MODEL["liquidity_cap"] == recon.BACKTEST_COST_MODEL["liquidity_cap"]
+    # G3 loop liveness is a script-orchestration constant (stays in the runner).
+    assert rpb.G3_MIN_CYCLES == 5
+
+
+def test_script_reexports_the_lifted_core():
+    # The thin CLI consumer must re-export the SAME core objects it imports, so a
+    # reader of ``rpb.*`` (and the trade_daily drift test) sees no behaviour drift
+    # after the lift (METHODOLOGY §6 — code-vs-code contract in both directions).
+    assert rpb.G2_MAX_RELATIVE_DELTA is recon.G2_MAX_RELATIVE_DELTA
+    assert rpb.UNEXPLAINED_EPS is recon.UNEXPLAINED_EPS
+    assert rpb.BACKTEST_COST_MODEL is recon.BACKTEST_COST_MODEL
+    assert rpb.PAPER_COST_MODEL is recon.PAPER_COST_MODEL
+    assert rpb.ReconciliationResult is recon.ReconciliationResult
+    assert rpb.equity_curve is recon.equity_curve
+    assert rpb.growth_multiple is recon.growth_multiple
+    assert rpb.relative_delta is recon.relative_delta
+    assert rpb.decompose_residual is recon.decompose_residual
+    assert rpb.g2_reconciliation_gate_report is recon.g2_reconciliation_gate_report
 
 
 def test_recon_window_spans_at_least_two_regimes():
@@ -92,8 +118,8 @@ def test_equity_curve_matches_simulate():
 
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)
-    eq = rpb.equity_curve(prices, signals, rpb.BACKTEST_COST_MODEL)
-    expected, _ = simulate(prices, signals, **rpb.BACKTEST_COST_MODEL)
+    eq = recon.equity_curve(prices, signals, recon.BACKTEST_COST_MODEL)
+    expected, _ = simulate(prices, signals, **recon.BACKTEST_COST_MODEL)
     pd.testing.assert_series_equal(eq, expected)
 
 
@@ -101,23 +127,23 @@ def test_equity_curve_requires_aligned_indexes():
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)[:-1]  # shorter
     with pytest.raises(ValueError, match="aligned"):
-        rpb.equity_curve(prices, signals, rpb.BACKTEST_COST_MODEL)
+        recon.equity_curve(prices, signals, recon.BACKTEST_COST_MODEL)
 
 
 def test_growth_multiple():
     eq = pd.Series([100.0, 110.0, 121.0])
-    assert rpb.growth_multiple(eq) == pytest.approx(1.21)
+    assert recon.growth_multiple(eq) == pytest.approx(1.21)
 
 
 def test_growth_multiple_empty_is_one():
-    assert rpb.growth_multiple(pd.Series(dtype=float)) == 1.0
+    assert recon.growth_multiple(pd.Series(dtype=float)) == 1.0
 
 
 def test_relative_delta_sign_and_zero():
-    assert rpb.relative_delta(1.10, 1.10) == pytest.approx(0.0)
+    assert recon.relative_delta(1.10, 1.10) == pytest.approx(0.0)
     # paper multiple above backtest → positive relative delta.
-    assert rpb.relative_delta(1.00, 1.01) == pytest.approx(0.01)
-    assert rpb.relative_delta(1.20, 1.20 * 0.99) == pytest.approx(-0.01)
+    assert recon.relative_delta(1.00, 1.01) == pytest.approx(0.01)
+    assert recon.relative_delta(1.20, 1.20 * 0.99) == pytest.approx(-0.01)
 
 
 # ─── decompose_residual ────────────────────────────────────────────────────────
@@ -126,8 +152,8 @@ def test_relative_delta_sign_and_zero():
 def test_decompose_residual_only_commission_differs():
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)
-    components = rpb.decompose_residual(
-        prices, signals, backtest_cost=rpb.BACKTEST_COST_MODEL, paper_cost=rpb.PAPER_COST_MODEL
+    components = recon.decompose_residual(
+        prices, signals, backtest_cost=recon.BACKTEST_COST_MODEL, paper_cost=recon.PAPER_COST_MODEL
     )
     # Only commission_per_share differs between the two pinned models.
     assert set(components) == {"commission_per_share"}
@@ -144,11 +170,11 @@ def test_decompose_residual_components_close_the_gap():
     signals = _alternating_signals(prices.index)
     backtest = {"commission_per_share": 0.01, "slippage_bps": 10.0, "liquidity_cap": 0.10}
     paper = {"commission_per_share": 0.0, "slippage_bps": 2.0, "liquidity_cap": 0.10}
-    components = rpb.decompose_residual(prices, signals, backtest_cost=backtest, paper_cost=paper)
+    components = recon.decompose_residual(prices, signals, backtest_cost=backtest, paper_cost=paper)
     assert set(components) == {"commission_per_share", "slippage_bps"}
 
-    bt_mult = rpb.growth_multiple(rpb.equity_curve(prices, signals, backtest))
-    paper_mult = rpb.growth_multiple(rpb.equity_curve(prices, signals, paper))
+    bt_mult = recon.growth_multiple(recon.equity_curve(prices, signals, backtest))
+    paper_mult = recon.growth_multiple(recon.equity_curve(prices, signals, paper))
     reconstructed = bt_mult
     for c in components.values():
         reconstructed *= 1.0 + c
@@ -165,17 +191,17 @@ def test_decompose_residual_handles_short_side():
         default=0,
     )
     signals = pd.Series(vals, index=prices.index, dtype=int)
-    result = rpb.g2_reconciliation_gate_report(prices, signals)
+    result = recon.g2_reconciliation_gate_report(prices, signals)
     assert result.n_trades > 0
-    assert abs(result.unexplained) <= rpb.UNEXPLAINED_EPS
+    assert abs(result.unexplained) <= recon.UNEXPLAINED_EPS
     assert result.components["commission_per_share"] >= 0.0
 
 
 def test_decompose_residual_identical_models_is_empty():
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)
-    components = rpb.decompose_residual(
-        prices, signals, backtest_cost=rpb.BACKTEST_COST_MODEL, paper_cost=rpb.BACKTEST_COST_MODEL
+    components = recon.decompose_residual(
+        prices, signals, backtest_cost=recon.BACKTEST_COST_MODEL, paper_cost=recon.BACKTEST_COST_MODEL
     )
     assert components == {}
 
@@ -189,10 +215,10 @@ def test_g2_gate_passes_under_matched_assumptions():
     # fully decomposed, nothing unexplained.
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)
-    result = rpb.g2_reconciliation_gate_report(prices, signals)
+    result = recon.g2_reconciliation_gate_report(prices, signals)
     assert result.passed is True
-    assert abs(result.relative_delta) <= rpb.G2_MAX_RELATIVE_DELTA
-    assert abs(result.unexplained) <= rpb.UNEXPLAINED_EPS
+    assert abs(result.relative_delta) <= recon.G2_MAX_RELATIVE_DELTA
+    assert abs(result.unexplained) <= recon.UNEXPLAINED_EPS
     assert set(result.components) == {"commission_per_share"}
 
 
@@ -203,12 +229,12 @@ def test_g2_gate_fails_when_delta_exceeds_tolerance():
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)
     fat_commission = {"commission_per_share": 5.0, "slippage_bps": 5.0, "liquidity_cap": 0.10}
-    result = rpb.g2_reconciliation_gate_report(
-        prices, signals, backtest_cost=fat_commission, paper_cost=rpb.PAPER_COST_MODEL
+    result = recon.g2_reconciliation_gate_report(
+        prices, signals, backtest_cost=fat_commission, paper_cost=recon.PAPER_COST_MODEL
     )
     assert result.passed is False
-    assert abs(result.relative_delta) > rpb.G2_MAX_RELATIVE_DELTA
-    assert abs(result.unexplained) <= rpb.UNEXPLAINED_EPS  # still fully explained
+    assert abs(result.relative_delta) > recon.G2_MAX_RELATIVE_DELTA
+    assert abs(result.unexplained) <= recon.UNEXPLAINED_EPS  # still fully explained
 
 
 def test_g2_gate_fails_on_unexplained_residual():
@@ -217,22 +243,22 @@ def test_g2_gate_fails_on_unexplained_residual():
     # an unexplained residual fails the gate even when the delta is tiny.
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)
-    result = rpb.g2_reconciliation_gate_report(
+    result = recon.g2_reconciliation_gate_report(
         prices,
         signals,
-        paper_multiple_override=rpb.growth_multiple(
-            rpb.equity_curve(prices, signals, rpb.PAPER_COST_MODEL)
+        paper_multiple_override=recon.growth_multiple(
+            recon.equity_curve(prices, signals, recon.PAPER_COST_MODEL)
         )
         + 1e-6,  # a sliver the decomposition cannot account for
     )
     assert result.passed is False
-    assert abs(result.unexplained) > rpb.UNEXPLAINED_EPS
+    assert abs(result.unexplained) > recon.UNEXPLAINED_EPS
 
 
 def test_g2_gate_empty_signals_cannot_pass():
     prices = _ohlcv()
     flat = pd.Series(0, index=prices.index, dtype=int)  # never trades → no reconciliation surface
-    result = rpb.g2_reconciliation_gate_report(prices, flat)
+    result = recon.g2_reconciliation_gate_report(prices, flat)
     assert result.n_trades == 0
     assert result.passed is False
 
@@ -332,7 +358,7 @@ def test_reconciliation_result_components_are_read_only():
     # The verdict object is frozen; its decomposition must not be mutable either.
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)
-    result = rpb.g2_reconciliation_gate_report(prices, signals)
+    result = recon.g2_reconciliation_gate_report(prices, signals)
     with pytest.raises(TypeError):
         result.components["commission_per_share"] = 99.0  # type: ignore[index]
 
@@ -355,7 +381,7 @@ def test_run_paper_loop_first_cycle_has_no_prior_state(tmp_path):
 def test_format_reconciliation_report_quotes_verdict():
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)
-    result = rpb.g2_reconciliation_gate_report(prices, signals)
+    result = recon.g2_reconciliation_gate_report(prices, signals)
     report = rpb.format_reconciliation_report({"SPY": result})
     assert "SPY" in report
     # The rendered verdict must match the gate result, not merely contain a verdict word.
