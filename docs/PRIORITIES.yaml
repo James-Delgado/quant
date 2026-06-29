@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-29  # E1-M2-TOPBAR-FRESHNESS-DISCLOSURE done; all E1-CLOSE deps done -> E1-CLOSE (52) now ready
+last_updated: 2026-06-29  # E1-CLOSE done -> Project E1 COMPLETE; E2-M1 (53) now ready (deps E1-CLOSE + C1-M2 done)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1895,8 +1895,9 @@ tasks:
     title: "E1-CLOSE: E1 closeout — E2E build+render from fresh real artifacts + closeout report"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T00:20:00Z
+    completed_at: 2026-06-29
     depends_on: [E1-M1, E1-M2, E1-M3, E1-M4, E1-M5, E1-M6, E1-M1-CONDITIONS-MARKET-AXIS, E1-M1-FEATURE-MONITOR, E1-M2-FE-LINT, E1-M2-EXPORT-DETAIL, E1-M3-OVERVIEW-BENCHMARK, E1-M4-PROVENANCE-HYPERPARAMS, E1-M5-OVERVIEW-CONDITION-TIPS, E1-M5-TABLE-SCROLL-AFFORDANCE, E1-M6-FEEDBACK-LABEL, E-STRATEGIES-PANEL, E1-OVERVIEW-PORTFOLIO-TILE, E1-CONDITIONS-TREND-AXIS, E1-M2-TOPBAR-FRESHNESS, E1-M2-TOPBAR-FRESHNESS-DISCLOSURE, E1-CONDITIONS-TREND-COPY]
     blocks: [E2-M1]
     deliverable:
@@ -1930,7 +1931,7 @@ tasks:
     title: "E2-M1: FastAPI scaffold + read endpoints at export-schema parity"
     project: E
     sub_project: E2
-    status: blocked
+    status: ready
     depends_on: [E1-CLOSE, C1-M2]
     blocks: [E2-M2, E2-CLOSE]
     deliverable:
@@ -2529,6 +2530,11 @@ tasks:
       gating E1 closeout on standing up repo-wide CI would be scope-inflation —
       mirrors the E1-M1-FEATURE-MONITOR-EXPORT-COST / E1-LEDGER-ARTIFACTS-PATH-JOIN
       non-gating exclusions). Low priority.
+      Pointer (added during E1-CLOSE): the closeout shipped a reproducible
+      build+render gate at scripts/e1_closeout_check.sh (fresh export -> artifact
+      validation -> build -> frontend tests -> console tests). CI should invoke it
+      (FAST=1 to skip the ~90s lake-backed feature monitor) as the E1 end-to-end job
+      so a contract/render regression fails CI, not just local runs.
 
   - id: E1-M2-EXPORT-DETAIL
     rank: 105
