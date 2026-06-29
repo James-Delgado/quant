@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-CONDITIONS-TREND-AXIS done
+last_updated: 2026-06-29  # E1-M1-FEATURE-MONITOR-EXPORT-COST done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2306,8 +2306,9 @@ tasks:
     title: "E1-M1-FEATURE-MONITOR follow-up: cache/gate the export-time feature-panel build (+ richer drift options)"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-29T01:17:16Z
+    completed_at: 2026-06-29
     depends_on: [E1-M1-FEATURE-MONITOR]
     blocks: []
     deliverable:
@@ -3234,3 +3235,110 @@ tasks:
       trend coverage with no warm-up gap (and is equally point-in-time). NON-GATING
       polish — current behavior is honest (omits, never fakes, the warm-up region) and
       consistent with the rates axis; NOT in E1-CLOSE.depends_on. Low priority.
+
+  - id: E1-FEATURE-MONITOR-DRIFT-PSI
+    rank: 123
+    title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): distribution-shape drift metric (PSI/KS) for the feature monitor"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-FEATURE-MONITOR-EXPORT-COST (deferred option (c) of the
+      parent's a–e menu). sources._stability_verdict classifies drift on a
+      standardized MEAN-shift of the per-date cross-sectional mean
+      (FEATURE_DRIFT_Z_THRESHOLD), so a variance/shape shift with a stable mean is
+      not flagged. Add a distribution-shape metric (PSI or a two-sample KS on the
+      recent-vs-baseline windows) as a second drift signal. METHODOLOGY §1: the new
+      drift threshold must be PINNED in code before any verdict is visible and
+      recorded with a ledger note (mirrors the existing FEATURE_DRIFT_Z_THRESHOLD
+      pin). NON-GATING / NOT in E1-CLOSE.depends_on — the Feature Catalog panel
+      already certifies with the mean-shift verdict (mirrors the parent's own
+      non-gating exclusion). Low priority.
+
+  - id: E1-FEATURE-MONITOR-ASOF
+    rank: 124
+    title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): asof-aware feature monitor for point-in-time (E3/E4) state"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-FEATURE-MONITOR-EXPORT-COST (deferred option (d)).
+      _load_feature_panel builds the FULL feature history; build_features already
+      accepts an `asof` argument, so an asof-aware panel provider would let the E3/E4
+      live panels show the feature state knowable AT a given date (point-in-time),
+      not just the full-history snapshot. Thread an optional `asof` through
+      _load_feature_panel / _cached_feature_panel (fold `asof` into the cache key so
+      asof variants cache independently). NON-GATING / NOT in E1-CLOSE.depends_on —
+      this is forward E3/E4 scope; the static E1 catalog panel needs only the
+      full-history monitor. Low priority.
+
+  - id: E1-FEATURE-MONITOR-XSRANK
+    rank: 125
+    title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): monitor the remaining registered xs_rank_* features"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered in E1-M1-FEATURE-MONITOR-EXPORT-COST (deferred option (e)).
+      _load_feature_panel adds only the M3 cross-sectional survivor xs_rank_vol_21d
+      (add_cross_sectional_features(columns=("vol_21d",))), so any OTHER registered
+      xs_rank_* feature in catalog.yaml renders registry-only (unmonitored) in the
+      Feature Catalog panel. If the catalog should monitor them, extend the panel
+      build to produce those xs-rank columns too. Confirm first whether the extra
+      xs_rank features are actually in catalog.yaml (the panel honestly leaves
+      unmonitored anything it does not build). NON-GATING / NOT in E1-CLOSE.depends_on.
+      Low priority.
+
+  - id: E1-FEATURE-MONITOR-CACHE-PRUNE
+    rank: 126
+    title: "E1-M1-FEATURE-MONITOR-EXPORT-COST follow-up (optional): garbage-collect superseded feature-panel cache files"
+    project: E
+    sub_project: E1
+    status: ready
+    depends_on: [E1-M1-FEATURE-MONITOR-EXPORT-COST]
+    blocks: []
+    deliverable:
+      file: src/quant/console/sources.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E1-research-trust-console.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered DURING E1-M1-FEATURE-MONITOR-EXPORT-COST implementation (commit of
+      src/quant/console/sources.py _cached_feature_panel). Each lake re-ingest or
+      universe change writes a NEW keyed file
+      (data/console_cache/feature_panel_<key>.parquet) and the old one is never
+      deleted, so the cache dir grows unbounded over time (gitignored under data/, so
+      not a repo concern — just local disk). Add a small prune: on a cache write, keep
+      only the current key's file (or the N most-recent by mtime), removing
+      superseded feature_panel_*.parquet. Best-effort + guarded, same honest-degrade
+      discipline as the cache itself. NON-GATING / NOT in E1-CLOSE.depends_on — disk
+      hygiene, not a panel-correctness concern. Low priority.
