@@ -24,6 +24,9 @@ from quant.console.sources import ConsoleSources, FeedSpec, read_oos_returns
 
 # 40-hex git-sha-like strings (link-eligible) and a 64-hex content hash (not).
 _GIT_SHA_A = "a" * 40
+# A second, distinct 40-hex SHA — proves the artifacts-path fallback surfaces the
+# commit recorded in the OUT-OF-data_root checkpoint, not a coincidental match.
+_GIT_SHA_B = "b" * 40
 _CONTENT_HASH = "c" * 64
 
 
@@ -1083,6 +1086,162 @@ def test_load_ledger_honest_degrade_without_git_sha(tmp_path):
     # No matching checkpoint at all → also no link.
     assert by_id["ledger-2026-06-28-0002"].commit_url is None
     assert by_id["ledger-2026-06-28-0002"].commit is None
+
+
+def _write_external_checkpoint(
+    parent: Path, rel: str, *, config_hash: str, git_sha: str | None
+) -> None:
+    """A metadata.json-only checkpoint at ``parent/rel`` (no oos_returns).
+
+    Mirrors a run whose artifacts live OUTSIDE data_root — the case
+    checkpoint_git_sha_index's data_root.rglob cannot reach.
+    """
+    d = parent / rel
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "metadata.json").write_text(
+        json.dumps({"config_hash": config_hash, "git_sha": git_sha})
+    )
+
+
+def test_load_ledger_resolves_commit_via_artifacts_outside_data_root(tmp_path):
+    """A content-hash run whose checkpoint is OUTSIDE data_root links via artifacts.
+
+    checkpoint_git_sha_index only rglobs under data_root, so it misses the run; the
+    artifacts-path fallback (E1-LEDGER-ARTIFACTS-PATH-JOIN) resolves its commit from
+    the metadata.json at the artifacts path (relative to data_root.parent).
+    """
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    # Checkpoint sits OUTSIDE data_root, under the repo root (data_root.parent),
+    # reachable only through the ledger entry's `artifacts` path.
+    _write_external_checkpoint(
+        tmp_path, "results/b5/run1", config_hash=_CONTENT_HASH, git_sha=_GIT_SHA_B
+    )
+    ledger_path = data_root / "ledger.yaml"
+    ledger_path.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "id": "ledger-2026-06-29-0001",
+                    "prd": "b5",
+                    "milestone": "B5-M1",
+                    "agent": "human",
+                    "preregistration": "x",
+                    "config_hash": _CONTENT_HASH,  # 64-hex content hash
+                    "n_comparisons": 2,
+                    "started_at": "2026-06-29T10:00:00Z",
+                    "completed_at": "2026-06-29T10:10:00Z",
+                    "verdict": "gate_failed",
+                    "artifacts": ["results/b5/run1/"],
+                    "notes": "checkpoint outside data_root",
+                },
+            ]
+        )
+    )
+    src = ConsoleSources(
+        data_root=data_root,
+        ledger_path=ledger_path,
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(data_root / "phase4a",),
+    )
+    # The index can't see it (nothing under data_root), so this proves the fallback.
+    assert sources_mod.checkpoint_git_sha_index(src) == {}
+    row = {r.id: r for r in readers.load_ledger(src).runs}["ledger-2026-06-29-0001"]
+    assert row.commit == _GIT_SHA_B[:12]
+    assert row.commit_url.endswith(_GIT_SHA_B)
+
+
+# ── artifacts_git_sha (commit-link fallback) ─────────────────────────────────
+
+
+def test_artifacts_git_sha_directory_artifact(tmp_path):
+    _write_external_checkpoint(
+        tmp_path, "ext/run", config_hash=_CONTENT_HASH, git_sha=_GIT_SHA_B
+    )
+    src = ConsoleSources(
+        data_root=tmp_path / "data",
+        ledger_path=tmp_path / "ledger.yaml",
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(),
+    )
+    assert (
+        sources_mod.artifacts_git_sha(src, _CONTENT_HASH, ["ext/run/"]) == _GIT_SHA_B
+    )
+
+
+def test_artifacts_git_sha_file_artifact_uses_parent_dir(tmp_path):
+    _write_external_checkpoint(
+        tmp_path, "ext/run", config_hash=_CONTENT_HASH, git_sha=_GIT_SHA_B
+    )
+    # A *file* artifact: metadata.json is read from the file's parent directory.
+    (tmp_path / "ext" / "run" / "oos_returns.parquet").write_text("x")
+    src = ConsoleSources(
+        data_root=tmp_path / "data",
+        ledger_path=tmp_path / "ledger.yaml",
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(),
+    )
+    got = sources_mod.artifacts_git_sha(
+        src, _CONTENT_HASH, ["ext/run/oos_returns.parquet"]
+    )
+    assert got == _GIT_SHA_B
+
+
+def test_artifacts_git_sha_config_hash_mismatch_is_none(tmp_path):
+    # Metadata at the path belongs to a DIFFERENT run → no spurious link.
+    _write_external_checkpoint(
+        tmp_path, "ext/run", config_hash="9" * 64, git_sha=_GIT_SHA_B
+    )
+    src = ConsoleSources(
+        data_root=tmp_path / "data",
+        ledger_path=tmp_path / "ledger.yaml",
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(),
+    )
+    assert sources_mod.artifacts_git_sha(src, _CONTENT_HASH, ["ext/run/"]) is None
+
+
+def test_artifacts_git_sha_non_sha_git_sha_is_none(tmp_path):
+    # config_hash matches but git_sha is not 40-hex → honest "—".
+    _write_external_checkpoint(
+        tmp_path, "ext/run", config_hash=_CONTENT_HASH, git_sha=None
+    )
+    src = ConsoleSources(
+        data_root=tmp_path / "data",
+        ledger_path=tmp_path / "ledger.yaml",
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(),
+    )
+    assert sources_mod.artifacts_git_sha(src, _CONTENT_HASH, ["ext/run/"]) is None
+
+
+def test_artifacts_git_sha_missing_inputs_and_path_are_none(tmp_path):
+    src = ConsoleSources(
+        data_root=tmp_path / "data",
+        ledger_path=tmp_path / "ledger.yaml",
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(),
+    )
+    # No config_hash, empty artifacts, an empty path entry, and a non-existent
+    # path all degrade to None.
+    assert sources_mod.artifacts_git_sha(src, None, ["ext/run/"]) is None
+    assert sources_mod.artifacts_git_sha(src, _CONTENT_HASH, []) is None
+    assert sources_mod.artifacts_git_sha(src, _CONTENT_HASH, [""]) is None
+    assert sources_mod.artifacts_git_sha(src, _CONTENT_HASH, ["nope/missing/"]) is None
+
+
+def test_artifacts_git_sha_corrupt_metadata_is_none(tmp_path):
+    # A metadata.json that is not valid JSON degrades to None, never raises.
+    d = tmp_path / "ext" / "run"
+    d.mkdir(parents=True)
+    (d / "metadata.json").write_text("{not json")
+    src = ConsoleSources(
+        data_root=tmp_path / "data",
+        ledger_path=tmp_path / "ledger.yaml",
+        catalog_path=tmp_path / "catalog.yaml",
+        strategy_roots=(),
+    )
+    assert sources_mod.artifacts_git_sha(src, _CONTENT_HASH, ["ext/run/"]) is None
 
 
 # ── data_status ──────────────────────────────────────────────────────────────

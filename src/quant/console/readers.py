@@ -23,6 +23,7 @@ from quant.console.sources import (
     MARKET_SERIES,
     ArmCheckpoint,
     ConsoleSources,
+    artifacts_git_sha,
     checkpoint_git_sha_index,
     discover_strategies,
     is_git_sha,
@@ -777,7 +778,15 @@ def load_ledger(sources: ConsoleSources | None = None) -> vm.LedgerView:
 
     runs: list[vm.LedgerRun] = []
     for e in entries:
-        git_sha = _resolve_commit(getattr(e, "config_hash", None), git_sha_index)
+        config_hash = getattr(e, "config_hash", None)
+        git_sha = _resolve_commit(config_hash, git_sha_index)
+        if git_sha is None:
+            # Fallback for a content-hash run whose checkpoint lives outside
+            # data_root (so checkpoint_git_sha_index's rglob missed it): resolve
+            # the commit through the entry's ledger `artifacts` paths instead.
+            git_sha = artifacts_git_sha(
+                sources, config_hash, getattr(e, "artifacts", ()) or ()
+            )
         runs.append(
             vm.LedgerRun(
                 id=e.id,
