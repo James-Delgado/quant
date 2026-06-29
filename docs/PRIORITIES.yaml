@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-28  # E1-M5-TABLE-SCROLL-AFFORDANCE done
+last_updated: 2026-06-28  # E1-M6-FEEDBACK-LABEL done
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2695,8 +2695,9 @@ tasks:
     title: "E1-M6 follow-up: create the `feedback` GitHub label in James-Delgado/quant"
     project: E
     sub_project: E1
-    status: in_progress
+    status: done
     started_at: 2026-06-28T23:59:00Z
+    completed_at: 2026-06-28
     depends_on: [E1-M6]
     blocks: [E1-CLOSE]
     deliverable:
@@ -2719,6 +2720,20 @@ tasks:
       there. Run it once (gh or the web UI). Blocks E1-CLOSE so closeout certifies
       the labeled-issue acceptance is real, not just URL-encoded. Added to
       E1-CLOSE.depends_on per AGENT_OPERATION Step 7 corollary.
+
+      DELIVERED (commit on branch worktree-e1-m1-console): the `feedback` label
+      now exists in James-Delgado/quant (color B60205, description "Reported via
+      the Research Console") — created via the GitHub REST API
+      (POST /repos/James-Delgado/quant/labels, HTTP 201) using git's stored
+      credential, since `gh` is not installed and there is no create-label MCP
+      tool. Confirmed via mcp github get_label (id LA_kwDOSmpa4M8AAAACpVmYuA).
+      feedback.py's module docstring updated to record the label exists in the
+      canonical repo and to generalise the recreate-on-fork `gh label create`
+      command. The labeled-issue contract (DECISIONS #11; the `label:feedback`
+      tracker query) is now complete. Verified: 76 test_console.py + 27
+      test_priorities.py green; ruff clean. No new offline test — the deliverable
+      is an external GitHub resource; the `labels=feedback` URL construction it
+      backs is already covered by the existing feedback tests (METHODOLOGY §9).
 
   - id: E1-M6-GH-SUBMIT
     rank: 111
