@@ -19,9 +19,12 @@ There is **no user-facing tracker** — the set of ``feedback`` issues *is* the
 tracker, visible only to engineers/agents (DECISIONS #11).
 
 The ``feedback`` label must exist in the repository for the labeled-issue
-contract to hold. Create it once with::
+contract to hold. It was created once in the canonical repo
+``James-Delgado/quant`` (E1-M6-FEEDBACK-LABEL, 2026-06-28: ``color B60205``,
+``description "Reported via the Research Console"``). A fork or fresh repo must
+recreate it once::
 
-    gh label create feedback --repo James-Delgado/quant \\
+    gh label create feedback --repo <owner>/<repo> \\
         --description "Reported via the Research Console" --color B60205
 
 (GitHub silently drops an unknown ``labels=`` query param, so a missing label
