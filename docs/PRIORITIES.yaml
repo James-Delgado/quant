@@ -1734,7 +1734,8 @@ tasks:
     title: "Generalize trade_daily._strategy_signal beyond the ARIMA placeholder"
     project: C
     sub_project: C6
-    status: ready
+    status: in_progress
+    started_at: 2026-06-29T05:24:39Z
     depends_on: [C6-M2]
     blocks: []
     deliverable:
