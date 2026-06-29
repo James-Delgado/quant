@@ -103,6 +103,32 @@ execution_model:
        is now fully `done` flips to `ready`.
     8. Commit the deliverable + this file together.
 
+  decision_gate_protocol: |
+    Some work is gated not on other TASKS but on a human GO/NO-GO decision — most
+    commonly a DEFERRED PRD (drafted but deliberately NOT ratified) or a research
+    thread held pending a judgment call. Such work must not silently vanish from the
+    backlog just because no `depends_on` edge will ever resolve it. Convention
+    (binding; first instance: B2-CONFORMAL-DECISION, 2026-06-29):
+      - For every deferred PRD or other human-decision-gated thread, create a
+        `<ID>-DECISION` task with `status: blocked` and `sub_project: decision-gate`.
+      - Its `notes` state the decision to be made, the GO action (e.g. "ratify the
+        PRD + create its milestone tasks + wire their depends_on / CLOSE deps"), and
+        the NO-GO action (e.g. "set this task `skipped`").
+      - It stays `blocked` so an autonomous loop — which only picks `ready` tasks —
+        can NEVER auto-execute a human decision. Like `D-GATE`, a decision-gate task
+        may have all its `depends_on` already `done` yet remain `blocked`: the human
+        decision, not a task, is the real gate. `depends_on` lists the artifact the
+        decision reads (e.g. the PRD task), not a blocker.
+      - On GO: an agent performs the GO action and flips the decision task to `done`
+        (`completed_at`). On NO-GO: set it `skipped`.
+    SURFACING — "what is waiting on MY decision?" is answerable on demand:
+      decision-gate TASKS  = tasks with `sub_project: decision-gate` (any status
+                             other than done/skipped is awaiting you);
+      gated PROJECTS       = entries in `projects:` with `status: gated` (e.g.
+                             Project D / Phase 5, surfaced via its `D-GATE` task).
+    An agent (or a one-line filter over this file) lists both on request — see
+    docs/AGENT_OPERATION.md "Surfacing decision-gated work".
+
 # -----------------------------------------------------------------------------
 # Projects
 # -----------------------------------------------------------------------------
@@ -4235,3 +4261,38 @@ tasks:
       distribution drift and must NOT duplicate calibration-drift). Pin the live window +
       DRIFT_TOLERANCE (0.15) before measuring (§1). G3c tested on seeded windows: 0 missed
       trips on a seeded under-covering window, 0 false alarms on a calibrated one.
+
+  # ------ Decision-gate tasks (decision_gate_protocol, execution_model) ------
+  # Human GO/NO-GO gates on deferred PRDs / judgment-held threads. status: blocked so a
+  # loop never auto-runs them; sub_project: decision-gate so they are queryable as
+  # "what is waiting on the human". See execution_model.decision_gate_protocol.
+
+  - id: B2-CONFORMAL-DECISION
+    rank: 98
+    title: "DECISION: pursue B2 conformal feature relevance? (GO -> ratify PRD + create milestones; NO-GO -> skip)"
+    project: B
+    sub_project: decision-gate
+    status: blocked
+    depends_on: [B2-CONFORMAL-PRD]
+    blocks: []
+    deliverable:
+      decision: "GO -> ratify .claude/prds/b2-conformal-relevance.prd.md + create B2-CONF-M1/M2/M3 (with depends_on + CLOSE wiring) + flip this to done; NO-GO -> set this skipped"
+    references:
+      primary: .claude/prds/b2-conformal-relevance.prd.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      First instance of the decision_gate_protocol (execution_model), created 2026-06-29.
+      Human GO/NO-GO on the DEFERRED B2 conformal-feature-relevance thread: the PRD was drafted
+      2026-06-29 but deliberately NOT ratified. Context for the decision: B2's cheap
+      OOS-attribution proxy (OOS permutation importance) FAILED its G1 gate (Spearman
+      rho(permutation, ablation) = -0.004); conformal is the deferred 3rd/last method on the
+      B2-M1 shortlist, and review flagged it a likely-fail CONVENIENCE that is OFF the Phase-5
+      critical path (Phase-5 Trigger 2 is already satisfied by B2-M3, independent of conformal).
+      Per-fold ablation remains the sole canonical OOS signal regardless (METHODOLOGY §14).
+      Stays `blocked` so no autonomous loop runs it. GO action: ratify the PRD (adding a
+      discrimination/sharpness criterion per the C4-PRD precedent so a valid-but-undiscriminating
+      relevance ranking fails the gate), create B2-CONF-M1/M2/M3 with their depends_on, add them
+      to any relevant *-CLOSE.depends_on, and flip this task to `done`. NO-GO action: set
+      `skipped` (B2's research thread is already a documented NO-GO; B3 is the live alt-data
+      continuation).
