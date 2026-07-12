@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-06-29  # E1-FEATURE-MONITOR-DRIFT-PSI done; appended E1-FEATURE-MONITOR-PSI-SURFACE (rank 133) follow-up
+last_updated: 2026-07-12  # A-CLOSE done (Project A closeout notebook + report); appended A-LEDGER-SHARPE-BACKFILL (rank 134) follow-up
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -397,8 +397,9 @@ tasks:
     title: "A-CLOSE: Project A closeout — E2E methodology-substrate notebook + closeout report"
     project: A
     sub_project: closeout
-    status: in_progress
+    status: done
     started_at: 2026-07-12T00:00:00Z
+    completed_at: 2026-07-12
     depends_on: [A-LEDGER, A-PRIORITIES-TEST, A-PRIORITIES-TEST-TS, A-LEDGER-RUNNERS, A-DSR-GATE, A-DSR-LEDGER-SHARPE, A-DSR-DOC-SYNC, A-DSR-WIRE-EMPIRICAL-STD, A-DSR-METH-SCHEMA-SYNC]
     blocks: []
     deliverable:
@@ -4297,3 +4298,38 @@ tasks:
       to any relevant *-CLOSE.depends_on, and flip this task to `done`. NO-GO action: set
       `skipped` (B2's research thread is already a documented NO-GO; B3 is the live alt-data
       continuation).
+
+  # ------ Project A maintenance follow-up (discovered during A-CLOSE) ------
+
+  - id: A-LEDGER-SHARPE-BACKFILL
+    rank: 134
+    title: "Backfill `sharpe` into historical ledger entries so DSR uses empirical dispersion"
+    project: A
+    sub_project: methodology-upgrade-13
+    status: ready
+    depends_on: [A-DSR-WIRE-EMPIRICAL-STD]
+    blocks: []
+    deliverable:
+      file: data/ledger.yaml
+      tests: tests/test_ledger.py
+    references:
+      primary: src/quant/ledger.py
+      methodology: docs/METHODOLOGY.md
+      discovery: notebooks/12_project_a_closeout.ipynb
+    est_complexity: small
+    notes: |
+      Discovered during A-CLOSE (notebooks/12_project_a_closeout.ipynb, closeout report
+      docs/PROJECT_A_CLOSEOUT.md §3). None of the 16 committed ledger entries carry a
+      `sharpe`, so `ledger.observed_sharpe_std()` returns None and
+      `regime_metrics.dsr_aware_gate_report` ALWAYS falls back to the pinned
+      `statistics.DEFAULT_SHARPE_STD = 0.35` scalar. The empirical cross-trial dispersion
+      path (A-DSR-WIRE-EMPIRICAL-STD) is unit-tested but has no real data to bite on. This is
+      an ENHANCEMENT, not an integration defect — the closeout notebook proved the substrate
+      composes and the scalar fallback is the designed behaviour; the gate verdict is
+      unaffected (NO-GO either way). Backfill the headline annualised Sharpe of each historical
+      trial's arm (Phase 4A M6 arms have aggregate_sharpe in data/phase4a/*/metadata.json;
+      B1-M3 arms similarly) into the corresponding entries, append-only-compatibly (the
+      `sharpe` field serializes only when present, so the git-history drift test stays green —
+      see ledger.py `_dump_entry_fragment`). Once >=2 entries carry a sharpe, the DSR gate
+      deflates against the empirical spread automatically (sharpe_std_source flips to
+      "empirical"). Verify via a fresh run of notebooks/12 §5 (sharpe_std_source == "empirical").
