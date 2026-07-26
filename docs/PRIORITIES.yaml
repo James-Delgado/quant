@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-07-26  # appended A-REFIT-DECAY-DIAGNOSTIC (135) + Project F gated entry + F-GATE (136) from the model-deployment design discussion
+last_updated: 2026-07-26  # added MISC bucket; reclassified refit-decay diagnostic A->MISC (MISC-REFIT-DECAY-DIAGNOSTIC, 135); Project F gated entry + F-GATE (136)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -212,6 +212,18 @@ projects:
       signal search and B4's universe work surface. Building a distillation/serving
       pipeline before there is a teacher worth distilling would be the most
       expensive way to produce another well-audited NO-GO.
+  MISC:
+    name: Cross-cutting tooling & diagnostics
+    status: maintain
+    description: |
+      Home for cross-cutting tooling / diagnostics that are NOT part of any
+      milestone-driven project's definition-of-done and are therefore not gated
+      by any <PROJECT>-CLOSE. Distinct from Project A (research substrate): A's
+      artifacts were certified as-of-close by A-CLOSE; MISC tasks are optional
+      enhancements/tooling with no closeout to reopen. A task belongs here when
+      it improves the workbench generally rather than completing a specific
+      project's deliverable set. No CLOSE task; tasks are picked by rank like any
+      other.
 
 # -----------------------------------------------------------------------------
 # Tasks (ranked; lowest rank = next up)
@@ -4359,13 +4371,13 @@ tasks:
       deflates against the empirical spread automatically (sharpe_std_source flips to
       "empirical"). Verify via a fresh run of notebooks/12 §5 (sharpe_std_source == "empirical").
 
-  # ------ Project A research-substrate diagnostic (from the 2026-07 model-deployment discussion) ------
+  # ------ Cross-cutting tooling / diagnostics (MISC — not part of any project's definition-of-done) ------
 
-  - id: A-REFIT-DECAY-DIAGNOSTIC
+  - id: MISC-REFIT-DECAY-DIAGNOSTIC
     rank: 135
     title: "Days-since-refit OOS decay diagnostic (bucket fold performance by position-within-test-window)"
-    project: A
-    sub_project: methodology-upgrade
+    project: MISC
+    sub_project: diagnostics
     status: ready
     depends_on: []
     blocks: []

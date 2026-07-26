@@ -96,7 +96,7 @@ refit interval, bucket OOS performance by **days-since-refit** (e.g. days 1–10
 50–63 of each 63-bar fold) and compare. A visible late-interval sag is direct
 evidence to shorten the cadence; a flat profile says the quarterly hold is fine.
 This is the cheapest principled way to choose cadence and is tracked as a backlog
-task (`A-REFIT-DECAY-DIAGNOSTIC`).
+task (`MISC-REFIT-DECAY-DIAGNOSTIC`).
 
 ---
 
