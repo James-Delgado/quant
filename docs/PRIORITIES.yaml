@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-07-12  # A-CLOSE done (Project A closeout notebook + report); appended A-LEDGER-SHARPE-BACKFILL (rank 134) follow-up
+last_updated: 2026-07-26  # appended A-REFIT-DECAY-DIAGNOSTIC (135) + Project F gated entry + F-GATE (136) from the model-deployment design discussion
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -187,6 +187,31 @@ projects:
       (DECISIONS.md is the decision log of record). Binds METHODOLOGY rules
       15-21; every sub-project ends with a *-CLOSE end-to-end validation.
     roadmap_section: docs/PROJECT_ROADMAP.md#project-e--human-interface--observability
+  F:
+    name: Model training & serving infrastructure (frozen-checkpoint deployment)
+    status: gated
+    triggers_required:
+      - "A model (any Project B sub-project cell) clears its pre-committed gate — i.e. there is a model worth freezing"
+      - "C3 (sizing/risk) and C4 (confidence) have landed, so a deployed non-placeholder model can actually be sized and confidence-gated"
+    description: |
+      A future project: the train-offline / freeze-weights / serve-a-versioned-
+      checkpoint layer a complex model (GBM done properly, light NN, or a
+      distilled/LLM-derived model) needs but that the fit-on-read live path does
+      NOT provide. Scope sketch (NOT a spec — to be scoped by a future agent once
+      the triggers are met): a versioned artifact store, a checkpoint loader, a
+      `serving_mode: fit_on_read | frozen_checkpoint` discriminator on the strategy
+      registry (+ `artifact_ref`), one branch in `trade_daily._strategy_signal`,
+      a recorded training-data cutoff with a live `cutoff <= asof` leakage
+      assertion, a scheduled (non-selective) refit job, and ledger/DSR accounting
+      for refits-as-trials. Design rationale is pre-captured in
+      docs/concepts/refit-cadence-and-data-hunger.md so the future scoping does not
+      re-derive it. GATED (mirrors Project D): every F-prefixed task stays blocked
+      until F-GATE's triggers are met. Deliberately NOT scoped now (YAGNI /
+      METHODOLOGY §1): the model type + training regime (window vs. cross-sectional
+      breadth vs. time-decay) that drive the design depend on what Project B's
+      signal search and B4's universe work surface. Building a distillation/serving
+      pipeline before there is a teacher worth distilling would be the most
+      expensive way to produce another well-audited NO-GO.
 
 # -----------------------------------------------------------------------------
 # Tasks (ranked; lowest rank = next up)
@@ -4333,3 +4358,75 @@ tasks:
       see ledger.py `_dump_entry_fragment`). Once >=2 entries carry a sharpe, the DSR gate
       deflates against the empirical spread automatically (sharpe_std_source flips to
       "empirical"). Verify via a fresh run of notebooks/12 §5 (sharpe_std_source == "empirical").
+
+  # ------ Project A research-substrate diagnostic (from the 2026-07 model-deployment discussion) ------
+
+  - id: A-REFIT-DECAY-DIAGNOSTIC
+    rank: 135
+    title: "Days-since-refit OOS decay diagnostic (bucket fold performance by position-within-test-window)"
+    project: A
+    sub_project: methodology-upgrade
+    status: ready
+    depends_on: []
+    blocks: []
+    deliverable:
+      file: src/quant/backtest/regime_metrics.py
+      tests: tests/test_regime_metrics.py
+    references:
+      primary: docs/concepts/refit-cadence-and-data-hunger.md
+      methodology: docs/METHODOLOGY.md
+      harness: src/quant/backtest/harness.py
+    est_complexity: small
+    notes: |
+      Captured 2026-07 from the model-deployment design discussion (rationale in
+      docs/concepts/refit-cadence-and-data-hunger.md §4). The gate reports AGGREGATE
+      fold Sharpe, which averages OVER the within-refit-interval decay curve. This
+      diagnostic buckets per-fold OOS performance by DAYS-SINCE-REFIT (position
+      within each test_window, e.g. days 1-10 vs 50-63 of a 63-bar fold) and compares
+      early- vs late-interval performance, so a decaying frozen model is VISIBLE
+      rather than averaged away. A visible late-interval sag is direct evidence to
+      shorten the refit cadence (a validated config change, per the §3 parity rule);
+      a flat profile confirms the quarterly hold is fine. Implementable now against
+      the existing purged walk-forward — each fold's test positions are ordered, so
+      day-since-refit is the position index within the fold's test slice. May require
+      the harness to expose per-fold test-position order alongside the OOS series
+      (add if not already available; the fold structure exists in
+      backtest/walkforward.py). Pin the bucket edges before measuring (METHODOLOGY §1).
+      Pure diagnostic — reports a curve, sets no gate threshold. Not urgent: most
+      valuable once a live model candidate exists, but runnable on the existing
+      Phase 4A / B1 checkpoints today.
+
+  # ------ Project F gate (model training & serving infra; gated, mirrors D-GATE) ------
+
+  - id: F-GATE
+    rank: 136
+    title: "Project F trigger evaluation (gate for all model-infra / frozen-checkpoint tasks)"
+    project: F
+    sub_project: project-f-gate
+    status: blocked
+    depends_on: [C3-M3, C4-M2]   # plus the soft trigger: any Project B cell clearing its pre-committed gate
+    blocks: []
+    deliverable:
+      report: docs/PROJECT_F_TRIGGER_REPORT.md
+    references:
+      primary: docs/concepts/refit-cadence-and-data-hunger.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Gated tracker for the deferred "model training & serving infrastructure"
+      project (frozen-checkpoint deployment) — see the `projects: F` entry and
+      docs/concepts/refit-cadence-and-data-hunger.md §6. Mirrors D-GATE: stays
+      `blocked` so an autonomous loop never auto-scopes speculative infra.
+      Pre-committed triggers (BOTH required):
+        1. A model worth freezing exists — any Project B sub-project cell clears its
+           pre-committed gate (the SOFT trigger; not a task edge, hence noted here
+           rather than in depends_on, exactly like D-GATE's soft B-cell trigger).
+        2. The deployment risk layer exists — C3 (sizing/risk) and C4 (confidence)
+           have landed (depends_on: C3-M3, C4-M2), so a frozen non-placeholder model
+           can actually be sized and confidence-gated when served.
+      When both are met: a future agent thoroughly SCOPES Project F (writes the PRD
+      + F-M* milestones with their depends_on and any *-CLOSE wiring, appended to
+      this file at that time — NOT before, because the model type and training regime
+      that drive the design depend on what B/B4 surfaced), generates the trigger
+      report, and flips this task to `done`. If frozen-checkpoint serving is never
+      needed (e.g. only cheap fit-on-read models ever deploy), set this `skipped`.
