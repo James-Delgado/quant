@@ -307,6 +307,69 @@ AND the C1-M3 module constants in lock-step, per the update protocol.
 
 ---
 
+## Same-day source policy (C1-M2-ALPACA-FRESHNESS — resolved 2026-08-06)
+
+**Decision: (a) the deployment cadence is T+1 on the parity-safe Tiingo
+source.** The C2/C6 daily executor decides on session *T*'s bar at
+**T+1 ~12:30 UTC**, after the Tiingo adjusted bar for *T* lands (12:00 UTC
+SLA above), reading `PRICE_DATASET = "equity_eod_tiingo"` through the C1-M2
+PIT reader unchanged. The alternative — (b) an explicit Alpaca same-day path
+— is **rejected for the current deployment** and given a pinned revival
+condition below.
+
+This was surfaced during C1-M2 (`storage/realtime.py`): the reader defaults
+to Tiingo because that is the dataset the backtest trains on, which makes
+the G2 train/serve-parity gate *structural* — but Tiingo's bar for *T* is
+not available until T+1, while Alpaca IEX has a settled bar the evening of
+*T* (23:00 UTC). The apparent tension dissolves on inspection:
+
+1. **T+1 cadence has zero fill-time cost against the backtest.** The
+   simulator's execution convention is *next-bar fill*: a signal computed on
+   bar *T* fills at the **open of bar T+1**
+   (`backtest/simulator.py:5`; `trade_daily.py` sizes on that same
+   `open × (1 + slip)` fill). The US cash open is 13:30 UTC (EDT) / 14:30
+   UTC (EST); the Tiingo bar for *T* lands by 12:00 UTC on T+1 and the
+   executor cron runs at 12:30 UTC — **before the open in both DST
+   regimes**. Orders placed then rest until the T+1 open, which is *exactly
+   the fill instant the backtest simulates*. The parity-safe source is
+   therefore not a cadence compromise; it is the schedule the simulated
+   Sharpe already assumes.
+2. **An Alpaca same-day path buys no earlier fill at daily cadence.**
+   Alpaca's bar for *T* is only attestable **after the settle floor**
+   (21:00 UTC — the C1-M1-MEASURE live finding: mid-session polls return a
+   *partial* bar; SLA 23:00 UTC). That is after the close, so the earliest
+   actionable fill for an Alpaca-decided signal is *also* the T+1 open —
+   the identical execution instant path (a) already achieves.
+3. **What (b) would cost.** IEX raw close ≠ Tiingo adjClose (single-venue
+   vs consolidated, unadjusted vs split/dividend-adjusted), so switching
+   the reader source is a **train/serve-skew source, not a drop-in**: G2
+   parity against the Tiingo-trained model breaks by construction. A
+   correct (b) requires a model *trained on* the Alpaca dataset plus its
+   own G2 parity gate against that dataset — a PRD-level effort — to
+   arrive at the same T+1-open fill.
+
+**Revival condition for (b)** (pre-committed so the option is a documented
+path, not a silent loss): an Alpaca same-day path becomes worth building
+only when a deployed strategy's decision rule needs a fill **before the
+T+1 open** — e.g. trade-at-T-close (requires deciding on an intraday
+snapshot before 20:00/21:00 UTC, ahead of even Alpaca's settle floor) or
+any intraday cadence. Both contradict the ratified daily-cadence decision
+(ROADMAP §8), so the trigger is a roadmap-level cadence change. On that
+trigger: draft a PRD covering the Alpaca-trained model, an Alpaca-dataset
+G2 parity gate (same `parity_gate_report` machinery, new dataset + new
+pinned thresholds), and the settle-floor/partial-bar handling — do **not**
+flip `PRICE_DATASET` in place.
+
+**Operational corollary (declared edge).** If Tiingo is late past its
+12:00 UTC T+1 SLA, the C1-M3 monitor flags the feed stale and the executor
+**halts and alerts** rather than trading on yesterday's bar (or silently
+substituting Alpaca — cross-source substitution is forbidden by this
+policy). If the lateness extends past the T+1 open, that session's fill is
+missed, not approximated; a missed session is visible in the C2-M3
+reconciliation as a divergence with a named cause.
+
+---
+
 ## Declared deviations (METHODOLOGY §9)
 
 - **Availability times are desk-research / code-derived, not yet
@@ -382,4 +445,7 @@ same-day reader assembles.*
 *Status: ACTIVE (C1-M1, 2026-06-27) — the freshness SLA table and the
 processed-only / as-of-instant / weekend-holiday read decisions are frozen.
 The C1-M3 monitor and the C1-M2 reader implement against this contract;
-changes follow the update protocol above (PRD revision + ledger entry).*
+changes follow the update protocol above (PRD revision + ledger entry).
+2026-08-06: the same-day source policy (Tiingo T+1 deployment cadence;
+Alpaca same-day path rejected with a pinned revival condition) was resolved
+and added — C1-M2-ALPACA-FRESHNESS.*

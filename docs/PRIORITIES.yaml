@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-06  # C1-M1-MEASURE done (instrument shipped, launchd accrual live, settle-floor guard); appended C1-M1-MEASURE-VERDICT (137)
+last_updated: 2026-08-06  # C1-M2-ALPACA-FRESHNESS done (resolved (a): T+1 Tiingo deployment cadence, policy pinned in data-freshness-slas.md); appended C1-POLICY-DATASET-PIN (138)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1619,8 +1619,9 @@ tasks:
     title: "Reconcile same-day reader source: Tiingo (T+1) parity vs Alpaca (T-evening) freshness"
     project: C
     sub_project: C1
-    status: in_progress
+    status: done
     started_at: 2026-08-06T18:10:00Z
+    completed_at: 2026-08-06
     depends_on: [C1-M2]
     blocks: []
     deliverable:
@@ -1647,6 +1648,48 @@ tasks:
       deployment finding — like B2-FULLPANEL-AGREEMENT it is intentionally NOT in
       C-CLOSE.depends_on (it is a C2 policy decision, not a C1 deliverable). Low
       priority.
+      OUTCOME 2026-08-06: RESOLVED as (a) — T+1 deployment cadence on the
+      parity-safe Tiingo source; policy pinned in data-freshness-slas.md
+      "Same-day source policy" section. Key argument: the simulator's next-bar
+      convention fills a bar-T signal at the T+1 OPEN (simulator.py:5), and the
+      12:30 UTC executor run is before the open in both DST regimes — so the
+      Tiingo T+1 cadence targets exactly the fill instant the backtest already
+      simulates (zero cadence cost). An Alpaca same-day path could not fill
+      earlier at daily cadence (settle floor 21:00 UTC is post-close => earliest
+      fill is also the T+1 open) while breaking G2 — dominated. (b) got a pinned
+      revival condition (roadmap-level cadence change -> new PRD with an
+      Alpaca-trained model + its own parity gate), not silence. Stale-Tiingo
+      edge declared: halt+alert (trade_daily FreshnessError), never cross-source
+      substitution. Follow-up: C1-POLICY-DATASET-PIN (no test pins
+      PRICE_DATASET; a silent flip would pass the suite).
+
+  - id: C1-POLICY-DATASET-PIN
+    rank: 138
+    title: "Pin PRICE_DATASET to the same-day source policy with a drift test"
+    project: C
+    sub_project: C1
+    status: ready
+    depends_on: [C1-M2-ALPACA-FRESHNESS]
+    blocks: []
+    deliverable:
+      tests: tests/test_realtime.py
+    references:
+      primary: docs/concepts/data-freshness-slas.md
+      module: src/quant/storage/realtime.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C1-M2-ALPACA-FRESHNESS (post-task review). The same-day
+      source policy (data-freshness-slas.md "Same-day source policy") forbids
+      flipping realtime.PRICE_DATASET in place — a source switch requires a new
+      PRD with its own parity gate — but NO test asserts
+      PRICE_DATASET == "equity_eod_tiingo" (grep: zero references under tests/),
+      so a silent flip would pass the full suite. Add a one-assertion policy
+      drift test in tests/test_realtime.py whose failure message points at the
+      policy section (METHODOLOGY §6 pinned-default drift contract; same spirit
+      as the SLA value lock-step tests in test_monitor_freshness.py). NOT in
+      C-CLOSE.depends_on per the parent's precedent (optional hardening, not a
+      C1 deliverable).
 
   - id: C1-M2-LEDGER-AUDIT
     rank: 44
