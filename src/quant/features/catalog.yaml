@@ -14,6 +14,13 @@
 # enum none|ablation_only|oos_permutation|both|agreed) records OOS-attribution
 # evidence per feature (METHODOLOGY §14); populated from the B2-M2 slice run
 # checkpoint (data/b2/slice/) via attribution.classify_attribution_status.
+# Full-panel confirmation (B2-FULLPANEL-AGREEMENT, 2026-08-06, checkpoint
+# data/b2/panel/, ledger-2026-08-06-0001): G1 rerun on the 33-symbol union
+# panel scored rho=0.198 (p=0.169) vs the pinned 0.50 bar — panel_no_agreement.
+# The slice-level disagreement SURVIVES at scale; the permutation proxy stays
+# unvalidated, per-fold ablation remains the sole canonical OOS signal, and the
+# statuses below are unchanged ("agreed" stays unreachable while the method
+# gate stands failed).
 # Every other field describes the feature definition and changes only when
 # the feature itself changes.
 #

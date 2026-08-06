@@ -68,6 +68,32 @@ Pre-committed protocol (frozen BEFORE any run; do not change based on results)
      p < 0.05, ρ ≥ 0.90; n_permutations=10,000) — the runner adds none.
   7. Ledger: ``n_comparisons = 1`` (the single validated method — OOS permutation;
      ablation is the reference, not a tested claim) per the B2 PRD.
+
+Full-panel confirmation mode (``--panel`` — task B2-FULLPANEL-AGREEMENT)
+------------------------------------------------------------------------
+``--panel`` reruns **G1 only** (permutation vs ablation, the same frozen 25-col
+M6 set, the same pinned thresholds via ``b2_attribution_gate``) on the full
+33-symbol union panel (``settings.equity_universe``, full lake history) and
+checkpoints to ``data/b2/panel/``. Pre-committed semantics (METHODOLOGY §1/§5),
+frozen BEFORE the panel run:
+
+* The panel run is a **confirmation diagnostic, not a verdict re-adjudication**.
+  The B2 method verdict is pinned to the 5×8 slice by the PRD (G1/G2 are slice
+  surfaces); the slice G1 FAILED (ρ = −0.004, p = 0.505), so per-fold ablation
+  remains the sole canonical OOS signal (METHODOLOGY §14). A panel ρ ≥ 0.50
+  CANNOT revive the failed slice G1 — that requires a new PRD + ledger entry.
+  The panel answers only: *does the slice-level disagreement survive at scale?*
+* Panel protocol is otherwise identical to the slice G1: same 25 columns, same
+  walk-forward, same GBM preview budget (n_iter=10, seed 0), same n_repeats,
+  and the agreement is scored against the SAME pinned gate thresholds
+  (ρ ≥ 0.50, permutation-test p < 0.05) — no new thresholds.
+* **G2/G3 are NOT run on the panel** (declared deviation, §9): both are
+  slice-pinned nb08 *reproduction* checks, meaningless on a surface nb08
+  never ran. The panel ``gate.json`` is a G1-only report with
+  ``role: confirmation_diagnostic`` and verdict
+  ``panel_agreement`` / ``panel_no_agreement``.
+* Ledger: the panel run logs ``n_comparisons = 1`` — a second look at the same
+  hypothesis on a new surface counts conservatively toward the deflation N.
 """
 from __future__ import annotations
 
@@ -95,6 +121,7 @@ from quant.backtest.attribution import (
 )
 from quant.backtest.regimes import DateRangeDetector, tag_regimes
 from quant.backtest.report import feature_ablation_table
+from quant.config import settings
 from quant.features.cross_sectional import add_cross_sectional_features
 from quant.features.engineering import FRED_PUBLICATION_LAGS, build_features
 from quant.features.labels import generate_labels
@@ -152,6 +179,20 @@ CANDIDATES: tuple[str, ...] = (
 # Cross-sectional columns needed so the 7 candidates + the M6 set all exist.
 XS_COLUMNS: tuple[str, ...] = ("ret_21d", "ret_252d", "vol_21d")
 
+# ─── Panel-mode constants (B2-FULLPANEL-AGREEMENT) ────────────────────────────
+
+PANEL_MILESTONE: str = "B2-FULLPANEL-AGREEMENT"
+# Panel is G1-only (25-col M6 set): the sole xs input is xs_rank_vol_21d, so
+# only vol_21d needs a cross-sectional rank (the run_b1_arms panel convention).
+PANEL_XS_COLUMNS: tuple[str, ...] = ("vol_21d",)
+PANEL_DECLARED_DEVIATIONS: str = (
+    "Panel mode runs G1 ONLY: G2 (nb08 add-one port reproduction) and G3 "
+    "(IS-vs-OOS contrast) are slice-pinned nb08 reproduction checks and are "
+    "not defined on the full panel. The panel run is a confirmation "
+    "diagnostic; the B2 method verdict remains the slice gate "
+    "(gate_failed — METHODOLOGY §5)."
+)
+
 DECLARED_DEVIATIONS: str = (
     "G2 reference is nb08's EXACT statistic — the best-regime add-one lift on the "
     "17-base baseline at GBM seed 7 (nb08 §3/§5), recomputed verbatim and frozen to "
@@ -164,15 +205,27 @@ DECLARED_DEVIATIONS: str = (
 # ─── Data loading (mirrors run_b1_arms) ───────────────────────────────────────
 
 
-def _load_prices_panel(symbols: Sequence[str]) -> dict[str, pd.DataFrame]:
-    """Load adjusted OHLCV from the lake, sliced to [DEMO_START, DEMO_END]."""
+def _load_prices_panel(
+    symbols: Sequence[str],
+    start: str | None = DEMO_START,
+    end: str | None = DEMO_END,
+) -> dict[str, pd.DataFrame]:
+    """Load adjusted OHLCV from the lake, optionally sliced to [start, end].
+
+    Defaults preserve the slice behaviour; panel mode passes ``start=end=None``
+    for the full lake history (the ``run_b1_arms`` full-panel convention).
+    """
+    date_clause = ""
+    if start is not None:
+        date_clause += f" AND timestamp >= '{start}'"
+    if end is not None:
+        date_clause += f" AND timestamp <= '{end}'"
     syms_sql = ", ".join(f"'{s}'" for s in symbols)
     eq = catalog.query(
         f"""
         SELECT symbol, timestamp, open, high, low, close, adjClose, volume
         FROM {catalog.table("equity_eod_tiingo")}
-        WHERE symbol IN ({syms_sql})
-          AND timestamp >= '{DEMO_START}' AND timestamp <= '{DEMO_END}'
+        WHERE symbol IN ({syms_sql}){date_clause}
         ORDER BY symbol, timestamp
         """
     )
@@ -198,9 +251,16 @@ def _to_naive_utc(idx: pd.Index) -> pd.DatetimeIndex:
     return idx
 
 
-def _build_slice_panel() -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
-    """Build the feature panel (all M6 + 7-candidate columns) for the slice."""
-    prices_raw = _load_prices_panel(DEMO_SYMBOLS)
+def _build_feature_panel(
+    symbols: Sequence[str],
+    *,
+    start: str | None,
+    end: str | None,
+    needed_cols: Sequence[str],
+    xs_columns: Sequence[str],
+) -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
+    """Build a feature panel over ``symbols`` × [start, end], sliced to ``needed_cols``."""
+    prices_raw = _load_prices_panel(symbols, start=start, end=end)
     syms = list(prices_raw.keys())
     sent = lake.read_processed("sentiment_scored")
     feats_raw = build_features(
@@ -209,9 +269,9 @@ def _build_slice_panel() -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFram
         sentiment_lookback_days=SENTIMENT_LOOKBACK_DAYS,
         fred_publication_lags=FRED_PUBLICATION_LAGS,
     )
-    feats_raw = add_cross_sectional_features(feats_raw, columns=XS_COLUMNS)
+    feats_raw = add_cross_sectional_features(feats_raw, columns=tuple(xs_columns))
 
-    needed = sorted(set(FINAL_FEATURE_COLUMNS) | set(CANDIDATES) | set(BASE_FEATURES_17))
+    needed = sorted(set(needed_cols))
     features: dict[str, pd.DataFrame] = {}
     prices: dict[str, pd.DataFrame] = {}
     for sym in syms:
@@ -226,6 +286,28 @@ def _build_slice_panel() -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFram
         px.index = _to_naive_utc(px.index)
         prices[sym] = px
     return features, prices
+
+
+def _build_slice_panel() -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
+    """Build the feature panel (all M6 + 7-candidate columns) for the slice."""
+    return _build_feature_panel(
+        DEMO_SYMBOLS,
+        start=DEMO_START,
+        end=DEMO_END,
+        needed_cols=sorted(set(FINAL_FEATURE_COLUMNS) | set(CANDIDATES) | set(BASE_FEATURES_17)),
+        xs_columns=XS_COLUMNS,
+    )
+
+
+def _build_union_panel() -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
+    """Build the 25-col M6 panel over the full 33-symbol union universe (full history)."""
+    return _build_feature_panel(
+        tuple(settings.equity_universe),
+        start=None,
+        end=None,
+        needed_cols=FINAL_FEATURE_COLUMNS,
+        xs_columns=PANEL_XS_COLUMNS,
+    )
 
 
 def _aligned_panel(
@@ -450,6 +532,217 @@ def _run(output_dir: Path, smoke: bool, force: bool, log_ledger: bool) -> int:
     return 0
 
 
+# ─── Panel confirmation mode (B2-FULLPANEL-AGREEMENT) ─────────────────────────
+
+
+def _panel_g1_report(
+    gate: Mapping[str, Any], slice_gate: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """Build the panel G1 confirmation report from a G1-only gate dict.
+
+    ``gate`` is ``b2_attribution_gate(perm, abl, reproduction=None)`` output —
+    reusing the pinned thresholds + permutation test verbatim (METHODOLOGY §2);
+    its ``gate_passed`` is False by construction (G2 unverified) and is NOT the
+    panel statistic, so this report exposes the G1 fields explicitly instead.
+
+    The panel *agreement* is G1 materiality ∧ significance at the pinned bars.
+    ``matches_slice_outcome`` states whether the panel reproduces the slice-level
+    outcome (agreement or disagreement); the B2 method verdict itself is pinned
+    to the slice and is NOT re-adjudicated here (METHODOLOGY §5).
+    """
+    panel_agreement = bool(
+        gate["g1_materiality_passed"] and gate["g1_significance_passed"]
+    )
+    slice_agreement: bool | None = None
+    slice_rho: float | None = None
+    if slice_gate is not None:
+        slice_agreement = bool(
+            slice_gate["g1_materiality_passed"] and slice_gate["g1_significance_passed"]
+        )
+        slice_rho = float(slice_gate["g1_rho"])
+    return {
+        "role": "confirmation_diagnostic",
+        "milestone": PANEL_MILESTONE,
+        "g1_rho": gate["g1_rho"],
+        "g1_p_value": gate["g1_p_value"],
+        "g1_materiality_passed": gate["g1_materiality_passed"],
+        "g1_significance_passed": gate["g1_significance_passed"],
+        "g1_n_features": gate["g1_n_features"],
+        "rho_threshold": gate["rho_threshold"],
+        "alpha": gate["alpha"],
+        "n_permutations": gate["n_permutations"],
+        "panel_agreement": panel_agreement,
+        "verdict": "panel_agreement" if panel_agreement else "panel_no_agreement",
+        "slice_g1_rho": slice_rho,
+        "slice_agreement": slice_agreement,
+        "matches_slice_outcome": (
+            None if slice_agreement is None else panel_agreement == slice_agreement
+        ),
+        "note": (
+            "Confirmation diagnostic only — the B2 method verdict is pinned to "
+            "the slice (PRD G1/G2). A panel agreement cannot revive the failed "
+            "slice G1 without a new PRD + ledger entry (METHODOLOGY §5)."
+        ),
+    }
+
+
+def _load_slice_gate(output_dir: Path) -> Mapping[str, Any] | None:
+    """Load the slice run's gate.json for the panel report's comparison fields."""
+    path = output_dir / "slice" / "gate.json"
+    if not path.exists():
+        logger.warning("slice gate.json not found at %s — panel report omits slice fields", path)
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _run_panel(output_dir: Path, smoke: bool, force: bool, log_ledger: bool) -> int:
+    """Execute the G1-only full-panel confirmation; checkpoint + report."""
+    run_subdir = "panel_smoke" if smoke else "panel"
+    run_dir = output_dir / run_subdir
+    meta_path = run_dir / "metadata.json"
+    if meta_path.exists() and not force:
+        logger.info("checkpoint present at %s — skipping (use --force to rerun)", meta_path)
+        if log_ledger and not smoke:
+            _maybe_log_ledger_panel(run_dir)
+        return 0
+
+    started = datetime.now(timezone.utc)
+    t0 = time.monotonic()
+    logger.info("B2 panel confirmation run (smoke=%s) starting %s", smoke, started.isoformat())
+
+    if smoke:
+        feats_raw, labels, prices = _make_smoke_panel()
+        # The synthetic panel carries extra candidate columns; G1 uses the M6 set only.
+        feats = {s: f[sorted(FINAL_FEATURE_COLUMNS)] for s, f in feats_raw.items()}
+    else:
+        panel_feats, panel_prices = _build_union_panel()
+        feats, labels, prices = _aligned_panel(panel_feats, panel_prices)
+
+    logger.info(
+        "panel: %d symbols, %d total rows", len(feats), sum(len(f) for f in feats.values())
+    )
+
+    # ── G1 only — 25-col ablation reference vs permutation proxy ──────────────
+    logger.info("panel G1: per-fold ablation (LOO, %d cols)", len(FINAL_FEATURE_COLUMNS))
+    abl = per_fold_ablation_attribution(
+        _gbm(LABEL_HORIZON, smoke), feats, labels, prices, FINAL_FEATURE_COLUMNS,
+        label_horizon=LABEL_HORIZON, **WALK_FORWARD, **SIM_KWARGS,
+    )
+    logger.info("panel G1: OOS permutation importance (%d repeats)", N_REPEATS)
+    perm = oos_permutation_importance(
+        _gbm(LABEL_HORIZON, smoke), feats, labels, prices, FINAL_FEATURE_COLUMNS,
+        n_repeats=N_REPEATS, seed=SEED, label_horizon=LABEL_HORIZON,
+        **WALK_FORWARD, **SIM_KWARGS,
+    )
+
+    gate = b2_attribution_gate(
+        perm.importance.to_dict(),
+        abl.importance.to_dict(),
+        reproduction=None,   # G2 is slice-pinned; the panel report is G1-only
+        shap_contrast=None,
+        seed=SEED,
+    )
+    report = _panel_g1_report(gate, _load_slice_gate(output_dir))
+    logger.info(
+        "PANEL VERDICT=%s | G1 ρ=%.3f (p=%.4f) | slice ρ=%s | matches_slice=%s",
+        report["verdict"], report["g1_rho"], report["g1_p_value"],
+        None if report["slice_g1_rho"] is None else round(report["slice_g1_rho"], 3),
+        report["matches_slice_outcome"],
+    )
+
+    elapsed = time.monotonic() - t0
+    finished = datetime.now(timezone.utc)
+    cfg = _build_panel_run_config(smoke)
+    metadata: dict[str, Any] = {
+        "milestone": PANEL_MILESTONE,
+        "smoke": smoke,
+        "git_sha": _git_sha(),
+        "started_at": started.isoformat(),
+        "finished_at": finished.isoformat(),
+        "elapsed_seconds": elapsed,
+        "config_hash": _hash_config(cfg),
+        "run_config": cfg,
+        "declared_deviations": PANEL_DECLARED_DEVIATIONS,
+        "symbols": sorted(feats.keys()),
+        "n_symbols": len(feats),
+        "n_folds_permutation": perm.n_folds,
+        "verdict": report["verdict"],
+        "n_comparisons": N_COMPARISONS,
+    }
+    run_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({
+        "ablation_importance": abl.importance,
+        "permutation_importance": perm.importance,
+        "permutation_se": perm.std_error,
+    }).rename_axis("feature").to_parquet(run_dir / "importances_g1.parquet")
+    with (run_dir / "gate.json").open("w", encoding="utf-8") as fh:
+        json.dump(report, fh, indent=2, sort_keys=False, default=str)
+    with (run_dir / "metadata.json").open("w", encoding="utf-8") as fh:
+        json.dump(metadata, fh, indent=2, sort_keys=False, default=str)
+    logger.info("wrote panel checkpoint to %s (elapsed=%.1fs)", run_dir, elapsed)
+
+    if log_ledger and not smoke:
+        _maybe_log_ledger_panel(run_dir)
+    return 0
+
+
+def _build_panel_run_config(smoke: bool) -> dict[str, Any]:
+    """Deterministic panel run-config (hashed). Distinct from the slice config."""
+    return {
+        "milestone": PANEL_MILESTONE,
+        "mode": "panel",
+        "panel": {
+            "symbols": list(settings.equity_universe),
+            "start": None,   # full lake history (run_b1_arms convention)
+            "end": None,
+        },
+        "feature_columns_g1": list(FINAL_FEATURE_COLUMNS),
+        "xs_columns": list(PANEL_XS_COLUMNS),
+        "label": {"scheme": "signed_returns", "horizon": LABEL_HORIZON},
+        "walk_forward": dict(WALK_FORWARD),
+        "sim_kwargs": dict(SIM_KWARGS),
+        "gbm_params": GBM_SMOKE_KWARGS if smoke else {
+            "n_iter": GBM_N_ITER, "n_splits": GBM_N_SPLITS, "random_state": GBM_RANDOM_STATE,
+        },
+        "n_repeats": N_REPEATS,
+        "seed": SEED,
+        "fred_publication_lags": dict(FRED_PUBLICATION_LAGS),
+    }
+
+
+# The ledger's `verdict` field is a pinned enum (gate_passed|gate_failed|
+# inconclusive — LedgerEntry schema, not modifiable here). The panel verdict
+# maps onto it: the agreement test either passed or failed. The richer panel
+# string lives in the checkpoint metadata + the entry notes.
+PANEL_LEDGER_VERDICTS: dict[str, str] = {
+    "panel_agreement": "gate_passed",
+    "panel_no_agreement": "gate_failed",
+}
+
+
+def _maybe_log_ledger_panel(run_dir: Path) -> None:
+    """Append the panel confirmation trial to the ledger (idempotent)."""
+    panel_verdict = json.loads((run_dir / "metadata.json").read_text())["verdict"]
+    entry = record_run(
+        run_dir / "metadata.json",
+        prd="b2",
+        milestone=PANEL_MILESTONE,
+        preregistration=".claude/prds/b2-oos-attribution.prd.md",
+        n_comparisons=N_COMPARISONS,
+        verdict=PANEL_LEDGER_VERDICTS[panel_verdict],
+        artifacts=[f"{run_dir}/"],
+        notes=(
+            f"B2 full-panel G1 confirmation (permutation vs ablation, 33-symbol "
+            f"union panel): {panel_verdict}. Confirmation diagnostic — the B2 "
+            f"method verdict remains the slice gate (METHODOLOGY §5)."
+        ),
+    )
+    if entry is None:
+        logger.info("ledger entry skipped — config_hash already recorded")
+    else:
+        logger.info("recorded ledger entry %s", entry.id)
+
+
 # ─── Output + config + ledger ─────────────────────────────────────────────────
 
 
@@ -547,6 +840,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--smoke", action="store_true", help="synthetic plumbing run (never logged)")
     p.add_argument("--force", action="store_true", help="recompute even if a checkpoint exists")
     p.add_argument("--log-ledger", action="store_true", help="append the trial to data/ledger.yaml")
+    p.add_argument(
+        "--panel", action="store_true",
+        help="G1-only full-panel confirmation (33-symbol union universe, full "
+             "history) → data/b2/panel/ (B2-FULLPANEL-AGREEMENT)",
+    )
     p.add_argument("--verbose", action="store_true", help="DEBUG logging")
     return p
 
@@ -557,6 +855,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if args.panel:
+        return _run_panel(Path(args.output_dir), args.smoke, args.force, args.log_ledger)
     return _run(Path(args.output_dir), args.smoke, args.force, args.log_ledger)
 
 

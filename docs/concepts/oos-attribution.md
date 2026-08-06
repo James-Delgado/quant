@@ -237,7 +237,13 @@ is checked first; only then is the permutation-test p-value consulted. The
 validation is pinned to the **5-symbol × 8-year slice** to match the nb08 M3
 reference exactly — a like-for-like reproduction is the whole point of G2. A
 full-panel agreement check is a *desirable* confirmation flagged as a follow-up,
-not an MVP gate (B2 validates a method, not an edge). **Deflation does not
+not an MVP gate (B2 validates a method, not an edge). **That follow-up ran on
+2026-08-06** (`B2-FULLPANEL-AGREEMENT`, `run_b2_attribution.py --panel`,
+checkpoint `data/b2/panel/`, ledger-2026-08-06-0001): G1 on the 33-symbol union
+panel scored **ρ = 0.198 (p = 0.169)** vs the pinned 0.50 bar —
+`panel_no_agreement`. The slice-level disagreement survives at scale; the
+permutation proxy remains unvalidated and per-fold ablation remains the sole
+canonical OOS signal (METHODOLOGY §14 unchanged). **Deflation does not
 apply** — B2 makes no Sharpe/return claim, so DSR is undefined and B2 does not
 depend on `A-DSR-GATE`; the ledger still records B2's runs with `n_comparisons =
 1` (the single validated method) for the audit trail.

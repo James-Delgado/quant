@@ -281,3 +281,18 @@
     commit 19a0b40 (reconstructed convention: nb13 is a notebook deliverable, no runner
     metadata.json); started_at/completed_at are the audit record time because the
     append-only ledger is monotonically dated past the commit time.'
+- id: ledger-2026-08-06-0001
+  prd: b2
+  milestone: B2-FULLPANEL-AGREEMENT
+  agent: human
+  preregistration: .claude/prds/b2-oos-attribution.prd.md
+  config_hash: f956a4843baa19efd6bb55a885eee477ba531214658733ebcc7bedc75185f54a
+  n_comparisons: 1
+  started_at: '2026-08-06T15:14:07.635056Z'
+  completed_at: '2026-08-06T16:10:01.360743Z'
+  verdict: gate_failed
+  artifacts:
+  - data/b2/panel/
+  notes: 'B2 full-panel G1 confirmation (permutation vs ablation, 33-symbol union
+    panel): panel_no_agreement. Confirmation diagnostic — the B2 method verdict remains
+    the slice gate (METHODOLOGY §5).'

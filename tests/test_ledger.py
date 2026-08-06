@@ -484,7 +484,7 @@ class TestRecordRun:
 class TestRealLedger:
     """Validate the committed data/ledger.yaml."""
 
-    EXPECTED_TOTAL_N = 75  # 62 Phase 4A (PHASE_4A_REPORT.md §7) + 12 B1-M3 (B1_REPORT.md §6: 4 arms × 3) + 1 B2-M2 (oos-attribution.md: n_comparisons=1, the single validated method).
+    EXPECTED_TOTAL_N = 76  # 62 Phase 4A (PHASE_4A_REPORT.md §7) + 12 B1-M3 (B1_REPORT.md §6: 4 arms × 3) + 1 B2-M2 (oos-attribution.md: n_comparisons=1, the single validated method) + 1 B2-FULLPANEL-AGREEMENT (ledger-2026-08-06-0001: the panel confirmation is a second look at the same hypothesis, counted conservatively).
 
     def test_loads_and_validates(self):
         entries = load_ledger()

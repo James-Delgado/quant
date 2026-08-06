@@ -173,3 +173,138 @@ class TestBestRegimeFromLiftTable:
         out = runner._best_regime_from_lift_table(self._lift_table(), ["a", "b"])
         assert list(out.index) == ["a", "b"]
         assert out.name == "addone_reference"
+
+
+# ─── Panel confirmation mode (B2-FULLPANEL-AGREEMENT) ─────────────────────────
+
+
+class TestPanelConfig:
+    """The panel run-config pins the union universe + the same frozen G1 surface."""
+
+    def test_panel_config_pins_universe_and_m6_set(self):
+        from quant.config import settings
+
+        cfg = runner._build_panel_run_config(False)
+        assert cfg["milestone"] == runner.PANEL_MILESTONE == "B2-FULLPANEL-AGREEMENT"
+        assert cfg["mode"] == "panel"
+        assert cfg["panel"]["symbols"] == list(settings.equity_universe)
+        # Full lake history — the run_b1_arms full-panel convention.
+        assert cfg["panel"]["start"] is None and cfg["panel"]["end"] is None
+        # The G1 surface is the SAME frozen 25-col M6 set as the slice run —
+        # otherwise the panel would attribute a different model (METHODOLOGY §6).
+        assert cfg["feature_columns_g1"] == list(runner.FINAL_FEATURE_COLUMNS)
+        assert cfg["walk_forward"] == runner.WALK_FORWARD
+        assert cfg["gbm_params"]["n_iter"] == runner.GBM_N_ITER
+
+    def test_panel_and_slice_config_hashes_differ(self):
+        # Distinct config hashes → distinct ledger entries, no collision between
+        # the slice validation and the panel confirmation.
+        assert runner._hash_config(runner._build_panel_run_config(False)) != (
+            runner._hash_config(runner._build_run_config(False))
+        )
+
+    def test_panel_smoke_and_real_hashes_differ(self):
+        assert runner._hash_config(runner._build_panel_run_config(True)) != (
+            runner._hash_config(runner._build_panel_run_config(False))
+        )
+
+    def test_panel_xs_columns_cover_m6_xs_inputs(self):
+        # Every xs_rank_* column in the M6 set must have its base column ranked;
+        # the panel computes only what the 25-col set needs.
+        needed_bases = {
+            c.removeprefix("xs_rank_")
+            for c in runner.FINAL_FEATURE_COLUMNS
+            if c.startswith("xs_rank_")
+        }
+        assert needed_bases == set(runner.PANEL_XS_COLUMNS)
+
+    def test_panel_declared_deviations_name_g2_g3(self):
+        # METHODOLOGY §9 — the G1-only scope is declared, not silent.
+        assert "G1 ONLY" in runner.PANEL_DECLARED_DEVIATIONS
+        assert "G2" in runner.PANEL_DECLARED_DEVIATIONS
+        assert "G3" in runner.PANEL_DECLARED_DEVIATIONS
+
+    def test_argparse_panel_flag(self):
+        assert runner.build_parser().parse_args([]).panel is False
+        assert runner.build_parser().parse_args(["--panel"]).panel is True
+
+    def test_panel_ledger_verdict_map_targets_pinned_enum(self):
+        # The ledger's verdict field is a pinned Literal — every panel verdict
+        # must map into it, and every report verdict must have a mapping.
+        import typing
+
+        from quant.ledger import LedgerEntry
+
+        allowed = set(typing.get_args(LedgerEntry.model_fields["verdict"].annotation))
+        assert set(runner.PANEL_LEDGER_VERDICTS.values()) <= allowed
+        assert set(runner.PANEL_LEDGER_VERDICTS.keys()) == {
+            "panel_agreement", "panel_no_agreement",
+        }
+
+
+class TestPanelG1Report:
+    """The confirmation-report semantics: G1-only, verdict, slice comparison."""
+
+    @staticmethod
+    def _gate(rho: float, p: float) -> dict:
+        # Shape mirrors b2_attribution_gate output (reproduction=None).
+        return {
+            "g1_rho": rho,
+            "g1_p_value": p,
+            "g1_materiality_passed": rho >= 0.50,
+            "g1_significance_passed": p < 0.05,
+            "g1_n_features": 25,
+            "g2_rho": None,
+            "g2_passed": None,
+            "g3_rho": None,
+            "gate_passed": False,
+            "rho_threshold": 0.50,
+            "alpha": 0.05,
+            "n_permutations": 10_000,
+            "reproduction_threshold": 0.90,
+        }
+
+    def test_no_agreement_verdict(self):
+        report = runner._panel_g1_report(self._gate(-0.01, 0.51), None)
+        assert report["verdict"] == "panel_no_agreement"
+        assert report["panel_agreement"] is False
+        assert report["role"] == "confirmation_diagnostic"
+        assert report["milestone"] == "B2-FULLPANEL-AGREEMENT"
+
+    def test_agreement_verdict_requires_materiality_and_significance(self):
+        assert runner._panel_g1_report(self._gate(0.6, 0.01), None)["verdict"] == (
+            "panel_agreement"
+        )
+        # Material but insignificant → no agreement.
+        assert runner._panel_g1_report(self._gate(0.6, 0.20), None)["verdict"] == (
+            "panel_no_agreement"
+        )
+        # Significant but immaterial → no agreement.
+        assert runner._panel_g1_report(self._gate(0.3, 0.01), None)["verdict"] == (
+            "panel_no_agreement"
+        )
+
+    def test_matches_slice_outcome_both_disagree(self):
+        # The real case: slice G1 failed (ρ=-0.004); a panel fail CONFIRMS it.
+        report = runner._panel_g1_report(
+            self._gate(-0.02, 0.60), self._gate(-0.004, 0.505)
+        )
+        assert report["slice_agreement"] is False
+        assert report["slice_g1_rho"] == pytest.approx(-0.004)
+        assert report["matches_slice_outcome"] is True
+
+    def test_matches_slice_outcome_divergence(self):
+        # A panel agreement over a slice failure is a DIVERGENCE — reported, but
+        # it cannot flip the slice-pinned verdict (METHODOLOGY §5, in the note).
+        report = runner._panel_g1_report(
+            self._gate(0.7, 0.001), self._gate(-0.004, 0.505)
+        )
+        assert report["matches_slice_outcome"] is False
+        assert report["verdict"] == "panel_agreement"
+        assert "cannot revive" in report["note"]
+
+    def test_missing_slice_gate_yields_none_fields(self):
+        report = runner._panel_g1_report(self._gate(0.1, 0.3), None)
+        assert report["slice_g1_rho"] is None
+        assert report["slice_agreement"] is None
+        assert report["matches_slice_outcome"] is None

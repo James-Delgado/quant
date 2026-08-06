@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-07-26  # added MISC bucket; reclassified refit-decay diagnostic A->MISC (MISC-REFIT-DECAY-DIAGNOSTIC, 135); Project F gated entry + F-GATE (136)
+last_updated: 2026-08-06  # B2-FULLPANEL-AGREEMENT done (panel_no_agreement — slice disagreement survives at scale); appended B2-PANEL-VIXCLS-DIVERGENCE (121)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1468,8 +1468,9 @@ tasks:
     title: "Optional full-panel G1 agreement confirmation (permutation vs ablation, 33-symbol panel)"
     project: B
     sub_project: B2
-    status: in_progress
+    status: done
     started_at: 2026-08-06T15:09:02Z
+    completed_at: 2026-08-06
     depends_on: [B2-M2]
     blocks: []
     deliverable:
@@ -1488,6 +1489,12 @@ tasks:
       attribution_status audit trail. CONDITIONAL / non-MVP, mirroring B3-PRD/B4-PRD —
       intentionally NOT in B-CLOSE.depends_on so an unrun optional confirmation cannot
       deadlock closeout. Low priority.
+      OUTCOME (2026-08-06): panel_no_agreement — G1 on the 33-symbol union panel
+      scored rho=0.198 (p=0.169) vs the pinned 0.50 bar; matches_slice_outcome=true
+      (the slice disagreement SURVIVES at scale). Checkpoint data/b2/panel/, ledger
+      entry ledger-2026-08-06-0001, catalog.yaml header audit-trail note +
+      oos-attribution.md addendum updated. Per-fold ablation remains the sole
+      canonical OOS signal. Discovered follow-up: B2-PANEL-VIXCLS-DIVERGENCE.
 
   - id: B2-CONFORMAL-PRD
     rank: 41
@@ -4461,3 +4468,39 @@ tasks:
       that drive the design depend on what B/B4 surfaced), generates the trigger
       report, and flips this task to `done`. If frozen-checkpoint serving is never
       needed (e.g. only cheap fit-on-read models ever deploy), set this `skipped`.
+
+  - id: B2-PANEL-VIXCLS-DIVERGENCE
+    rank: 121
+    title: "Investigate VIXCLS panel-scale attribution divergence (ablation says harmful, permutation says most load-bearing)"
+    project: B
+    sub_project: B2
+    status: ready
+    depends_on: [B2-FULLPANEL-AGREEMENT]
+    blocks: []
+    deliverable:
+      file: docs/concepts/vixcls-panel-divergence.md
+    references:
+      primary: data/b2/panel/importances_g1.parquet
+      slice_counterpart: data/b2/slice/importances_g1.parquet
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during B2-FULLPANEL-AGREEMENT (checkpoint data/b2/panel/,
+      ledger-2026-08-06-0001). The panel importances contain a stark
+      single-feature divergence: leave-one-out ablation scores VIXCLS at
+      -0.196 (removing it IMPROVES aggregate panel OOS Sharpe by ~0.20 — the
+      most negative of all 25 features) while OOS permutation importance
+      scores it +0.507 (the single most load-bearing feature, se 0.016).
+      Diagnostic questions: (a) is the negative ablation lift robust across
+      folds/regimes (per-fold distribution from the existing checkpoint's
+      results — may need a rerun retaining per-fold lifts)? (b) is this the
+      known pathology where a high-IS-salience feature (the GBM leans on it,
+      so permuting it wrecks predictions) is nonetheless OOS-harmful (so
+      removing it and REFITTING helps) — the exact IS-vs-OOS gap B2
+      documents, concentrated in one macro feature? (c) does the slice
+      checkpoint show the same sign pattern? Deliverable is a short concept
+      note; ACTING on it (dropping VIXCLS) is out of scope here and requires
+      a pre-committed feature-ablation gate under a new PRD (B2 PRD "Out of
+      scope: Acting on attributions"; METHODOLOGY §1/§14). Mirrors the
+      B2-FULLPANEL-AGREEMENT convention: optional research diagnostic,
+      intentionally NOT in B-CLOSE.depends_on so it cannot deadlock closeout.
