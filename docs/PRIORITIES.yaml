@@ -1619,7 +1619,8 @@ tasks:
     title: "Reconcile same-day reader source: Tiingo (T+1) parity vs Alpaca (T-evening) freshness"
     project: C
     sub_project: C1
-    status: ready
+    status: in_progress
+    started_at: 2026-08-06T18:10:00Z
     depends_on: [C1-M2]
     blocks: []
     deliverable:
