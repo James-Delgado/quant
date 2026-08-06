@@ -224,8 +224,13 @@ def _write_registry(path: Path) -> None:
     path.write_text(yaml.safe_dump(registry))
 
 
-@pytest.fixture
-def sources(tmp_path: Path) -> ConsoleSources:
+def make_sources(tmp_path: Path) -> ConsoleSources:
+    """Build the standard synthetic ``ConsoleSources`` under ``tmp_path``.
+
+    A plain function (not a fixture) so other test modules — notably
+    ``tests/test_console_api.py`` (E2-M1), which asserts export<->API parity over
+    the SAME synthetic artifacts — can reuse it without fixture plumbing.
+    """
     data_root = tmp_path / "data"
     data_root.mkdir()
     _write_checkpoint(data_root, "arima", seed=1, config_hash=_GIT_SHA_A, sharpe=0.42)
@@ -294,6 +299,11 @@ def sources(tmp_path: Path) -> ConsoleSources:
         feature_monitor_fn=fake_monitor,
         now_fn=lambda: fixed_now,
     )
+
+
+@pytest.fixture
+def sources(tmp_path: Path) -> ConsoleSources:
+    return make_sources(tmp_path)
 
 
 # ── read_oos_returns ─────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import datetime as dt
 import json
 import logging
 import math
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,21 @@ CATALOG_SOURCE_LABEL = "Feature Catalog"
 REGISTRY_SOURCE_LABEL = "Strategy Registry"
 CHECKPOINTS_SOURCE_LABEL = "Strategy checkpoints"
 
+# The single top-level {export filename -> reader} mapping. Consumed by BOTH the
+# static export below and the E2 API (quant.console.api), so the two surfaces
+# serve the same payload set and cannot drift apart (METHODOLOGY §6). The
+# per-strategy detail/provenance fan-out is handled separately in each consumer
+# because its paths are data-dependent (one file per discovered checkpoint).
+TOP_LEVEL_READERS: dict[str, Callable[[ConsoleSources], Any]] = {
+    "strategies.json": readers.load_strategies,
+    "portfolio.json": readers.load_portfolio,
+    "conditions.json": readers.load_conditions,
+    "catalog.json": readers.load_catalog,
+    "ledger.json": readers.load_ledger,
+    "data_status.json": readers.data_status,
+    "market.json": readers.market_snapshot,
+}
+
 
 def _sanitize(obj: Any) -> Any:
     """Recursively make a value JSON-safe and deterministic.
@@ -65,20 +81,26 @@ def _sanitize(obj: Any) -> Any:
     return obj
 
 
+def sanitize(obj: Any) -> Any:
+    """Public alias for :func:`_sanitize` — the shared serialization step.
+
+    The E2 API (:mod:`quant.console.api`) serializes its live responses through
+    this exact function so an API payload is byte-equivalent to the matching
+    static export file (METHODOLOGY §6 — one serializer, no drift).
+    """
+    return _sanitize(obj)
+
+
 def build_export(sources: ConsoleSources | None = None) -> dict[str, Any]:
     """Run every reader and return ``{export_path: jsonable_payload}``."""
     sources = sources or ConsoleSources.default()
 
     strategies = readers.load_strategies(sources)
-    export: dict[str, Any] = {
-        "strategies.json": _sanitize(strategies),
-        "portfolio.json": _sanitize(readers.load_portfolio(sources)),
-        "conditions.json": _sanitize(readers.load_conditions(sources)),
-        "catalog.json": _sanitize(readers.load_catalog(sources)),
-        "ledger.json": _sanitize(readers.load_ledger(sources)),
-        "data_status.json": _sanitize(readers.data_status(sources)),
-        "market.json": _sanitize(readers.market_snapshot(sources)),
-    }
+    export: dict[str, Any] = {}
+    for path, reader in TOP_LEVEL_READERS.items():
+        # The roster is loaded once and reused for the per-strategy fan-out below.
+        payload = strategies if reader is readers.load_strategies else reader(sources)
+        export[path] = _sanitize(payload)
 
     # Per-strategy fan-out: detail + provenance share the strategy id namespace.
     for card in strategies:

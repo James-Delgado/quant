@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-06  # C1-M2-ALPACA-FRESHNESS done (resolved (a): T+1 Tiingo deployment cadence, policy pinned in data-freshness-slas.md); appended C1-POLICY-DATASET-PIN (138)
+last_updated: 2026-08-06  # E2-M1 done (FastAPI scaffold at export parity; E2-M2 now ready); CORS requirement noted on E2-M4
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2361,8 +2361,9 @@ tasks:
     title: "E2-M1: FastAPI scaffold + read endpoints at export-schema parity"
     project: E
     sub_project: E2
-    status: in_progress
+    status: done
     started_at: 2026-08-06T18:36:42Z
+    completed_at: 2026-08-06
     depends_on: [E1-CLOSE, C1-M2]
     blocks: [E2-M2, E2-CLOSE]
     deliverable:
@@ -2380,13 +2381,24 @@ tasks:
       each endpoint returns the same schema as the matching export/*.json;
       shared schema tests pass against BOTH directions (METHODOLOGY §6 — one
       Pydantic schema, drift-tested export<->API).
+      COMPLETED 2026-08-06: create_app factory in src/quant/console/api/ with
+      routes mirroring the export tree under /data/ (so the M4 swap is a
+      base-URL change). SCHEMA DECISION (declared §9): the PRD's "Pydantic
+      schemas" wording was NOT taken literally — the shipped E1 contract is
+      dataclass view-models + generated schemas (console/schemas.py); parallel
+      Pydantic models would duplicate the contract the PRD's own risk table
+      forbids. Instead export.py now exposes the shared TOP_LEVEL_READERS
+      table + sanitize serializer both surfaces consume; parity is asserted
+      BYTE-LEVEL (stronger than schema parity) in tests/test_console_api.py,
+      plus route-set<->export-set drift both directions. fastapi/uvicorn added
+      to pyproject dependencies.
 
   - id: E2-M2
     rank: 54
     title: "E2-M2: POST /feedback endpoint (server-side issue + promotion trigger)"
     project: E
     sub_project: E2
-    status: blocked
+    status: ready
     depends_on: [E2-M1]
     blocks: [E2-M3, E2-CLOSE]
     deliverable:
@@ -2442,6 +2454,13 @@ tasks:
       PRD §4 M4. React data client reads the API behind a `static <-> api`
       flag. Acceptance: the console runs identically against the API; NO view
       or logic rewrite; static mode still works (the decoupling E1 paid for).
+      DISCOVERED during E2-M1 (tests/test_console_api.py commit): the API
+      mirrors the export tree under /data/ with identical paths, so this swap
+      is a base-URL change in frontend/src/lib/dataClient.ts — BUT the vite
+      dev server runs on a different origin than the API, so api-mode dev
+      needs CORS on the FastAPI app (or a vite proxy). Neither is configured
+      in E2-M1 (deliberately: single-origin static mode needs none); add one
+      here.
 
   - id: E2-CLOSE
     rank: 57
