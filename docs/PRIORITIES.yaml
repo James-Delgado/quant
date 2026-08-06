@@ -1535,7 +1535,8 @@ tasks:
     title: "Live-measure per-source data availability times to confirm/tighten the C1 freshness SLAs"
     project: C
     sub_project: C1
-    status: ready
+    status: in_progress
+    started_at: 2026-08-06T16:58:01Z
     depends_on: [C1-M1]
     blocks: []
     deliverable:
