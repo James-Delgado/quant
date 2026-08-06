@@ -1468,7 +1468,8 @@ tasks:
     title: "Optional full-panel G1 agreement confirmation (permutation vs ablation, 33-symbol panel)"
     project: B
     sub_project: B2
-    status: ready
+    status: in_progress
+    started_at: 2026-08-06T15:09:02Z
     depends_on: [B2-M2]
     blocks: []
     deliverable:
