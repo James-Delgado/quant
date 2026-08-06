@@ -203,7 +203,25 @@ projects:
       registry (+ `artifact_ref`), one branch in `trade_daily._strategy_signal`,
       a recorded training-data cutoff with a live `cutoff <= asof` leakage
       assertion, a scheduled (non-selective) refit job, and ledger/DSR accounting
-      for refits-as-trials. Design rationale is pre-captured in
+      for refits-as-trials.
+      STORAGE BACKEND: at current scale a local filesystem for artifacts + the
+      existing Parquet/DuckDB lake for data is correct — do NOT move to object
+      storage prematurely (YAGNI). Design for it anyway: put an `ArtifactStore`
+      (a.k.a. `StorageBackend`) INTERFACE in front of blob read/write, with a
+      `LocalFSArtifactStore` default and an `S3ArtifactStore` as a later config
+      swap — the repository pattern already used for `ExecutionBridge` (paper vs
+      live). Keep artifacts CONTENT-ADDRESSED (hash-named blobs): a checkpoint's
+      content hash IS its ledger/provenance reference (METHODOLOGY §12), giving
+      immutability + dedup for free. Split metadata from blobs exactly as the data
+      catalog does — the registry index (which checkpoint, training cutoff,
+      provenance) stays small + queryable (YAML/DuckDB), the heavy weights live in
+      the artifact store. The real trigger to actually adopt S3 is CLOUD /
+      MULTI-MACHINE COMPUTE (a GPU training box needs shared access to data AND
+      artifacts), not local disk size — so the model store and the data lake
+      migrate TOGETHER, at the same time, for the same reason (DuckDB already reads
+      Parquet from S3 via httpfs, so the lake side is a config swap too). Captured
+      2026-08 from the model-store storage discussion.
+      Design rationale is pre-captured in
       docs/concepts/refit-cadence-and-data-hunger.md so the future scoping does not
       re-derive it. GATED (mirrors Project D): every F-prefixed task stays blocked
       until F-GATE's triggers are met. Deliberately NOT scoped now (YAGNI /
