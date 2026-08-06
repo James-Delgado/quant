@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-06  # B2-FULLPANEL-AGREEMENT done (panel_no_agreement — slice disagreement survives at scale); appended B2-PANEL-VIXCLS-DIVERGENCE (121)
+last_updated: 2026-08-06  # C1-M1-MEASURE done (instrument shipped, launchd accrual live, settle-floor guard); appended C1-M1-MEASURE-VERDICT (137)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1535,10 +1535,11 @@ tasks:
     title: "Live-measure per-source data availability times to confirm/tighten the C1 freshness SLAs"
     project: C
     sub_project: C1
-    status: in_progress
+    status: done
     started_at: 2026-08-06T16:58:01Z
+    completed_at: 2026-08-06
     depends_on: [C1-M1]
-    blocks: []
+    blocks: [C1-M1-MEASURE-VERDICT]
     deliverable:
       file: docs/concepts/data-freshness-slas.md
     references:
@@ -1563,6 +1564,55 @@ tasks:
       B2-FULLPANEL-AGREEMENT precedent this is intentionally NOT in
       C-CLOSE.depends_on so an unrun optional measurement cannot deadlock closeout.
       Low priority.
+      OUTCOME 2026-08-06: instrumentation SHIPPED and accrual STARTED —
+      scripts/measure_availability.py (probes publisher APIs directly, reuses
+      monitor_freshness.SOURCE_SLAS/evaluate_feed, pre-committed verdict rule
+      pinned as module constants) + 31 tests + launchd LaunchAgent
+      (com.quant.measure-availability, 30-min polls daily; cron rejected — macOS
+      crontab writes hang without Full Disk Access; plist tracked at
+      scripts/com.quant.measure-availability.plist). Live smoke poll: all 7
+      probes ok; log accruing at data/freshness/availability_log.csv. Found +
+      guarded live: Alpaca serves a PARTIAL bar mid-session -> settle floor
+      (21:00 UTC) pinned; corollary: alpaca can only be confirmed, never
+      tightened. The confirm/tighten VERDICT is C1-M1-MEASURE-VERDICT (>=10
+      informative sessions, earliest ~2026-08-20).
+
+  - id: C1-M1-MEASURE-VERDICT
+    rank: 137
+    title: "C1-M1-MEASURE verdict: confirm (or propose tightening) the C1 SLAs from >=10 informative live-measured sessions"
+    project: C
+    sub_project: C1
+    status: ready
+    depends_on: [C1-M1-MEASURE]
+    blocks: []
+    deliverable:
+      file: docs/concepts/data-freshness-slas.md
+    references:
+      primary: scripts/measure_availability.py
+      contract: docs/concepts/data-freshness-slas.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C1-M1-MEASURE (the accrual and the verdict cannot share
+      one session — the accrual is wall-clock >= 2 weeks; precedent:
+      C6-M2-LIVE-ACCRUAL split). WALL-CLOCK GATED: do not pick before
+      ~2026-08-20, and bail (leave ready) unless
+      `.venv/bin/python scripts/measure_availability.py --report` shows
+      verdict-eligible: True (>= 10 informative sessions) for BOTH deadline
+      feeds (alpaca, tiingo) — the report's coverage gate makes an early pick
+      harmless but wasteful. Procedure (pre-committed in the C1-M1 doc "Live
+      measurement" section + scripts/measure_availability.py constants; do NOT
+      re-derive): quote the --report output verbatim (METHODOLOGY §2/§9);
+      zero misses + zero publisher-side stale polls => CONFIRM the pinned SLAs
+      (update the doc's declared-deviation entry to live-confirmed; no SLA value
+      changes, no ledger entry needed — infra, n_comparisons=0 at most). Any
+      tightening (only tiingo has headroom; alpaca is floor-locked at its
+      current 23:00) or any observed miss => PRD revision + new ledger entry +
+      update the C1-M1 doc AND the C1-M3 monitor_freshness constants in
+      LOCK-STEP (the drift contract). Then decide: keep the LaunchAgent running
+      (ongoing evidence) or unload it (instructions in the plist comment).
+      Like its parent, intentionally NOT in C-CLOSE.depends_on (an unrun
+      optional confirmation must not deadlock closeout).
 
   - id: C1-M2-ALPACA-FRESHNESS
     rank: 43

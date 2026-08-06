@@ -248,18 +248,85 @@ deflation contribution.
 
 ---
 
+## Live measurement (C1-M1-MEASURE — instrumented 2026-08-06)
+
+The measurement side of the declared deviation below is now instrumented.
+`scripts/measure_availability.py` probes each **publisher API directly** (not
+the lake — the lake only advances when the batch flow runs) and appends one
+row per feed to an append-only log at `data/freshness/availability_log.csv`
+(gitignored like other run checkpoints; it is one-shot live evidence — do not
+delete it before the verdict has consumed it). Every SLA value and staleness
+judgment is **reused from `monitor_freshness.SOURCE_SLAS` / `evaluate_feed`**
+— the measurement instrument re-states no SLA value (METHODOLOGY §6), and the
+probe set is built from `SOURCE_SLAS`, so an unprobed feed fails loudly.
+
+**Scheduler.** A macOS LaunchAgent
+(`~/Library/LaunchAgents/com.quant.measure-availability.plist`, label
+`com.quant.measure-availability`) runs one poll every **30 minutes, every
+day** — daily, not weekday-only, because Tiingo's `T+1 12:00 UTC` deadline
+for a *Friday* session falls on **Saturday**. launchd was chosen over cron
+because macOS crontab writes hang without Full Disk Access (observed at
+install). Machine-asleep windows simply produce poll gaps, which the
+reduction treats as **censoring, never evidence**. Probe stderr accrues in
+`data/freshness/agent_errors.log`.
+
+**Pre-committed verdict rule** (METHODOLOGY §1 — pinned in
+`scripts/measure_availability.py` *before* any measurement accrued). Per
+session `T` of a deadline feed (alpaca, tiingo):
+
+- **on_time** — the session's data was visible at a poll at/before its SLA
+  deadline (presence observed in-window; exact).
+- **miss** — a poll at/after the deadline still showed the data absent
+  (absence observed past-deadline; exact).
+- **uncovered** — neither; no inference is made across poll gaps.
+- **Settle floor** (`PRICE_SETTLE_FLOOR_HOUR_UTC = 21`): a daily-bar API
+  queried *during* session `T` returns a **partial** bar for `T` (observed
+  live on Alpaca at 17:08 UTC), so only polls at/after `T 21:00 UTC` (the
+  16:00 ET close in EST — conservative across DST) can attest `T`'s settled
+  bar. Corollary: alpaca's tightening floor is `21:00 + buffer = 23:00`, its
+  current SLA — the instrument can *confirm* alpaca, never tighten it.
+- A verdict requires **≥ `MIN_SESSIONS_FOR_SLA_VERDICT` = 10 informative
+  sessions** per feed (≈ 2 trading weeks). A tightening proposal may move a
+  deadline no earlier than the worst observed first-seen **+
+  `TIGHTEN_BUFFER_HOURS` = 2 h**, rounded up to the hour — and is only ever a
+  *proposal* routed through the update protocol below.
+- FRED evidence is day-granular: observed publication lag in business days vs
+  the pinned `lag + FRED_GRACE_BDAYS` allowance. EDGAR/RSS have liveness
+  SLAs with no "available by" time to confirm or tighten; their rows are
+  **informational only** — the EDGAR probe covers a pinned 3-filer subset
+  (AAPL/MSFT/NVDA), not the universe, so a quiet spell there is normal and is
+  never verdict input.
+
+`scripts/measure_availability.py --report` reduces the accrued log to
+per-session verdicts, SLA margins, and verdict-eligibility. The verdict
+itself is the follow-up task `C1-M1-MEASURE-VERDICT`: once ≥ 10 informative
+sessions exist per deadline feed, quote the report verbatim and either
+confirm the pinned SLAs (zero misses, zero publisher-side stale polls) or
+open the tightening path — a PRD revision + ledger entry updating this doc
+AND the C1-M3 module constants in lock-step, per the update protocol.
+
+---
+
 ## Declared deviations (METHODOLOGY §9)
 
-- **Availability times are desk-research / code-derived, not live-measured.**
-  The "available by" times in the audit are reasoned from each publisher's
-  documented release schedule and the existing ingestor code (cadence,
-  overlap windows, timestamp conventions), not from a multi-day live pull
-  that timestamps the first moment today's bar is fetchable. They are
-  deliberately conservative so the SLA does not false-alarm. A live-measured
-  tightening is captured as a follow-up (`C1-M1-MEASURE`); it can only loosen
-  the conservatism, and any change is a PRD-revision + ledger-entry path, not
-  an in-flight edit. The pinned SLA values are unchanged from the ratified
-  PRD regardless — this audit confirms them, it does not re-derive them.
+- **Availability times are desk-research / code-derived, not yet
+  live-confirmed.** The "available by" times in the audit are reasoned from
+  each publisher's documented release schedule and the existing ingestor code
+  (cadence, overlap windows, timestamp conventions), not from a multi-day
+  live pull that timestamps the first moment today's bar is fetchable. They
+  are deliberately conservative so the SLA does not false-alarm. The
+  live-measurement instrument is now running (see "Live measurement" above);
+  the confirm/tighten verdict (`C1-M1-MEASURE-VERDICT`) is pending ≥ 2 weeks
+  of accrual. It can only loosen the conservatism, and any change is a
+  PRD-revision + ledger-entry path, not an in-flight edit. The pinned SLA
+  values are unchanged from the ratified PRD regardless — the audit and the
+  measurement confirm them, they do not re-derive them.
+- **Measured availability is presence-based, not content-settledness-based.**
+  A probe observes that a bar/observation *exists* at the publisher; it
+  cannot verify that late post-close corrections have been applied. The
+  settle floor excludes intraday partial bars exactly; residual post-close
+  revision risk is bounded by the `TIGHTEN_BUFFER_HOURS` margin and by the
+  rule that tightening is a human-ratified proposal, never automatic.
 
 ---
 

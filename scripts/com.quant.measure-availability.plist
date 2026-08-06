@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- quant C1-M1-MEASURE: live per-source data-availability probes.
+         Polls publisher APIs every 30 min; appends to
+         data/freshness/availability_log.csv. Installed 2026-08-06 (cron was
+         rejected: macOS crontab writes hang without Full Disk Access).
+         Remove with:
+           launchctl unload ~/Library/LaunchAgents/com.quant.measure-availability.plist
+           rm ~/Library/LaunchAgents/com.quant.measure-availability.plist -->
+    <key>Label</key>
+    <string>com.quant.measure-availability</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jamesdelgado/Projects/quant/.venv/bin/python</string>
+        <string>scripts/measure_availability.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/jamesdelgado/Projects/quant</string>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/dev/null</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jamesdelgado/Projects/quant/data/freshness/agent_errors.log</string>
+</dict>
+</plist>
