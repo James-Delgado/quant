@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-07  # E2-M3 done (/health vs C1 SLAs + authenticated /recompute + shared CONSOLE_API_TOKEN; E2-M4 now ready); MISC-SLA-CORE-SRC appended, token note on E2-M4
+last_updated: 2026-08-07  # E2-M4 in_progress (frontend static<->api data-source swap)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2464,7 +2464,8 @@ tasks:
     title: "E2-M4: Frontend data-source swap behind a static<->api flag"
     project: E
     sub_project: E2
-    status: ready
+    status: in_progress
+    started_at: 2026-08-07T23:04:21Z
     depends_on: [E2-M3]
     blocks: [E2-CLOSE]
     deliverable:
