@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-07  # E2-M2 done (POST /feedback + promotion trigger; E2-M3 now ready); auth-unification note on E2-M3, modal-swap note on E2-M4
+last_updated: 2026-08-07  # E2-M3 done (/health vs C1 SLAs + authenticated /recompute + shared CONSOLE_API_TOKEN; E2-M4 now ready); MISC-SLA-CORE-SRC appended, token note on E2-M4
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2434,8 +2434,9 @@ tasks:
     title: "E2-M3: Freshness/health endpoint + authenticated on-demand re-export"
     project: E
     sub_project: E2
-    status: in_progress
+    status: done
     started_at: 2026-08-07T22:40:15Z
+    completed_at: 2026-08-07
     depends_on: [E2-M2]
     blocks: [E2-M4, E2-CLOSE]
     deliverable:
@@ -2463,7 +2464,7 @@ tasks:
     title: "E2-M4: Frontend data-source swap behind a static<->api flag"
     project: E
     sub_project: E2
-    status: blocked
+    status: ready
     depends_on: [E2-M3]
     blocks: [E2-CLOSE]
     deliverable:
@@ -2488,6 +2489,12 @@ tasks:
       window.open(issue_url) two-click path for POST /feedback (one click,
       server-side token, optional promote). Static mode keeps the URL path —
       the swap rides the same static<->api flag as the data client.
+      DISCOVERED during E2-M3 (auth commit): when CONSOLE_API_TOKEN is
+      configured, POST /feedback requires `Authorization: Bearer <token>` —
+      the api-mode data client / feedback submission must carry it (and the
+      console should degrade gracefully to the pre-filled-URL path on a 401).
+      With no token configured, /feedback stays open (localhost bind), so
+      token wiring is optional-but-supported in the frontend swap.
 
   - id: E2-CLOSE
     rank: 57
@@ -4646,3 +4653,41 @@ tasks:
       scope: Acting on attributions"; METHODOLOGY §1/§14). Mirrors the
       B2-FULLPANEL-AGREEMENT convention: optional research diagnostic,
       intentionally NOT in B-CLOSE.depends_on so it cannot deadlock closeout.
+
+  - id: MISC-SLA-CORE-SRC
+    rank: 139
+    title: "Promote the pure SLA core out of scripts/monitor_freshness.py into an importable src/quant module"
+    project: MISC
+    sub_project: tooling
+    status: ready
+    depends_on: []
+    blocks: []
+    deliverable:
+      file: src/quant/  # module location to be decided (storage/ or ingest/ sibling of realtime.py)
+      script_update: scripts/monitor_freshness.py
+      api_update: src/quant/console/api/app.py
+      tests: tests/test_monitor_freshness.py
+    references:
+      primary: scripts/monitor_freshness.py
+      api_consumer: src/quant/console/api/app.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E2-M3 (GET /health commit): the console API's /health
+      default seam consumes C1's pinned SLA machinery (SOURCE_SLAS /
+      evaluate_feed / monitor) by importlib-loading scripts/monitor_freshness.py
+      via a path resolved relative to the installed quant package
+      (api/app.py:_load_monitor_module). That works for this repo's editable
+      install and mirrors the existing trade_daily.py pattern, but it is a
+      layering inversion (an installed package importing a repo script) and
+      would break under a non-editable install with no scripts/ tree. Fix:
+      move the pure SLA-evaluation core (SourceSLA, SOURCE_SLAS, FeedState,
+      evaluate_feed, required-date helpers, read_latest adapters,
+      freshness_gate_report) into an importable src/quant module; the script
+      keeps its CLI + re-exports (so trade_daily and the tests keep working)
+      and the API imports the module directly, deleting _load_monitor_module.
+      Adding a new module under src/quant is a convention-setting decision
+      (AGENT_OPERATION "When to pause"), so this task carries that decision
+      rather than E2-M3 doing it implicitly. MISC (no CLOSE gate): the API
+      works as-is in the supported editable-install deployment; this is
+      hygiene, not an E2/C1 definition-of-done item.

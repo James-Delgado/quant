@@ -379,6 +379,336 @@ def test_feedback_route_is_outside_the_data_contract(sources):
     assert not feedback_routes[0].path.startswith(DATA_PREFIX)
 
 
+# ── GET /health + POST /recompute + auth (E2-M3) ─────────────────────────────
+
+import dataclasses  # noqa: E402
+import datetime as dt  # noqa: E402
+
+import pandas as pd  # noqa: E402
+
+from quant.console.api import app as api_app_mod  # noqa: E402
+from quant.console.api.app import (  # noqa: E402
+    HEALTH_PATH,
+    RECOMPUTE_PATH,
+    TOKEN_ENV_VAR,
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_token(monkeypatch):
+    """Isolate every test from a token exported in the developer's shell."""
+    monkeypatch.delenv(TOKEN_ENV_VAR, raising=False)
+
+
+@dataclasses.dataclass(frozen=True)
+class _FakeFeed:
+    """Duck-typed stand-in for ``monitor_freshness.FeedStatus``."""
+
+    name: str
+    state: str
+    latest: pd.Timestamp | None
+    required_date: dt.date | None
+    detail: str
+
+
+_FRESH = _FakeFeed(
+    name="tiingo",
+    state="fresh",
+    latest=pd.Timestamp("2026-06-26", tz="UTC"),
+    required_date=dt.date(2026, 6, 26),
+    detail="latest 2026-06-26 >= required 2026-06-26",
+)
+_STALE = _FakeFeed(
+    name="alpaca",
+    state="stale",
+    latest=pd.Timestamp("2026-06-20", tz="UTC"),
+    required_date=dt.date(2026, 6, 26),
+    detail="latest 2026-06-20 < required 2026-06-26",
+)
+_MISSING = _FakeFeed(
+    name="rss", state="missing", latest=None, required_date=None, detail="no observation"
+)
+
+
+def _health_client(sources, feeds) -> TestClient:
+    return TestClient(create_app(sources, feed_statuses_fn=lambda now: list(feeds)))
+
+
+def test_health_all_fresh(sources):
+    res = _health_client(sources, [_FRESH]).get(HEALTH_PATH)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "fresh"
+    # The clock is sources.now() — pinned to 2026-06-28T00:00:00Z by make_sources.
+    assert body["checked_at"] == "2026-06-28T00:00:00Z"
+    assert body["feeds"] == [
+        {
+            "name": "tiingo",
+            "state": "fresh",
+            "latest": "2026-06-26",
+            "required_date": "2026-06-26",
+            "detail": "latest 2026-06-26 >= required 2026-06-26",
+        }
+    ]
+
+
+def test_health_alerts_on_any_non_fresh(sources):
+    body = _health_client(sources, [_FRESH, _STALE]).get(HEALTH_PATH).json()
+    assert body["status"] == "alert"
+    states = {f["name"]: f["state"] for f in body["feeds"]}
+    assert states == {"tiingo": "fresh", "alpaca": "stale"}
+
+
+def test_health_serializes_missing_feed_with_nones(sources):
+    body = _health_client(sources, [_MISSING]).get(HEALTH_PATH).json()
+    assert body["status"] == "alert"
+    [feed] = body["feeds"]
+    assert feed["latest"] is None
+    assert feed["required_date"] is None
+
+
+def test_health_with_zero_feeds_is_alert_not_vacuous_fresh(sources):
+    """An empty evaluation is an alert (§9) — the SLA table always has 7 feeds."""
+    body = _health_client(sources, []).get(HEALTH_PATH).json()
+    assert body["status"] == "alert"
+    assert body["feeds"] == []
+
+
+def test_recompute_non_ascii_token_is_401_not_500(sources):
+    """compare_digest raises TypeError on non-ASCII str; byte-compare avoids a 500.
+
+    Header values are latin-1 on the wire, so the bytes form is what a real
+    client would send.
+    """
+    client = TestClient(create_app(sources, auth_token="s3cret"))
+    res = client.post(
+        RECOMPUTE_PATH, headers={b"Authorization": "Bearer sécrèt".encode("latin-1")}
+    )
+    assert res.status_code == 401
+
+
+def test_health_monitor_failure_is_503_not_fabricated_fresh(sources):
+    def broken(now):
+        raise RuntimeError("lake unreadable")
+
+    client = TestClient(create_app(sources, feed_statuses_fn=broken))
+    res = client.get(HEALTH_PATH)
+    assert res.status_code == 503
+    assert "freshness monitor unavailable" in res.json()["detail"]
+    assert "lake unreadable" in res.json()["detail"]
+
+
+def test_health_default_seam_runs_the_c1_monitor_with_sources_clock(sources, monkeypatch):
+    """With no injection, /health loads the C1-M3 script and calls monitor(now=...)."""
+    calls: dict = {}
+
+    class _FakeModule:
+        @staticmethod
+        def monitor(now=None):
+            calls["now"] = now
+            return [_FRESH]
+
+    monkeypatch.setattr(api_app_mod, "_load_monitor_module", lambda: _FakeModule)
+    body = TestClient(create_app(sources)).get(HEALTH_PATH).json()
+    assert body["status"] == "fresh"
+    assert calls["now"] == sources.now()
+
+
+def test_load_monitor_module_exposes_the_pinned_sla_machinery():
+    """The real script loads and carries the C1 SLA surface /health consumes.
+
+    ``tests/test_monitor_freshness.py`` registers the module in ``sys.modules``
+    under the same name, so this exercises the cached path when the full suite
+    runs and the importlib path when run standalone — both must yield the
+    pinned SLA table (one source of truth, METHODOLOGY §6).
+    """
+    mf = api_app_mod._load_monitor_module()
+    assert callable(mf.monitor)
+    assert callable(mf.evaluate_feed)
+    assert len(mf.SOURCE_SLAS) == 7  # 2 equity + 3 FRED + EDGAR + RSS (C1-M1 table)
+
+
+def test_load_monitor_module_failure_paths_never_cache_a_broken_module(tmp_path, monkeypatch):
+    """A missing or crashing script raises (→ /health 503) and leaves no cache."""
+    import sys as _sys
+
+    import quant
+
+    monkeypatch.delitem(_sys.modules, "monitor_freshness", raising=False)
+    fake_pkg_init = tmp_path / "src" / "quant" / "__init__.py"
+    monkeypatch.setattr(quant, "__file__", str(fake_pkg_init))
+
+    with pytest.raises(RuntimeError, match="not found"):
+        api_app_mod._load_monitor_module()
+
+    scripts = tmp_path / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "monitor_freshness.py").write_text("raise RuntimeError('boom')\n")
+    with pytest.raises(RuntimeError, match="boom"):
+        api_app_mod._load_monitor_module()
+    assert "monitor_freshness" not in _sys.modules  # failed load is never cached
+
+
+def test_serialize_feed_handles_a_real_feedstatus():
+    mf = api_app_mod._load_monitor_module()
+    spec = mf.SOURCE_SLAS[0]
+    status = mf.evaluate_feed(spec, pd.Timestamp("2026-06-26", tz="UTC"), "2026-06-29T00:00:00Z")
+    row = api_app_mod._serialize_feed(status)
+    assert row["name"] == spec.name
+    assert row["state"] in {"fresh", "stale", "missing"}
+    assert row["latest"] == "2026-06-26"
+    assert isinstance(row["required_date"], str)
+    assert row["detail"]
+
+
+def test_health_and_recompute_live_outside_the_data_contract(sources):
+    """The operational routes must not enter the /data export mirror (§6)."""
+    app = create_app(sources)
+    by_path = {
+        r.path: r
+        for r in app.routes
+        if isinstance(r, APIRoute) and r.path in (HEALTH_PATH, RECOMPUTE_PATH)
+    }
+    assert set(by_path) == {HEALTH_PATH, RECOMPUTE_PATH}
+    assert by_path[HEALTH_PATH].methods == {"GET"}
+    assert by_path[RECOMPUTE_PATH].methods == {"POST"}
+    for path in by_path:
+        assert not path.startswith(DATA_PREFIX)
+
+
+# ── POST /recompute auth + behaviour ─────────────────────────────────────────
+
+
+def test_recompute_with_no_token_configured_is_403_fail_closed(client):
+    res = client.post(RECOMPUTE_PATH)
+    assert res.status_code == 403
+    assert TOKEN_ENV_VAR in res.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},  # no Authorization at all
+        {"Authorization": "Bearer wrong"},  # bad token
+        {"Authorization": "Basic dG9rZW4="},  # wrong scheme
+        {"Authorization": "Bearer "},  # empty token
+    ],
+)
+def test_recompute_rejects_bad_credentials_with_401(sources, headers):
+    client = TestClient(create_app(sources, auth_token="s3cret"))
+    assert client.post(RECOMPUTE_PATH, headers=headers).status_code == 401
+
+
+def _bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_recompute_resets_the_memoized_default_sources(tmp_path, monkeypatch):
+    """After /recompute, the next request re-resolves ConsoleSources.default().
+
+    That re-resolution is the "recompute": a fresh feature-monitor memo over
+    the current lake state, with no server restart.
+    """
+    calls: list[bool] = []
+    real = make_sources(tmp_path)
+
+    def fake_default(cls, *, feature_monitor: bool = True):
+        calls.append(feature_monitor)
+        return real
+
+    monkeypatch.setattr(ConsoleSources, "default", classmethod(fake_default))
+    client = TestClient(create_app(feature_monitor=False, auth_token="s3cret"))
+    assert client.get(f"{DATA_PREFIX}/market.json").status_code == 200
+    assert calls == [False]
+
+    res = client.post(RECOMPUTE_PATH, headers=_bearer("s3cret"))
+    assert res.status_code == 200
+    assert res.json() == {"sources_reset": True, "static_files_written": None}
+
+    assert client.get(f"{DATA_PREFIX}/market.json").status_code == 200
+    assert calls == [False, False]  # resolved again after the reset
+
+
+def test_recompute_leaves_injected_sources_alone(sources):
+    client = TestClient(create_app(sources, auth_token="s3cret"))
+    res = client.post(RECOMPUTE_PATH, headers=_bearer("s3cret"))
+    assert res.status_code == 200
+    assert res.json()["sources_reset"] is False
+    # The injected sources still serve requests afterwards.
+    assert client.get(f"{DATA_PREFIX}/strategies.json").status_code == 200
+
+
+def test_recompute_write_static_runs_the_export_with_current_sources(sources):
+    calls: dict = {}
+
+    def fake_write_export(*, sources):
+        calls["sources"] = sources
+        return [Path("a.json"), Path("b.json"), Path("c.json")]
+
+    client = TestClient(
+        create_app(sources, auth_token="s3cret", write_export_fn=fake_write_export)
+    )
+    res = client.post(RECOMPUTE_PATH, json={"write_static": True}, headers=_bearer("s3cret"))
+    assert res.status_code == 200
+    assert res.json() == {"sources_reset": False, "static_files_written": 3}
+    assert calls["sources"] is sources
+
+
+def test_recompute_write_static_schema_failure_is_500(sources):
+    def failing_write_export(*, sources):
+        raise ValueError("export failed schema validation: catalog.json")
+
+    client = TestClient(
+        create_app(sources, auth_token="s3cret", write_export_fn=failing_write_export)
+    )
+    res = client.post(RECOMPUTE_PATH, json={"write_static": True}, headers=_bearer("s3cret"))
+    assert res.status_code == 500
+    assert "re-export failed" in res.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"write_static": "yes"},  # non-boolean flag
+        {"out_dir": "/tmp/evil"},  # unknown field — output path is never client-supplied
+    ],
+)
+def test_recompute_invalid_body_is_422(sources, body):
+    client = TestClient(create_app(sources, auth_token="s3cret"))
+    assert client.post(RECOMPUTE_PATH, json=body, headers=_bearer("s3cret")).status_code == 422
+
+
+# ── Shared token story: /feedback gated by the SAME token once configured ────
+
+
+def test_env_token_gates_feedback_and_recompute(sources, recorder, monkeypatch):
+    monkeypatch.setenv(TOKEN_ENV_VAR, "envtok")
+    client = TestClient(
+        create_app(sources, submit_report=recorder.submit, promote_issue=recorder.promote)
+    )
+    # /feedback now requires the token (the E2-M3 discovery note's one-auth-story).
+    assert client.post("/feedback", json=_payload()).status_code == 401
+    assert recorder.reports == []
+    assert client.post("/feedback", json=_payload(), headers=_bearer("envtok")).status_code == 201
+    assert len(recorder.reports) == 1
+    # Same token drives /recompute.
+    assert client.post(RECOMPUTE_PATH, headers=_bearer("envtok")).status_code == 200
+    assert client.post(RECOMPUTE_PATH, headers=_bearer("other")).status_code == 401
+
+
+def test_feedback_stays_open_when_no_token_is_configured(feedback_client, recorder):
+    """Pre-token behaviour is preserved under the localhost-only default bind."""
+    assert feedback_client.post("/feedback", json=_payload()).status_code == 201
+    assert len(recorder.reports) == 1
+
+
+def test_auth_token_argument_wins_over_env(sources, monkeypatch):
+    monkeypatch.setenv(TOKEN_ENV_VAR, "envtok")
+    client = TestClient(create_app(sources, auth_token="paramtok"))
+    assert client.post(RECOMPUTE_PATH, headers=_bearer("envtok")).status_code == 401
+    assert client.post(RECOMPUTE_PATH, headers=_bearer("paramtok")).status_code == 200
+
+
 # ── CLI entry point ──────────────────────────────────────────────────────────
 
 

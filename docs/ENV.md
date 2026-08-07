@@ -31,3 +31,9 @@ reads them automatically). For example, `DATA_ROOT=/mnt/ssd/quant/data` works
 without touching config.py.
 
 <!-- END AUTO-GENERATED -->
+
+## Optional — console API (E2)
+
+| Variable | Required | Used by | Description |
+|----------|----------|---------|-------------|
+| `CONSOLE_API_TOKEN` | No | `python -m quant.console.api` | Simple local bearer token for the console API's mutate routes (E2-M3). `POST /recompute` refuses to run without it (fail-closed); `POST /feedback` requires it only once set (otherwise it stays open under the localhost-only default bind). Send as `Authorization: Bearer <token>`. Deliberately **not** a `config.py` Setting — the API must be importable without credentials, and the token is read from the environment at request time. |

@@ -7,6 +7,11 @@ Canonical invocation:
 Binds to 127.0.0.1 by default — the console is single-user and local
 (PRD §2 non-goals: no multi-user auth); exposing it beyond localhost is a
 deliberate operator override, not a default.
+
+Auth (E2-M3): export ``CONSOLE_API_TOKEN`` before launching to enable the
+mutate routes' bearer token. ``POST /recompute`` requires it (fail-closed
+when unset); ``POST /feedback`` requires it only once set. The token is an
+env var, never a CLI flag — flags leak into the process listing.
 """
 
 from __future__ import annotations

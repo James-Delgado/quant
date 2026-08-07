@@ -6,6 +6,20 @@ Canonical entry points:
     python -m quant.console.api                # run locally via uvicorn
 """
 
-from quant.console.api.app import DATA_PREFIX, create_app
+from quant.console.api.app import (
+    DATA_PREFIX,
+    FEEDBACK_PATH,
+    HEALTH_PATH,
+    RECOMPUTE_PATH,
+    TOKEN_ENV_VAR,
+    create_app,
+)
 
-__all__ = ["DATA_PREFIX", "create_app"]
+__all__ = [
+    "DATA_PREFIX",
+    "FEEDBACK_PATH",
+    "HEALTH_PATH",
+    "RECOMPUTE_PATH",
+    "TOKEN_ENV_VAR",
+    "create_app",
+]
