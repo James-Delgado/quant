@@ -19,7 +19,10 @@ describe("freshnessLines", () => {
       source: "Trial Registry",
       stamp: "2026-06-28 17:52 UTC",
     });
-    expect(lines[2]).toMatchObject({ source: "Feature catalog", stamp: "unknown" });
+    expect(lines[2]).toMatchObject({
+      source: "Feature catalog",
+      stamp: "unknown",
+    });
   });
 
   it("flags a source lagging the export run by more than the threshold", () => {
@@ -41,7 +44,9 @@ describe("freshnessLines", () => {
 
 describe("FreshnessDisclosure", () => {
   it("renders a focusable ⓘ trigger, collapsed by default", () => {
-    render(<FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />);
+    render(
+      <FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />,
+    );
     const btn = screen.getByRole("button");
     expect(btn).toHaveClass("info");
     expect(btn).toHaveAttribute("aria-expanded", "false");
@@ -51,9 +56,13 @@ describe("FreshnessDisclosure", () => {
 
   it("reveals per-source rows in an accessible region on click", async () => {
     const user = userEvent.setup();
-    render(<FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />);
+    render(
+      <FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />,
+    );
     await user.click(screen.getByRole("button"));
-    const region = screen.getByRole("region", { name: /per-source data freshness/i });
+    const region = screen.getByRole("region", {
+      name: /per-source data freshness/i,
+    });
     expect(region.textContent).toContain("Trial Registry");
     expect(region.textContent).toContain("updated 2026-06-28 17:52 UTC");
     expect(region.textContent).toContain("updated unknown");
@@ -61,7 +70,9 @@ describe("FreshnessDisclosure", () => {
 
   it("wires aria-controls from the trigger to the revealed region", async () => {
     const user = userEvent.setup();
-    render(<FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />);
+    render(
+      <FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />,
+    );
     const btn = screen.getByRole("button");
     await user.click(btn);
     expect(btn).toHaveAttribute("aria-expanded", "true");
@@ -72,16 +83,22 @@ describe("FreshnessDisclosure", () => {
 
   it("shows a 'behind' badge only on the lagging source", async () => {
     const user = userEvent.setup();
-    render(<FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />);
+    render(
+      <FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />,
+    );
     await user.click(screen.getByRole("button"));
     const badges = screen.getAllByText(/^behind$/i);
     expect(badges).toHaveLength(1);
     // The badge belongs to the lagging Strategy-checkpoints row.
-    expect(badges[0].closest("li")?.textContent).toContain("Strategy checkpoints");
+    expect(badges[0].closest("li")?.textContent).toContain(
+      "Strategy checkpoints",
+    );
   });
 
   it("marks the trigger when any source is behind (accessible count)", () => {
-    render(<FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />);
+    render(
+      <FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />,
+    );
     const btn = screen.getByRole("button");
     expect(btn).toHaveClass("warn");
     expect(btn).toHaveAccessibleName(/1 behind the latest export/i);
@@ -91,7 +108,9 @@ describe("FreshnessDisclosure", () => {
     render(
       <FreshnessDisclosure
         generatedAt={GENERATED_AT}
-        sources={[{ source: "Trial Registry", modified_at: "2026-06-28T17:52:48Z" }]}
+        sources={[
+          { source: "Trial Registry", modified_at: "2026-06-28T17:52:48Z" },
+        ]}
       />,
     );
     const btn = screen.getByRole("button");
@@ -101,7 +120,9 @@ describe("FreshnessDisclosure", () => {
 
   it("dismisses on Escape", async () => {
     const user = userEvent.setup();
-    render(<FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />);
+    render(
+      <FreshnessDisclosure generatedAt={GENERATED_AT} sources={SOURCES} />,
+    );
     await user.click(screen.getByRole("button"));
     expect(screen.getByRole("region")).toBeInTheDocument();
     await user.keyboard("{Escape}");
