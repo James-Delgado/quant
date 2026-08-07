@@ -2434,7 +2434,8 @@ tasks:
     title: "E2-M3: Freshness/health endpoint + authenticated on-demand re-export"
     project: E
     sub_project: E2
-    status: ready
+    status: in_progress
+    started_at: 2026-08-07T22:40:15Z
     depends_on: [E2-M2]
     blocks: [E2-M4, E2-CLOSE]
     deliverable:
