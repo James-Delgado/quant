@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-06  # E2-M1 done (FastAPI scaffold at export parity; E2-M2 now ready); CORS requirement noted on E2-M4
+last_updated: 2026-08-07  # E2-M2 done (POST /feedback + promotion trigger; E2-M3 now ready); auth-unification note on E2-M3, modal-swap note on E2-M4
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2398,8 +2398,9 @@ tasks:
     title: "E2-M2: POST /feedback endpoint (server-side issue + promotion trigger)"
     project: E
     sub_project: E2
-    status: in_progress
+    status: done
     started_at: 2026-08-07T22:11:05Z
+    completed_at: 2026-08-07
     depends_on: [E2-M1]
     blocks: [E2-M3, E2-CLOSE]
     deliverable:
@@ -2415,13 +2416,25 @@ tasks:
       the feedback->PRIORITIES promotion. Acceptance: a posted report appears as
       a feedback issue with context; promotion creates a PRIORITIES task. GitHub
       token is server-side env/secret manager only, NEVER in the client.
+      COMPLETED 2026-08-07: POST /feedback added to create_app with two
+      injectable write seams (submit_report / promote_issue) defaulting lazily
+      to the E1-M6 service layer (feedback.submit_issue_via_gh / feedback.promote
+      stamped with sources.now()'s date) — the frozen FeedbackReport dataclass
+      stays the single payload contract (no parallel Pydantic model, per the
+      E2-M1 schema decision). Optional `promote: bool` rides the payload. Error
+      contract: 422 malformed (incl. a boundary non-string-field guard the
+      dataclass can't enforce at runtime), 502 gh failure, and a promotion
+      failure AFTER the issue landed returns 201 with promoted:false +
+      promotion_error (never a 5xx that would hide the created issue, §9).
+      Route lives OUTSIDE /data so the export-mirror drift contract is untouched.
+      100% line coverage on api/app.py; full suite 1208 passed / 4 skipped.
 
   - id: E2-M3
     rank: 55
     title: "E2-M3: Freshness/health endpoint + authenticated on-demand re-export"
     project: E
     sub_project: E2
-    status: blocked
+    status: ready
     depends_on: [E2-M2]
     blocks: [E2-M4, E2-CLOSE]
     deliverable:
@@ -2436,6 +2449,13 @@ tasks:
       definitions) + an authenticated on-demand re-export/recompute trigger.
       Acceptance: health reflects real lake/feed state; recompute refreshes
       view-models without a manual export step.
+      DISCOVERED during E2-M2 (POST /feedback commit): the feedback write path
+      (GitHub issue creation + the promote flag's docs/PRIORITIES.yaml append)
+      ships unauthenticated — acceptable under the localhost-only default bind
+      (127.0.0.1, PRD §2 non-goals), but when this milestone introduces the
+      simple local token for the re-export trigger, gate POST /feedback (at
+      minimum promote=true) behind the SAME token so all write/mutate routes
+      share one auth story.
 
   - id: E2-M4
     rank: 56
@@ -2462,6 +2482,11 @@ tasks:
       needs CORS on the FastAPI app (or a vite proxy). Neither is configured
       in E2-M1 (deliberately: single-origin static mode needs none); add one
       here.
+      DISCOVERED during E2-M2 (POST /feedback commit): in api mode the
+      "Report an issue" modal's submission should swap the pre-filled
+      window.open(issue_url) two-click path for POST /feedback (one click,
+      server-side token, optional promote). Static mode keeps the URL path —
+      the swap rides the same static<->api flag as the data client.
 
   - id: E2-CLOSE
     rank: 57

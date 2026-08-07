@@ -174,6 +174,211 @@ def test_index_lists_every_data_route(sources, client):
     assert len(body["data_routes"]) == n_data_routes
 
 
+# ── POST /feedback (E2-M2) ───────────────────────────────────────────────────
+
+from quant.console import feedback as feedback_mod  # noqa: E402
+from quant.console.api.app import parse_issue_number  # noqa: E402
+
+ISSUE_URL = "https://github.com/James-Delgado/quant/issues/42"
+
+
+def _payload(**overrides) -> dict:
+    """A valid capture payload — the FeedbackReport fields, exactly (E1-M6)."""
+    base = dict(
+        title="Sharpe axis mislabeled",
+        type="bug",
+        severity="med",
+        description="Equity panel y-axis says % but plots decimals.",
+        panel="Portfolio",
+        build_sha="abc1234",
+        timestamp="2026-08-07T22:00:00Z",
+        app_version="1.0.0",
+    )
+    base.update(overrides)
+    return base
+
+
+class _Recorder:
+    """Injectable submit/promote fakes that record their calls."""
+
+    def __init__(self):
+        self.reports: list[feedback_mod.FeedbackReport] = []
+        self.promoted: list[int] = []
+
+    def submit(self, report):
+        self.reports.append(report)
+        return ISSUE_URL
+
+    def promote(self, issue_number):
+        self.promoted.append(issue_number)
+        return feedback_mod.PromotedTask(
+            id=f"FEEDBACK-{issue_number}",
+            rank=999,
+            title="promoted",
+            issue_url=ISSUE_URL,
+            body="",
+        )
+
+
+@pytest.fixture
+def recorder() -> _Recorder:
+    return _Recorder()
+
+
+@pytest.fixture
+def feedback_client(sources, recorder) -> TestClient:
+    app = create_app(sources, submit_report=recorder.submit, promote_issue=recorder.promote)
+    return TestClient(app)
+
+
+def test_post_feedback_files_issue_with_full_payload(feedback_client, recorder):
+    """The posted fields reach the submitter verbatim — one shared schema (§6).
+
+    The endpoint constructs the SAME FeedbackReport the E1 modal/service layer
+    uses, so the issue title/body/context construction is E1-M6's, unchanged.
+    """
+    res = feedback_client.post("/feedback", json=_payload())
+    assert res.status_code == 201
+    body = res.json()
+    assert body == {"issue_url": ISSUE_URL, "issue_number": 42, "promoted": False}
+    [report] = recorder.reports
+    assert report == feedback_mod.FeedbackReport(**_payload())
+    assert recorder.promoted == []  # no promotion unless asked
+
+
+def test_post_feedback_promotes_when_requested(feedback_client, recorder):
+    res = feedback_client.post("/feedback", json=_payload(promote=True))
+    assert res.status_code == 201
+    body = res.json()
+    assert body["promoted"] is True
+    assert body["task_id"] == "FEEDBACK-42"
+    assert recorder.promoted == [42]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"type": "rant"},  # enum violation (pinned VALID_TYPES, §1)
+        {"severity": "catastrophic"},  # enum violation (pinned VALID_SEVERITIES)
+        {"title": "   "},  # empty title
+        {"title": 5},  # non-string field (would 500 deep in issue_body otherwise)
+        {"description": 5},  # non-string field
+        {"timestamp": None},  # non-string field
+        {"unexpected": "field"},  # unknown field — the schema is closed
+        {"promote": "yes"},  # promote must be a boolean
+    ],
+)
+def test_post_feedback_invalid_payload_is_422_and_files_nothing(feedback_client, recorder, bad):
+    res = feedback_client.post("/feedback", json=_payload(**bad))
+    assert res.status_code == 422
+    assert recorder.reports == []
+
+
+def test_post_feedback_missing_field_is_422(feedback_client, recorder):
+    payload = _payload()
+    del payload["description"]
+    assert feedback_client.post("/feedback", json=payload).status_code == 422
+    assert recorder.reports == []
+
+
+def test_post_feedback_gh_failure_is_502_and_never_promotes(sources, recorder):
+    def failing_submit(report):
+        raise RuntimeError("gh not authenticated")
+
+    client = TestClient(
+        create_app(sources, submit_report=failing_submit, promote_issue=recorder.promote)
+    )
+    res = client.post("/feedback", json=_payload(promote=True))
+    assert res.status_code == 502
+    assert "gh not authenticated" in res.json()["detail"]
+    assert recorder.promoted == []
+
+
+def test_post_feedback_promotion_failure_is_reported_not_hidden(sources, recorder):
+    """The issue landed; a failed promotion must not masquerade as a 5xx (§9)."""
+
+    def failing_promote(issue_number):
+        raise ValueError("task FEEDBACK-42 already exists")
+
+    client = TestClient(
+        create_app(sources, submit_report=recorder.submit, promote_issue=failing_promote)
+    )
+    res = client.post("/feedback", json=_payload(promote=True))
+    assert res.status_code == 201
+    body = res.json()
+    assert body["issue_url"] == ISSUE_URL  # the created issue is still reported
+    assert body["promoted"] is False
+    assert "already exists" in body["promotion_error"]
+
+
+def test_post_feedback_unparseable_issue_url_skips_promotion(sources, recorder):
+    def odd_submit(report):
+        return "Created!"  # no /issues/<n> — promotion has no number to act on
+
+    client = TestClient(
+        create_app(sources, submit_report=odd_submit, promote_issue=recorder.promote)
+    )
+    res = client.post("/feedback", json=_payload(promote=True))
+    assert res.status_code == 201
+    body = res.json()
+    assert body["issue_number"] is None
+    assert body["promoted"] is False
+    assert "could not parse" in body["promotion_error"]
+    assert recorder.promoted == []
+
+
+def test_post_feedback_defaults_wire_to_the_feedback_module(sources, monkeypatch):
+    """With no injection, the endpoint resolves the E1-M6 service functions
+    lazily — submit_issue_via_gh and promote (stamped with sources.now()'s
+    date) — so the server-side path is the SAME code the CLI uses.
+    """
+    calls: dict = {}
+
+    def fake_submit(report):
+        calls["report"] = report
+        return ISSUE_URL
+
+    def fake_promote(issue_number, *, today=None):
+        calls["promote"] = (issue_number, today)
+        return feedback_mod.PromotedTask(
+            id=f"FEEDBACK-{issue_number}", rank=1, title="t", issue_url=ISSUE_URL, body=""
+        )
+
+    monkeypatch.setattr(feedback_mod, "submit_issue_via_gh", fake_submit)
+    monkeypatch.setattr(feedback_mod, "promote", fake_promote)
+    client = TestClient(create_app(sources))
+    res = client.post("/feedback", json=_payload(promote=True))
+    assert res.status_code == 201
+    assert res.json()["promoted"] is True
+    assert isinstance(calls["report"], feedback_mod.FeedbackReport)
+    # The fixture clock is pinned to 2026-06-28T00:00:00Z (see make_sources).
+    assert calls["promote"] == (42, "2026-06-28")
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (ISSUE_URL, 42),
+        ("https://github.com/acme/widgets/issues/7/", 7),
+        ("  https://github.com/acme/widgets/issues/7\n", 7),
+        ("https://github.com/acme/widgets/pull/7", None),
+        ("Created!", None),
+        ("", None),
+    ],
+)
+def test_parse_issue_number(url, expected):
+    assert parse_issue_number(url) == expected
+
+
+def test_feedback_route_is_outside_the_data_contract(sources):
+    """POST /feedback must not enter the /data export-mirror route set (§6)."""
+    app = create_app(sources)
+    feedback_routes = [r for r in app.routes if isinstance(r, APIRoute) and r.path == "/feedback"]
+    assert len(feedback_routes) == 1
+    assert feedback_routes[0].methods == {"POST"}
+    assert not feedback_routes[0].path.startswith(DATA_PREFIX)
+
+
 # ── CLI entry point ──────────────────────────────────────────────────────────
 
 
