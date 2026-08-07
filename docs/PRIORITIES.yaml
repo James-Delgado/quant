@@ -2398,7 +2398,8 @@ tasks:
     title: "E2-M2: POST /feedback endpoint (server-side issue + promotion trigger)"
     project: E
     sub_project: E2
-    status: ready
+    status: in_progress
+    started_at: 2026-08-07T22:11:05Z
     depends_on: [E2-M1]
     blocks: [E2-M3, E2-CLOSE]
     deliverable:
