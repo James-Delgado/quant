@@ -4,8 +4,11 @@
  * The UI surface is the button + this capture modal ONLY — there is NO
  * user-facing tracker panel (DECISIONS #11). The modal collects
  * {title, type, severity, description} and auto-captures {panel, build_sha,
- * timestamp, app_version}; Submit opens a pre-filled `feedback`-labeled GitHub
- * issue in a new tab (E1 has no backend — E2 swaps this for `POST /feedback`).
+ * timestamp, app_version}. Submission rides the E2-M4 static↔api flag:
+ * static mode opens a pre-filled `feedback`-labeled GitHub issue in a new tab
+ * (E1's no-backend path); api mode POSTs to the E2 service's `/feedback`
+ * (one click, server-side token), carrying the optional bearer token and
+ * degrading to the pre-filled-URL path on a 401.
  *
  * A11y: the dialog is `role="dialog" aria-modal`, labelled by its heading, opens
  * with focus on the first field, traps Tab, closes on Esc / Cancel / backdrop,
@@ -16,10 +19,13 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { NAV_ITEMS, DEFAULT_PATH } from "@/nav";
 import { APP_VERSION, BUILD_SHA } from "@/lib/utils";
+import { API_BASE, API_TOKEN, DATA_SOURCE } from "@/lib/dataClient";
 import {
   buildIssueUrl,
+  FeedbackAuthError,
   FEEDBACK_SEVERITIES,
   FEEDBACK_TYPES,
+  submitFeedback,
   type FeedbackReport,
   type FeedbackSeverity,
   type FeedbackType,
@@ -35,6 +41,7 @@ export function ReportButton() {
   const [severity, setSeverity] = useState<FeedbackSeverity>("med");
   const [description, setDescription] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -90,7 +97,17 @@ export function ReportButton() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  function submit() {
+  /** Static-mode path (and api-mode 401 fallback): pre-filled issue tab. */
+  function openIssueTab(report: FeedbackReport, message: string) {
+    window.open(buildIssueUrl(report), "_blank", "noopener,noreferrer");
+    setOpen(false);
+    triggerRef.current?.focus();
+    setTitle("");
+    setDescription("");
+    setToast(message);
+  }
+
+  async function submit() {
     const report: FeedbackReport = {
       title,
       type,
@@ -101,18 +118,54 @@ export function ReportButton() {
       timestamp: new Date().toISOString(),
       appVersion: APP_VERSION,
     };
-    // No backend (E1): open the pre-filled issue in a new tab.
-    window.open(buildIssueUrl(report), "_blank", "noopener,noreferrer");
-    setOpen(false);
-    triggerRef.current?.focus();
-    setTitle("");
-    setDescription("");
-    setToast(
-      "Report opened in a new tab — submit it on GitHub to file the issue.",
-    );
+
+    if (DATA_SOURCE !== "api") {
+      // Static mode (E1's no-backend path): open the pre-filled issue tab.
+      openIssueTab(
+        report,
+        "Report opened in a new tab — submit it on GitHub to file the issue.",
+      );
+      return;
+    }
+
+    // Api mode (E2-M4): one-click server-side filing via POST /feedback.
+    setBusy(true);
+    try {
+      const filed = await submitFeedback(report, {
+        apiBase: API_BASE,
+        token: API_TOKEN,
+      });
+      setOpen(false);
+      triggerRef.current?.focus();
+      setTitle("");
+      setDescription("");
+      setToast(
+        filed.issueNumber !== null
+          ? `Issue #${filed.issueNumber} filed on GitHub.`
+          : "Issue filed on GitHub.",
+      );
+    } catch (error: unknown) {
+      if (error instanceof FeedbackAuthError) {
+        // Graceful 401 degrade (E2-M3 discovery note): fall back to the
+        // pre-filled-URL path so the report is never lost.
+        openIssueTab(
+          report,
+          "API auth failed — opened a pre-filled issue in a new tab instead.",
+        );
+      } else {
+        // Honest failure (METHODOLOGY §9): keep the modal (and the typed
+        // report) intact so the user can retry. Refocus the dialog — the
+        // disabled in-flight Submit dropped focus to <body>, outside the trap.
+        const detail = error instanceof Error ? error.message : String(error);
+        setToast(`Failed to file the issue: ${detail}`);
+        firstFieldRef.current?.focus();
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const submitDisabled = title.trim().length === 0;
+  const submitDisabled = title.trim().length === 0 || busy;
 
   return (
     <>
@@ -214,10 +267,10 @@ export function ReportButton() {
               <button
                 type="button"
                 className="btn primary"
-                onClick={submit}
+                onClick={() => void submit()}
                 disabled={submitDisabled}
               >
-                Submit
+                {busy ? "Submitting…" : "Submit"}
               </button>
             </div>
           </div>

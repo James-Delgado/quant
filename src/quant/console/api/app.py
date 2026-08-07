@@ -38,6 +38,13 @@ rather than running unauthenticated. ``POST /feedback`` predates the token and
 stays open when none is configured (acceptable under the localhost-only default
 bind, PRD §2 non-goals) but requires the SAME token as soon as one is set, so
 all mutating routes share one auth story (E2-M3 discovery note).
+
+CORS (E2-M4): the vite dev server (and a built ``dist/`` served from any other
+local origin) runs on a different origin than this API, so api-mode fetches
+need CORS. Origins come from ``CONSOLE_API_CORS_ORIGINS`` (comma-separated) or
+the ``cors_origins`` factory argument, defaulting to the vite dev origins;
+configuring an empty value disables cross-origin access entirely. Single-origin
+static mode never needed CORS, and still doesn't.
 """
 
 from __future__ import annotations
@@ -54,6 +61,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
 from quant.console import feedback, readers, schemas
@@ -87,6 +95,17 @@ RECOMPUTE_PATH = "/recompute"
 # exporting the var before launch) control it without rebuilding the app.
 TOKEN_ENV_VAR = "CONSOLE_API_TOKEN"
 
+# Environment variable holding the comma-separated CORS allow-list (E2-M4).
+# Unset → the vite dev-server origins below, so `npm run dev` against a local
+# API works out of the box; set-but-empty → CORS disabled. Pinned name per
+# METHODOLOGY §1; documented in docs/ENV.md. Unlike the token this is read at
+# app-creation time — middleware cannot be added per request.
+CORS_ENV_VAR = "CONSOLE_API_CORS_ORIGINS"
+
+# Vite's default dev origin, both spellings — browsers treat localhost and
+# 127.0.0.1 as distinct origins.
+DEFAULT_CORS_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
 # ``gh issue create`` prints the new issue's URL; the trailing number is what
 # the promotion path needs.
 _ISSUE_NUMBER_RE = re.compile(r"/issues/(\d+)/?$")
@@ -96,6 +115,22 @@ def parse_issue_number(issue_url: str) -> int | None:
     """Extract the issue number from a GitHub issue URL, or ``None``."""
     match = _ISSUE_NUMBER_RE.search(issue_url.strip())
     return int(match.group(1)) if match else None
+
+
+def resolve_cors_origins(cors_origins: list[str] | None = None) -> list[str]:
+    """The CORS allow-list: the factory argument, else the env var, else defaults.
+
+    The env var is comma-separated; entries are stripped and empties dropped,
+    so ``CONSOLE_API_CORS_ORIGINS=""`` (or an explicit ``[]``) disables CORS
+    outright rather than silently falling back to the defaults (METHODOLOGY §9
+    — an operator who turned cross-origin access off gets it off).
+    """
+    if cors_origins is not None:
+        return list(cors_origins)
+    raw = os.environ.get(CORS_ENV_VAR)
+    if raw is None:
+        return list(DEFAULT_CORS_ORIGINS)
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
 def _iso_utc(value: dt.datetime) -> str:
@@ -183,6 +218,7 @@ def create_app(
     feed_statuses_fn: Callable[[dt.datetime], list[Any]] | None = None,
     write_export_fn: Callable[..., list[Path]] | None = None,
     auth_token: str | None = None,
+    cors_origins: list[str] | None = None,
 ) -> FastAPI:
     """Build the console API app.
 
@@ -208,8 +244,22 @@ def create_app(
     :func:`quant.console.export.write_export` into the default export dir);
     ``auth_token`` pins the bearer token explicitly (default: read the
     ``CONSOLE_API_TOKEN`` env var at request time).
+
+    ``cors_origins`` (E2-M4) pins the CORS allow-list explicitly (default:
+    :func:`resolve_cors_origins` — the ``CONSOLE_API_CORS_ORIGINS`` env var,
+    else the vite dev origins). An empty list disables CORS.
     """
     app = FastAPI(title=API_TITLE, version=API_VERSION)
+    allowed_origins = resolve_cors_origins(cors_origins)
+    if allowed_origins:
+        # Exact-origin allow-list, no cookies (auth is a bearer header). The
+        # Authorization header must be allowed for the api-mode /feedback POST.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["Authorization", "Content-Type"],
+        )
     state: dict[str, ConsoleSources | None] = {"sources": sources}
     # When sources are injected, /recompute has nothing to reset — the caller
     # owns their lifecycle. Only the lazily resolved default is droppable.

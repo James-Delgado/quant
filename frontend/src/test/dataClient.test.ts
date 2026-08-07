@@ -55,3 +55,51 @@ describe("dataClient", () => {
     expect(m.sources[1].modified_at).toBeNull();
   });
 });
+
+// ── static ↔ api source resolution (E2-M4) ───────────────────────────────────
+
+import {
+  DEFAULT_API_BASE,
+  resolveApiBase,
+  resolveApiToken,
+  resolveDataBase,
+  resolveDataSource,
+} from "@/lib/dataClient";
+
+describe("data-source resolution (E2-M4)", () => {
+  it("defaults to static with the document-relative base", () => {
+    expect(resolveDataSource({})).toBe("static");
+    expect(resolveDataBase({ BASE_URL: "./" })).toBe("./data/");
+  });
+
+  it("api mode points the same paths at the service's /data tree", () => {
+    const env = { VITE_DATA_SOURCE: "api" };
+    expect(resolveDataSource(env)).toBe("api");
+    expect(resolveDataBase(env)).toBe(`${DEFAULT_API_BASE}/data/`);
+  });
+
+  it("honours VITE_API_BASE and trims trailing slashes", () => {
+    const env = {
+      VITE_DATA_SOURCE: "api",
+      VITE_API_BASE: "http://127.0.0.1:9001//",
+    };
+    expect(resolveApiBase(env)).toBe("http://127.0.0.1:9001");
+    expect(resolveDataBase(env)).toBe("http://127.0.0.1:9001/data/");
+  });
+
+  it("normalises case/whitespace in the flag", () => {
+    expect(resolveDataSource({ VITE_DATA_SOURCE: " API " })).toBe("api");
+  });
+
+  it("throws on an unknown flag value rather than silently serving static", () => {
+    expect(() => resolveDataSource({ VITE_DATA_SOURCE: "live" })).toThrow(
+      /VITE_DATA_SOURCE/,
+    );
+  });
+
+  it("resolves the optional bearer token, blank meaning none", () => {
+    expect(resolveApiToken({})).toBeUndefined();
+    expect(resolveApiToken({ VITE_CONSOLE_API_TOKEN: "  " })).toBeUndefined();
+    expect(resolveApiToken({ VITE_CONSOLE_API_TOKEN: "tok" })).toBe("tok");
+  });
+});

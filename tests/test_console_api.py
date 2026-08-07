@@ -727,3 +727,100 @@ def test_cli_main_passes_args_to_uvicorn(monkeypatch):
     assert captured["host"] == api_main.DEFAULT_HOST  # localhost-only default
     assert captured["port"] == 9001
     assert isinstance(captured["app"], FastAPI)
+
+
+# ── CORS (E2-M4) ──────────────────────────────────────────────────────────────
+
+from quant.console.api.app import (  # noqa: E402
+    CORS_ENV_VAR,
+    DEFAULT_CORS_ORIGINS,
+    resolve_cors_origins,
+)
+
+_VITE_ORIGIN = "http://localhost:5173"
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_cors(monkeypatch):
+    """Isolate every test from a CORS allow-list exported in the shell."""
+    monkeypatch.delenv(CORS_ENV_VAR, raising=False)
+
+
+def test_resolve_cors_origins_precedence(monkeypatch):
+    # Factory argument wins outright, including an explicit empty list.
+    assert resolve_cors_origins(["http://a"]) == ["http://a"]
+    assert resolve_cors_origins([]) == []
+    # Env unset → the vite dev defaults.
+    assert resolve_cors_origins() == list(DEFAULT_CORS_ORIGINS)
+    # Env set → parsed comma-separated, stripped, empties dropped.
+    monkeypatch.setenv(CORS_ENV_VAR, " http://a , ,http://b ")
+    assert resolve_cors_origins() == ["http://a", "http://b"]
+    # Env set-but-empty → CORS disabled, NOT a silent fall back to defaults.
+    monkeypatch.setenv(CORS_ENV_VAR, "")
+    assert resolve_cors_origins() == []
+
+
+def test_cors_allows_vite_dev_origin_by_default(sources):
+    client = TestClient(create_app(sources))
+    res = client.get(f"{DATA_PREFIX}/strategies.json", headers={"Origin": _VITE_ORIGIN})
+    assert res.status_code == 200
+    assert res.headers["access-control-allow-origin"] == _VITE_ORIGIN
+
+
+def test_cors_rejects_unlisted_origin(sources):
+    client = TestClient(create_app(sources))
+    res = client.get(
+        f"{DATA_PREFIX}/strategies.json", headers={"Origin": "http://evil.example"}
+    )
+    # The data is still served (same-origin policy is a browser concern) but no
+    # allow-origin header is granted, so a browser will refuse to expose it.
+    assert res.status_code == 200
+    assert "access-control-allow-origin" not in res.headers
+
+
+def test_cors_preflight_allows_authorization_header_for_feedback(sources):
+    """The api-mode feedback POST sends a bearer token; preflight must allow it."""
+    client = TestClient(create_app(sources))
+    res = client.options(
+        "/feedback",
+        headers={
+            "Origin": _VITE_ORIGIN,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Authorization, Content-Type",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers["access-control-allow-origin"] == _VITE_ORIGIN
+    allowed = res.headers["access-control-allow-headers"].lower()
+    assert "authorization" in allowed and "content-type" in allowed
+
+
+def test_cors_env_var_overrides_defaults(sources, monkeypatch):
+    monkeypatch.setenv(CORS_ENV_VAR, "http://127.0.0.1:4173")
+    client = TestClient(create_app(sources))
+    ok = client.get(
+        f"{DATA_PREFIX}/strategies.json", headers={"Origin": "http://127.0.0.1:4173"}
+    )
+    assert ok.headers["access-control-allow-origin"] == "http://127.0.0.1:4173"
+    default_now_unlisted = client.get(
+        f"{DATA_PREFIX}/strategies.json", headers={"Origin": _VITE_ORIGIN}
+    )
+    assert "access-control-allow-origin" not in default_now_unlisted.headers
+
+
+def test_cors_disabled_by_empty_env_or_empty_argument(sources, monkeypatch):
+    monkeypatch.setenv(CORS_ENV_VAR, "")
+    for app in (create_app(sources), create_app(sources, cors_origins=[])):
+        res = TestClient(app).get(
+            f"{DATA_PREFIX}/strategies.json", headers={"Origin": _VITE_ORIGIN}
+        )
+        assert "access-control-allow-origin" not in res.headers
+
+
+def test_cors_argument_wins_over_env(sources, monkeypatch):
+    monkeypatch.setenv(CORS_ENV_VAR, "http://from-env")
+    client = TestClient(create_app(sources, cors_origins=["http://from-arg"]))
+    res = client.get(
+        f"{DATA_PREFIX}/strategies.json", headers={"Origin": "http://from-arg"}
+    )
+    assert res.headers["access-control-allow-origin"] == "http://from-arg"

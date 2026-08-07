@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-07  # E2-M4 in_progress (frontend static<->api data-source swap)
+last_updated: 2026-08-07  # E2-M4 done (static<->api flag + CORS + api-mode feedback POST); E2-CLOSE now ready; E2-M4-PROMOTE-UI + E2-SPA-STATIC-MOUNT appended (optional)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2464,8 +2464,9 @@ tasks:
     title: "E2-M4: Frontend data-source swap behind a static<->api flag"
     project: E
     sub_project: E2
-    status: in_progress
+    status: done
     started_at: 2026-08-07T23:04:21Z
+    completed_at: 2026-08-07
     depends_on: [E2-M3]
     blocks: [E2-CLOSE]
     deliverable:
@@ -2496,13 +2497,26 @@ tasks:
       console should degrade gracefully to the pre-filled-URL path on a 401).
       With no token configured, /feedback stays open (localhost bind), so
       token wiring is optional-but-supported in the frontend swap.
+      COMPLETED 2026-08-07: `VITE_DATA_SOURCE` (static default | api; unknown
+      values throw at startup, no silent fallback §9) + `VITE_API_BASE`
+      (default http://127.0.0.1:8000) resolve the data base in
+      frontend/src/lib/dataClient.ts — same paths either way, zero view/logic
+      change. CORS chosen over a vite proxy (covers built dist too):
+      CONSOLE_API_CORS_ORIGINS env var / cors_origins factory arg on
+      create_app, default vite dev origins, empty disables. Api-mode modal
+      swap: submitFeedback() POSTs the snake_case FeedbackReport payload with
+      optional `VITE_CONSOLE_API_TOKEN` bearer; 401 degrades to the pre-filled
+      issues/new tab; other failures keep the modal + typed report for retry.
+      Verified live: uvicorn + curl CORS smoke (allow-origin on vite origin,
+      preflight allows Authorization, none for unlisted origins). 130 frontend
+      tests, 65 API tests, lint/format/build green.
 
   - id: E2-CLOSE
     rank: 57
     title: "E2-CLOSE: E2 closeout — console served live by the API + closeout report"
     project: E
     sub_project: E2
-    status: blocked
+    status: ready
     depends_on: [E2-M1, E2-M2, E2-M3, E2-M4]
     blocks: [E3-M1, E4-M1]
     deliverable:
@@ -4692,3 +4706,57 @@ tasks:
       rather than E2-M3 doing it implicitly. MISC (no CLOSE gate): the API
       works as-is in the supported editable-install deployment; this is
       hygiene, not an E2/C1 definition-of-done item.
+
+  - id: E2-M4-PROMOTE-UI
+    rank: 140
+    title: "E2-M4 follow-up (optional): expose the feedback->PRIORITIES promote flag in the api-mode report modal"
+    project: E
+    sub_project: E2
+    status: ready
+    depends_on: [E2-M4]
+    blocks: []
+    deliverable:
+      app: frontend/
+    references:
+      primary: docs/project-e/E2-console-api.prd.md
+      endpoint: src/quant/console/api/app.py
+    est_complexity: small
+    notes: |
+      Discovered during E2-M4 (frontend data-source swap): POST /feedback
+      accepts an optional `promote: bool` (E2-M2) that files the issue AND
+      creates the PRIORITIES task in one call, but the api-mode modal never
+      sends it — submitFeedback() posts the report fields only. If promotion
+      from the console is wanted, add a checkbox (api mode only; static mode's
+      pre-filled-URL path cannot promote) + carry `promote` in the payload +
+      surface `promoted` / `promotion_error` from the 201 body in the toast.
+      OPTIONAL — beyond the E2 PRD §7 definition of done, so deliberately NOT
+      added to E2-CLOSE.depends_on (E1 optional-follow-up precedent: closeout
+      certifies the PRD scope, not every enhancement).
+
+  - id: E2-SPA-STATIC-MOUNT
+    rank: 141
+    title: "E2 follow-up (optional): serve the built SPA (frontend/dist) from the FastAPI app — single origin, zero CORS"
+    project: E
+    sub_project: E2
+    status: ready
+    depends_on: [E2-M4]
+    blocks: []
+    deliverable:
+      file: src/quant/console/api/app.py
+      tests: tests/test_console_api.py
+    references:
+      primary: docs/project-e/E2-console-api.prd.md
+      cors_config: src/quant/console/api/app.py
+    est_complexity: small
+    notes: |
+      Discovered during E2-M4 (CORS decision): cross-origin config exists only
+      because the SPA and the API are served from different origins. Mounting
+      frontend/dist as StaticFiles on the API app (e.g. app.mount("/", ...) or
+      a /console prefix) would give a one-process, one-origin deployment where
+      api mode needs no CORS and no VITE_API_BASE (relative fetches). Keep the
+      mount optional (the dist/ tree is gitignored and build-produced; the API
+      must keep working without it) and keep CONSOLE_API_CORS_ORIGINS for the
+      dev-server workflow. OPTIONAL — beyond the E2 PRD §7 definition of done;
+      deliberately NOT added to E2-CLOSE.depends_on (E1 optional-follow-up
+      precedent). If E2-CLOSE's validation chooses this as its serving story,
+      it can pull the task forward.

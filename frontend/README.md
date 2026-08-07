@@ -62,6 +62,35 @@ The GBM arms are multi-hour, full-panel runs (see the root `CLAUDE.md` runtimes)
 the ARIMA control arm is fast. A successful run prints
 `Fan-out: 4 strategies, 4 detail + 4 provenance files.` with no warning.
 
+## Data source: static ↔ api (E2-M4)
+
+The data client reads either source behind a flag — no view or logic change,
+because the E2 FastAPI service mirrors the export tree under `/data/` at
+schema parity by construction:
+
+| Mode                 | `VITE_DATA_SOURCE` | Data base                                       | Report-an-issue                                                                 |
+| -------------------- | ------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| **static** (default) | unset / `static`   | `public/data/` (copied export)                  | opens a pre-filled GitHub `issues/new` tab                                      |
+| **api**              | `api`              | `${VITE_API_BASE:-http://127.0.0.1:8000}/data/` | one-click `POST /feedback` (server-side token; degrades to the URL path on 401) |
+
+Run the console against a live API:
+
+```bash
+# Terminal 1 — the E2 service (repo root):
+PYTHONPATH=src .venv/bin/python -m quant.console.api
+
+# Terminal 2 — api-mode dev server:
+VITE_DATA_SOURCE=api npm run dev
+```
+
+The API allows the vite dev origins by default (`CONSOLE_API_CORS_ORIGINS`
+overrides). If the server sets `CONSOLE_API_TOKEN`, give the frontend the same
+value as `VITE_CONSOLE_API_TOKEN` so feedback submission authenticates —
+remember `VITE_*` values are embedded in the bundle, so treat that token as
+localhost-grade, not a secret. All three vars are documented in
+[`docs/ENV.md`](../docs/ENV.md). An unknown `VITE_DATA_SOURCE` value throws at
+startup rather than silently serving static data (METHODOLOGY §9).
+
 ## Commands
 
 ```bash

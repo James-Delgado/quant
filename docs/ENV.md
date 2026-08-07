@@ -37,3 +37,16 @@ without touching config.py.
 | Variable | Required | Used by | Description |
 |----------|----------|---------|-------------|
 | `CONSOLE_API_TOKEN` | No | `python -m quant.console.api` | Simple local bearer token for the console API's mutate routes (E2-M3). `POST /recompute` refuses to run without it (fail-closed); `POST /feedback` requires it only once set (otherwise it stays open under the localhost-only default bind). Send as `Authorization: Bearer <token>`. Deliberately **not** a `config.py` Setting — the API must be importable without credentials, and the token is read from the environment at request time. |
+| `CONSOLE_API_CORS_ORIGINS` | No | `python -m quant.console.api` | Comma-separated CORS allow-list for the api-mode frontend (E2-M4). Unset → the vite dev origins (`http://localhost:5173`, `http://127.0.0.1:5173`) so `npm run dev` against a local API works out of the box; set-but-empty → CORS disabled. Read at app-creation time (middleware cannot be added per request). |
+
+### Frontend (vite) — E2-M4 data-source flag
+
+Build/dev-time env vars for `frontend/` (e.g. in `frontend/.env.local`, which
+vite loads automatically; `VITE_`-prefixed values are embedded in the bundle —
+never put a secret you would not paste into the page here):
+
+| Variable | Required | Used by | Description |
+|----------|----------|---------|-------------|
+| `VITE_DATA_SOURCE` | No | `frontend/src/lib/dataClient.ts` | `static` (default) or `api`. In api mode the data client reads the E2 service's `/data/*` mirror (same paths, same schemas) and the Report-an-issue modal submits via `POST /feedback` instead of opening a pre-filled GitHub tab. Any other value throws at startup — no silent fallback. |
+| `VITE_API_BASE` | No | `frontend/src/lib/dataClient.ts` | Api-mode service origin. Default `http://127.0.0.1:8000` (the API's localhost-only default bind). |
+| `VITE_CONSOLE_API_TOKEN` | No | `frontend/src/lib/feedback.ts` via `ReportButton` | Bearer token the api-mode feedback submission carries when the server has `CONSOLE_API_TOKEN` set. Optional — without it `/feedback` stays open on a localhost bind; on a 401 the console degrades to the pre-filled-URL path. |
