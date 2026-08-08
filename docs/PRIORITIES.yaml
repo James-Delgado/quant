@@ -2516,7 +2516,8 @@ tasks:
     title: "E2-CLOSE: E2 closeout — console served live by the API + closeout report"
     project: E
     sub_project: E2
-    status: ready
+    status: in_progress
+    started_at: 2026-08-08T00:25:49Z
     depends_on: [E2-M1, E2-M2, E2-M3, E2-M4]
     blocks: [E3-M1, E4-M1]
     deliverable:
