@@ -152,7 +152,7 @@ def _load_monitor_module() -> Any:
     (METHODOLOGY §9).
 
     Layering note: a package importing a repo script is inverted; promoting the
-    pure SLA core into ``src/quant`` is filed as follow-up E2-M3-SLA-CORE-SRC.
+    pure SLA core into ``src/quant`` is filed as follow-up MISC-SLA-CORE-SRC.
     """
     cached = sys.modules.get("monitor_freshness")
     if cached is not None:

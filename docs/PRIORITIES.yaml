@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-07  # E2-M4 done (static<->api flag + CORS + api-mode feedback POST); E2-CLOSE now ready; E2-M4-PROMOTE-UI + E2-SPA-STATIC-MOUNT appended (optional)
+last_updated: 2026-08-08  # E2-CLOSE done (8-stage live gate + E2_CLOSEOUT.md) — Project E2 complete; E4-M1 unblocked -> ready; E2-CLOSE-CI appended (optional)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2516,12 +2516,14 @@ tasks:
     title: "E2-CLOSE: E2 closeout — console served live by the API + closeout report"
     project: E
     sub_project: E2
-    status: in_progress
+    status: done
     started_at: 2026-08-08T00:25:49Z
+    completed_at: 2026-08-08
     depends_on: [E2-M1, E2-M2, E2-M3, E2-M4]
     blocks: [E3-M1, E4-M1]
     deliverable:
       report: docs/project-e/E2_CLOSEOUT.md
+      check: scripts/e2_closeout_check.sh
     references:
       primary: docs/project-e/E2-console-api.prd.md
       methodology: docs/METHODOLOGY.md
@@ -2531,6 +2533,16 @@ tasks:
       is served live by the API at schema parity (the integration seam E1's
       static export could not reach), plus a one-page closeout report. E2-CLOSE
       is the gate that unblocks E3 and E4.
+      COMPLETED 2026-08-08: scripts/e2_closeout_check.sh (8-stage reproducible
+      gate mirroring the E1-CLOSE scripted-check precedent) PASSES full + FAST:
+      fresh export -> real uvicorn -> live parity on all 16 artifacts + route-set
+      drift -> /health real SLA verdicts (honest all-stale alert) -> 401/401/200
+      auth + write_static re-export -> both frontend builds + 130 FE / 205 console
+      tests. Live api-mode browser render: 9/9 routes honest content, 0 console
+      errors, 45 API-origin fetches. Report: docs/project-e/E2_CLOSEOUT.md.
+      Declared deviation (§9): POST /feedback not re-exercised against real
+      GitHub in the gate (would file junk issues); covered by test seams + the
+      E2-M2/E2-M4 live smokes. E4-M1 unblocked; E3-M1 stays on C3-M1..M3.
 
   # ---- E3 — Live Monitoring (gated on E2 + C2/C3; supersedes C5) ----
 
@@ -2629,7 +2641,7 @@ tasks:
     title: "E4-M1: Live feed health vs SLA + lake gap detection"
     project: E
     sub_project: E4
-    status: blocked
+    status: ready  # unblocked 2026-08-08: E2-CLOSE done (C1-M3 already done)
     depends_on: [E2-CLOSE, C1-M3]
     blocks: [E4-M2, E4-CLOSE]
     deliverable:
@@ -4761,3 +4773,28 @@ tasks:
       deliberately NOT added to E2-CLOSE.depends_on (E1 optional-follow-up
       precedent). If E2-CLOSE's validation chooses this as its serving story,
       it can pull the task forward.
+
+  - id: E2-CLOSE-CI
+    rank: 142
+    title: "E2 follow-up (optional): wire scripts/e2_closeout_check.sh (FAST mode) into CI"
+    project: E
+    sub_project: E2
+    status: ready
+    depends_on: [E2-CLOSE]
+    blocks: []
+    deliverable:
+      file: .github/workflows/  # or fold into the E1-CI-WORKFLOW deliverable
+    references:
+      primary: scripts/e2_closeout_check.sh
+      sibling: docs/PRIORITIES.yaml  # E1-CI-WORKFLOW (rank 116) — consolidate if picked together
+    est_complexity: small
+    notes: |
+      Discovered during E2-CLOSE (scripts/e2_closeout_check.sh commit): the
+      closeout gate is reproducible and FAST-mode cheap (~1 min, needs the
+      lake + node), but nothing runs it after merge — a regression in the
+      export<->API parity seam or the auth story would only surface on the
+      next manual run. E1 has the same gap (E1-CI-WORKFLOW, rank 116, still
+      ready); whoever picks either task should consider one workflow running
+      both closeout checks in FAST mode. OPTIONAL — the gates exist and pass;
+      CI wiring is hygiene, not E2 definition-of-done, so deliberately NOT a
+      retroactive E2-CLOSE dependency (E1 optional-follow-up precedent).
