@@ -226,6 +226,47 @@ export const DATA_STATUS: DataStatusView = {
       status: "stale",
     },
   ],
+  // E4-M1: per-ingestor SLA verdicts + lake gap reports.
+  sla: [
+    {
+      feed: "tiingo",
+      state: "fresh",
+      latest: "2026-06-26",
+      required_date: "2026-06-26",
+      detail: "latest 2026-06-26 >= required 2026-06-26",
+    },
+    {
+      feed: "fred:DGS10",
+      state: "stale",
+      latest: "2026-06-20",
+      required_date: "2026-06-25",
+      detail: "latest 2026-06-20 < required 2026-06-25",
+    },
+    {
+      feed: "rss",
+      state: "missing",
+      latest: null,
+      required_date: null,
+      detail: "no observation in lake",
+    },
+  ],
+  gaps: [
+    {
+      feed: "Daily equity bars",
+      window_start: "2026-06-01",
+      window_end: "2026-06-26",
+      n_gaps: 1,
+      gap_dates: ["2026-06-24"],
+    },
+    {
+      feed: "Tiingo adjusted EOD",
+      window_start: null,
+      window_end: null,
+      n_gaps: null, // could-not-check, rendered honestly as "unchecked"
+      gap_dates: [],
+    },
+  ],
+  notes: [],
 };
 
 export const MARKET: MarketSnapshot = {

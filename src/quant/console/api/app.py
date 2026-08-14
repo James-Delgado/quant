@@ -54,7 +54,6 @@ import logging
 import os
 import re
 import secrets
-import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -72,6 +71,11 @@ from quant.console.export import (
     sanitize,
     write_export,
 )
+
+# The C1-M3 monitor loader moved to the shared service layer in E4-M1 (one
+# loader for the API's /health and the Data panel's SLA verdicts). The local
+# ``_load_monitor_module`` name is preserved — tests monkeypatch it here.
+from quant.console.health import load_monitor_module as _load_monitor_module
 from quant.console.sources import ConsoleSources
 
 _LOG = logging.getLogger(__name__)
@@ -137,42 +141,6 @@ def _iso_utc(value: dt.datetime) -> str:
     """``YYYY-MM-DDTHH:MM:SSZ`` (UTC, second precision) — the manifest's format."""
     utc = value.astimezone(dt.timezone.utc) if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)
     return utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _load_monitor_module() -> Any:
-    """Load ``scripts/monitor_freshness.py`` as a module (scripts is not a package).
-
-    The same importlib-by-file-path pattern ``scripts/trade_daily.py`` and the
-    monitor's own tests use. The path is resolved relative to the installed
-    ``quant`` package (src layout → repo root), so it works wherever the
-    editable install runs from. A previously loaded instance (e.g. by the test
-    suite or ``trade_daily``) is reused via ``sys.modules`` rather than
-    re-executed. Raises ``RuntimeError`` when the script cannot be found/loaded
-    — the caller turns that into an honest 503, never fabricated freshness
-    (METHODOLOGY §9).
-
-    Layering note: a package importing a repo script is inverted; promoting the
-    pure SLA core into ``src/quant`` is filed as follow-up MISC-SLA-CORE-SRC.
-    """
-    cached = sys.modules.get("monitor_freshness")
-    if cached is not None:
-        return cached
-    import importlib.util
-
-    import quant
-
-    path = Path(quant.__file__).resolve().parents[2] / "scripts" / "monitor_freshness.py"
-    spec = importlib.util.spec_from_file_location("monitor_freshness", path)
-    if spec is None or spec.loader is None or not path.exists():
-        raise RuntimeError(f"freshness monitor script not found at {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["monitor_freshness"] = module
-    try:
-        spec.loader.exec_module(module)
-    except BaseException:
-        sys.modules.pop("monitor_freshness", None)
-        raise
-    return module
 
 
 def _serialize_feed(status: Any) -> dict[str, Any]:

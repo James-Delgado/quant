@@ -92,6 +92,16 @@ DEFAULT_FEEDS: tuple[FeedSpec, ...] = (
     FeedSpec("sentiment_scored", "Sentiment scores", ts_col="scored_at"),
 )
 
+# Datasets the Data panel gap-checks (E4-M1). Pinned per METHODOLOGY §1 to the
+# two equity bar datasets: only a trading-day-cadence feed has a well-defined
+# "missing session" — FRED series publish on irregular per-series calendars and
+# EDGAR/RSS are event-driven (a quiet day is normal, not a gap; C1-M1). Their
+# health is covered by the SLA verdicts instead.
+DEFAULT_GAP_FEEDS: tuple[FeedSpec, ...] = (
+    FeedSpec("equity_bars_daily", "Daily equity bars", ts_col="timestamp"),
+    FeedSpec("equity_eod_tiingo", "Tiingo adjusted EOD", ts_col="timestamp"),
+)
+
 # FRED series shown in the market snapshot, mapped to MarketSnapshot fields.
 MARKET_SERIES = {
     "VIXCLS": "vix",
@@ -123,6 +133,13 @@ BenchmarkPriceFn = Callable[[], "pd.Series | None"]
 FeatureMonitorFn = Callable[[str], "dict | None"]
 # A clock, injectable for deterministic age computation in tests.
 NowFn = Callable[[], "dt.datetime"]
+# A function returning the per-feed C1 SLA verdicts at an instant (E4-M1) —
+# duck-typed ``monitor_freshness.FeedStatus`` objects (name/state/latest/
+# required_date/detail). Failures propagate; the reader degrades honestly.
+SlaStatusesFn = Callable[["dt.datetime"], list]
+# A function returning a lake dataset's distinct observation dates (E4-M1), or
+# None when the dataset cannot be read. Args: (dataset, ts_col).
+ObservedDatesFn = Callable[[str, str], "list[dt.date] | None"]
 
 
 @dataclass(frozen=True)
@@ -151,6 +168,11 @@ class ConsoleSources:
     benchmark_name: str = BENCHMARK_SYMBOL
     feature_monitor_fn: FeatureMonitorFn | None = None
     now_fn: NowFn | None = None
+    # E4-M1 seams: per-ingestor SLA verdicts + gap-check inputs. ``None`` (the
+    # test default) renders an honest "not configured" degrade in the reader.
+    sla_statuses_fn: SlaStatusesFn | None = None
+    observed_dates_fn: ObservedDatesFn | None = None
+    gap_feeds: tuple[FeedSpec, ...] = DEFAULT_GAP_FEEDS
 
     @classmethod
     def default(cls, *, feature_monitor: bool = True) -> ConsoleSources:
@@ -167,6 +189,7 @@ class ConsoleSources:
         # Imported lazily so importing the view-model/schema layer never pulls in
         # settings validation (which requires API credentials at import time).
         from quant.config import settings
+        from quant.console import health as console_health
         from quant.execution.strategy_registry import DEFAULT_REGISTRY_PATH
         from quant.features.catalog import DEFAULT_CATALOG_PATH
         from quant.storage import catalog as storage_catalog
@@ -205,6 +228,10 @@ class ConsoleSources:
                 build_feature_monitor(_cached_feature_panel) if feature_monitor else None
             ),
             now_fn=lambda: dt.datetime.now(dt.timezone.utc),
+            # E4-M1: SLA verdicts via the C1-M3 monitor; gap-check dates via the
+            # lake adapter. Both degrade honestly in the reader on failure.
+            sla_statuses_fn=console_health.default_sla_statuses,
+            observed_dates_fn=console_health.observed_trading_dates,
         )
 
     def now(self) -> dt.datetime:

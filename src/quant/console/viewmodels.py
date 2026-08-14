@@ -329,9 +329,50 @@ class FeedStatus:
 
 
 @dataclass(frozen=True)
+class SlaFeedStatus:
+    """One ingestor judged against the pinned C1 SLA table (E4-M1).
+
+    The serialized form of a C1-M3 ``monitor_freshness.FeedStatus`` — the same
+    verdict ``GET /health`` and the cron monitor report, so the panel can never
+    disagree with them about what "fresh" means (METHODOLOGY §6). Dates are ISO
+    calendar dates — the granularity the SLA verdict is made at.
+    """
+
+    feed: str  # SLA feed name, e.g. "tiingo", "fred:DGS10"
+    state: str  # fresh | stale | missing
+    latest: str | None  # newest observation date, or None when missing
+    required_date: str | None  # oldest date that would still count as fresh
+    detail: str
+
+
+@dataclass(frozen=True)
+class LakeGapReport:
+    """Missing-session report for one gap-checked lake dataset (E4-M1).
+
+    ``n_gaps`` is ``None`` when the dataset could not be checked (unreadable /
+    never written) — the honest degrade, distinct from a verified 0
+    (METHODOLOGY §9). ``gap_dates`` lists at most the most recent
+    ``health.MAX_GAP_DATES_SURFACED`` gaps; the count is always exact.
+    """
+
+    feed: str  # UI label of the dataset checked
+    window_start: str | None  # first observed date (ISO), or None unchecked
+    window_end: str | None  # last observed date (ISO), or None unchecked
+    n_gaps: int | None  # exact missing-session count, or None = could not check
+    gap_dates: list[str] = field(default_factory=list)  # most recent gaps, capped
+
+
+@dataclass(frozen=True)
 class DataStatusView:
     asof: str
     feeds: list[FeedStatus]
+    # E4-M1 additions: per-ingestor SLA verdicts + per-dataset gap reports.
+    # Defaulted so the pre-E4 constructor shape keeps working; the export
+    # schema derives from this dataclass, so data_status.json and the API
+    # route carry the new fields by construction (METHODOLOGY §6).
+    sla: list[SlaFeedStatus] = field(default_factory=list)
+    gaps: list[LakeGapReport] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)  # degrade states, stated honestly
 
 
 @dataclass(frozen=True)

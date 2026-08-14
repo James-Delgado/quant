@@ -1824,6 +1824,195 @@ def test_data_status(sources):
     assert by_feed["Filings & news"].last_timestamp is None
 
 
+# ── data_status: SLA verdicts + lake gaps (E4-M1) ────────────────────────────
+
+
+@dataclasses.dataclass(frozen=True)
+class _FakeSlaStatus:
+    """Duck-typed stand-in for ``monitor_freshness.FeedStatus``."""
+
+    name: str
+    state: str
+    latest: pd.Timestamp | None
+    required_date: dt.date | None
+    detail: str
+
+
+def test_data_status_unconfigured_sla_and_gaps_degrade_honestly(sources):
+    """No seams configured → no verdicts + an explicit note; gaps unchecked.
+
+    The synthetic fixture leaves ``sla_statuses_fn`` / ``observed_dates_fn``
+    unset, so the reader must say so — never render fabricated freshness or a
+    fabricated "no gaps" (METHODOLOGY §9).
+    """
+    ds = readers.data_status(sources)
+    assert ds.sla == []
+    assert any("not configured" in n for n in ds.notes)
+    assert [g.feed for g in ds.gaps] == ["Daily equity bars", "Tiingo adjusted EOD"]
+    assert all(g.n_gaps is None for g in ds.gaps)  # could-not-check, not 0
+    assert all(g.gap_dates == [] for g in ds.gaps)
+
+
+def test_data_status_sla_verdicts_from_injected_monitor(sources):
+    statuses = [
+        _FakeSlaStatus(
+            name="tiingo",
+            state="fresh",
+            latest=pd.Timestamp("2026-06-26", tz="UTC"),
+            required_date=dt.date(2026, 6, 26),
+            detail="latest 2026-06-26 >= required 2026-06-26",
+        ),
+        _FakeSlaStatus(
+            name="fred:DGS10",
+            state="stale",
+            latest=pd.Timestamp("2026-06-20", tz="UTC"),
+            required_date=dt.date(2026, 6, 25),
+            detail="latest 2026-06-20 < required 2026-06-25",
+        ),
+        _FakeSlaStatus(
+            name="rss", state="missing", latest=None, required_date=None, detail="no observation"
+        ),
+    ]
+    seen: dict = {}
+
+    def fake_sla(now):
+        seen["now"] = now
+        return statuses
+
+    src = dataclasses.replace(sources, sla_statuses_fn=fake_sla)
+    ds = readers.data_status(src)
+    assert seen["now"] == src.now()  # judged at the injectable clock's instant
+    assert ds.notes == []
+    by_feed = {s.feed: s for s in ds.sla}
+    assert set(by_feed) == {"tiingo", "fred:DGS10", "rss"}
+    assert by_feed["tiingo"].state == "fresh"
+    assert by_feed["tiingo"].latest == "2026-06-26"
+    assert by_feed["tiingo"].required_date == "2026-06-26"
+    assert by_feed["fred:DGS10"].state == "stale"
+    assert by_feed["rss"].state == "missing"
+    assert by_feed["rss"].latest is None
+    assert by_feed["rss"].required_date is None
+
+
+def test_data_status_sla_monitor_failure_degrades_honestly(sources):
+    def broken_sla(now):
+        raise RuntimeError("monitor exploded")
+
+    ds = readers.data_status(dataclasses.replace(sources, sla_statuses_fn=broken_sla))
+    assert ds.sla == []
+    assert any("unavailable" in n for n in ds.notes)
+
+
+def test_data_status_seeded_gap_is_detected_and_surfaced(sources):
+    """E4-M1 acceptance: a seeded missing NYSE session is detected + surfaced."""
+    # 2026-06-22..26 is a full NYSE trading week; seed a hole at Wednesday.
+    observed = {
+        "equity_bars_daily": [
+            dt.date(2026, 6, 22),
+            dt.date(2026, 6, 23),
+            dt.date(2026, 6, 25),  # 2026-06-24 missing → the seeded gap
+            dt.date(2026, 6, 26),
+        ],
+        # Friday → Monday over a weekend: contiguous sessions, zero gaps.
+        "equity_eod_tiingo": [dt.date(2026, 6, 26), dt.date(2026, 6, 29)],
+    }
+
+    def fake_observed(dataset: str, ts_col: str) -> list[dt.date] | None:
+        return observed.get(dataset)
+
+    ds = readers.data_status(dataclasses.replace(sources, observed_dates_fn=fake_observed))
+    by_feed = {g.feed: g for g in ds.gaps}
+    seeded = by_feed["Daily equity bars"]
+    assert seeded.n_gaps == 1
+    assert seeded.gap_dates == ["2026-06-24"]
+    assert seeded.window_start == "2026-06-22"
+    assert seeded.window_end == "2026-06-26"
+    clean = by_feed["Tiingo adjusted EOD"]
+    assert clean.n_gaps == 0  # a verified zero, not a could-not-check None
+    assert clean.gap_dates == []
+
+
+def test_data_status_gap_dates_capped_but_count_exact(sources):
+    from quant.console import health
+
+    # Only the span endpoints observed → every interior session is a gap
+    # (June 2026 has ~20 interior sessions, beyond the surfacing cap).
+    def fake_observed(dataset: str, ts_col: str) -> list[dt.date] | None:
+        return [dt.date(2026, 6, 1), dt.date(2026, 6, 30)]
+
+    ds = readers.data_status(dataclasses.replace(sources, observed_dates_fn=fake_observed))
+    report = ds.gaps[0]
+    assert report.n_gaps is not None and report.n_gaps > health.MAX_GAP_DATES_SURFACED
+    assert len(report.gap_dates) == health.MAX_GAP_DATES_SURFACED
+    # The cap keeps the MOST RECENT gaps.
+    all_gaps = health.find_gap_dates([dt.date(2026, 6, 1), dt.date(2026, 6, 30)])
+    assert report.gap_dates == [
+        d.isoformat() for d in all_gaps[-health.MAX_GAP_DATES_SURFACED :]
+    ]
+
+
+def test_data_status_gap_reader_failure_is_could_not_check(sources):
+    def broken_observed(dataset: str, ts_col: str) -> list[dt.date] | None:
+        raise RuntimeError("lake exploded")
+
+    ds = readers.data_status(dataclasses.replace(sources, observed_dates_fn=broken_observed))
+    assert all(g.n_gaps is None for g in ds.gaps)
+
+
+# ── health: pure gap core + lake adapter (E4-M1) ─────────────────────────────
+
+
+def test_find_gap_dates_pure_core():
+    from quant.console import health
+
+    # Weekend + July-4th holiday (2025-07-04 fell on a Friday) are not gaps.
+    assert health.find_gap_dates([dt.date(2025, 7, 3), dt.date(2025, 7, 7)]) == []
+    # A missing interior session is a gap.
+    assert health.find_gap_dates(
+        [dt.date(2026, 6, 22), dt.date(2026, 6, 23), dt.date(2026, 6, 25)]
+    ) == [dt.date(2026, 6, 24)]
+    # Fewer than two distinct dates → no span → no gaps.
+    assert health.find_gap_dates([]) == []
+    assert health.find_gap_dates([dt.date(2026, 6, 22)]) == []
+    # Duplicate observations collapse; still no false gap.
+    assert health.find_gap_dates([dt.date(2026, 6, 22), dt.date(2026, 6, 22)]) == []
+
+
+def test_observed_trading_dates_reads_distinct_dates_tz_safely(tmp_path, monkeypatch):
+    from quant.console import health
+    from quant.storage import catalog as storage_catalog
+
+    # Two symbols share sessions (duplicates collapse); NY-tz-aware stamps must
+    # keep their NY calendar date through the utc-normalize extraction.
+    ts = pd.to_datetime(
+        ["2026-06-22", "2026-06-22", "2026-06-23", "2026-06-25"]
+    ).tz_localize("America/New_York")
+    df = pd.DataFrame({"timestamp": ts, "symbol": ["A", "B", "A", "A"], "close": 1.0})
+    dataset_dir = tmp_path / "equity_eod_tiingo"
+    dataset_dir.mkdir()
+    df.to_parquet(dataset_dir / "part-0.parquet")
+    monkeypatch.setattr(
+        storage_catalog,
+        "processed_glob",
+        lambda dataset: str(tmp_path / dataset / "**" / "*.parquet"),
+    )
+
+    dates = health.observed_trading_dates("equity_eod_tiingo")
+    assert dates == [dt.date(2026, 6, 22), dt.date(2026, 6, 23), dt.date(2026, 6, 25)]
+
+
+def test_observed_trading_dates_unreadable_dataset_is_none(tmp_path, monkeypatch):
+    from quant.console import health
+    from quant.storage import catalog as storage_catalog
+
+    monkeypatch.setattr(
+        storage_catalog,
+        "processed_glob",
+        lambda dataset: str(tmp_path / "nope" / "**" / "*.parquet"),
+    )
+    assert health.observed_trading_dates("never_written") is None
+
+
 # ── market_snapshot ──────────────────────────────────────────────────────────
 
 

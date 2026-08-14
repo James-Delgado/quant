@@ -17,6 +17,7 @@ import pandas as pd
 from quant.backtest.metrics import compute_metrics
 from quant.backtest.regimes import VIXThresholdDetector
 from quant.backtest.statistics import expected_max_sharpe
+from quant.console import health
 from quant.console import viewmodels as vm
 from quant.console.sources import (
     FRESH_THRESHOLD_DAYS,
@@ -911,8 +912,89 @@ def load_ledger(sources: ConsoleSources | None = None) -> vm.LedgerView:
 # ── 7. Data status ───────────────────────────────────────────────────────────
 
 
+def _sla_feed_statuses(
+    sources: ConsoleSources, now: object
+) -> tuple[list[vm.SlaFeedStatus], list[str]]:
+    """Per-ingestor SLA verdicts via the C1-M3 monitor seam (E4-M1).
+
+    Serializes duck-typed ``monitor_freshness.FeedStatus`` objects the same way
+    the API's ``GET /health`` does (name/state/latest/required_date/detail →
+    ISO calendar dates). An unconfigured or failing monitor returns no verdicts
+    plus an explanatory note — never fabricated freshness (METHODOLOGY §9).
+    """
+    if sources.sla_statuses_fn is None:
+        return [], ["SLA monitor not configured — per-ingestor SLA verdicts omitted."]
+    try:
+        statuses = sources.sla_statuses_fn(now)
+    except Exception:
+        return [], ["SLA monitor unavailable — per-ingestor SLA verdicts omitted."]
+    sla = []
+    for s in statuses:
+        state = getattr(s, "state", None)
+        latest = getattr(s, "latest", None)
+        required = getattr(s, "required_date", None)
+        sla.append(
+            vm.SlaFeedStatus(
+                feed=str(getattr(s, "name", "?")),
+                state=str(getattr(state, "value", state)),
+                latest=_iso_date(latest),
+                required_date=required.isoformat() if required is not None else None,
+                detail=str(getattr(s, "detail", "")),
+            )
+        )
+    return sla, []
+
+
+def _lake_gap_reports(sources: ConsoleSources) -> list[vm.LakeGapReport]:
+    """Gap-check every ``sources.gap_feeds`` dataset (E4-M1).
+
+    A dataset whose observed dates cannot be read reports ``n_gaps=None``
+    (could-not-check), distinct from a verified 0 (METHODOLOGY §9). Surfaced
+    gap dates are capped to the most recent ``health.MAX_GAP_DATES_SURFACED``;
+    the count is always exact.
+    """
+    reports: list[vm.LakeGapReport] = []
+    for spec in sources.gap_feeds:
+        dates = None
+        if sources.observed_dates_fn is not None:
+            try:
+                dates = sources.observed_dates_fn(spec.key, spec.ts_col)
+            except Exception:
+                dates = None
+        if not dates:
+            reports.append(
+                vm.LakeGapReport(
+                    feed=spec.label,
+                    window_start=None,
+                    window_end=None,
+                    n_gaps=None,
+                    gap_dates=[],
+                )
+            )
+            continue
+        gap_dates = health.find_gap_dates(dates)
+        reports.append(
+            vm.LakeGapReport(
+                feed=spec.label,
+                window_start=min(dates).isoformat(),
+                window_end=max(dates).isoformat(),
+                n_gaps=len(gap_dates),
+                gap_dates=[
+                    d.isoformat() for d in gap_dates[-health.MAX_GAP_DATES_SURFACED :]
+                ],
+            )
+        )
+    return reports
+
+
 def data_status(sources: ConsoleSources | None = None) -> vm.DataStatusView:
-    """Per-feed freshness from the lake (status: fresh | stale | missing)."""
+    """Per-feed freshness from the lake (status: fresh | stale | missing).
+
+    E4-M1: alongside the age-based lake-dataset view, the panel carries the
+    per-ingestor verdicts judged against the pinned C1 SLA table (the same
+    machinery as ``GET /health`` and the cron monitor) and per-dataset lake
+    gap reports (missing NYSE sessions inside the observed span).
+    """
     sources = sources or ConsoleSources.default()
     now = sources.now()
     latest_fn = sources.latest_timestamp_fn
@@ -946,7 +1028,14 @@ def data_status(sources: ConsoleSources | None = None) -> vm.DataStatusView:
                 status=status,
             )
         )
-    return vm.DataStatusView(asof=_iso_date(now) or "", feeds=feeds)
+    sla, notes = _sla_feed_statuses(sources, now)
+    return vm.DataStatusView(
+        asof=_iso_date(now) or "",
+        feeds=feeds,
+        sla=sla,
+        gaps=_lake_gap_reports(sources),
+        notes=notes,
+    )
 
 
 # ── 8. Market snapshot ───────────────────────────────────────────────────────

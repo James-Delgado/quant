@@ -9,8 +9,50 @@ afterEach(() => vi.unstubAllGlobals());
 describe("Data & Market panel", () => {
   it("renders per-feed freshness with an honest stale pill", async () => {
     render(<DataMarket />);
-    expect(await screen.findByText("Daily equity bars")).toBeInTheDocument();
+    // The label appears on both the age-based feed card and its gap report.
+    expect((await screen.findAllByText("Daily equity bars")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("stale").length).toBeGreaterThan(0);
+  });
+
+  it("renders per-ingestor SLA verdicts vs the pinned C1 SLA (E4-M1)", async () => {
+    render(<DataMarket />);
+    expect(await screen.findByText("tiingo")).toBeInTheDocument();
+    expect(screen.getByText("fred:DGS10")).toBeInTheDocument();
+    expect(screen.getByText("fresh")).toBeInTheDocument();
+    expect(screen.getByText("missing")).toBeInTheDocument();
+    expect(
+      screen.getByText(/latest 2026-06-26 · required ≥ 2026-06-26/),
+    ).toBeInTheDocument();
+  });
+
+  it("surfaces a seeded lake gap and an honest unchecked state (E4-M1)", async () => {
+    render(<DataMarket />);
+    expect(await screen.findByText("1 gap")).toBeInTheDocument();
+    expect(screen.getByText(/missing 2026-06-24/)).toBeInTheDocument();
+    // n_gaps === null renders as "unchecked" — never a fabricated "no gaps".
+    expect(screen.getByText("unchecked")).toBeInTheDocument();
+    expect(screen.queryByText("no gaps")).toBeNull();
+  });
+
+  it("degrades honestly when the export predates E4 (no sla/gaps fields)", async () => {
+    stubExportFetch({
+      "data_status.json": {
+        asof: "2026-06-28",
+        feeds: [
+          {
+            feed: "Daily equity bars",
+            last_timestamp: "2026-06-05",
+            age_days: 23.5,
+            status: "stale",
+          },
+        ],
+      },
+    });
+    render(<DataMarket />);
+    expect(await screen.findByText("Daily equity bars")).toBeInTheDocument();
+    expect(
+      screen.getByText(/SLA verdicts are unavailable in this export/),
+    ).toBeInTheDocument();
   });
 
   it("renders real market values and an explicit pending state for E4 metrics", async () => {

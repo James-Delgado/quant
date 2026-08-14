@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-08  # E2-CLOSE done (8-stage live gate + E2_CLOSEOUT.md) — Project E2 complete; E4-M1 unblocked -> ready; E2-CLOSE-CI appended (optional)
+last_updated: 2026-08-14  # E4-M1 done (SLA verdicts + lake gap detection in the console) — E4-M2 unblocked -> ready; C1-ALPACA-GAP-AUDIT (564-gap finding, gates C-CLOSE) + E4-GAP-PER-SYMBOL (optional) appended
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2072,7 +2072,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C2-M2-G1-REIMPL-REVIEW, C6-REGISTRY-CONCEPT-DOC, C3-M1, C3-M2, C3-M3, C4-M1, C4-M2, C4-M3]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C2-M2-G1-REIMPL-REVIEW, C6-REGISTRY-CONCEPT-DOC, C3-M1, C3-M2, C3-M3, C4-M1, C4-M2, C4-M3, C1-ALPACA-GAP-AUDIT]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
@@ -2641,8 +2641,9 @@ tasks:
     title: "E4-M1: Live feed health vs SLA + lake gap detection"
     project: E
     sub_project: E4
-    status: in_progress
+    status: done
     started_at: 2026-08-14T01:04:41Z
+    completed_at: 2026-08-14
     depends_on: [E2-CLOSE, C1-M3]
     blocks: [E4-M2, E4-CLOSE]
     deliverable:
@@ -2666,7 +2667,7 @@ tasks:
     title: "E4-M2: Staleness/gap/drift alerting (pinned thresholds)"
     project: E
     sub_project: E4
-    status: blocked
+    status: ready  # unblocked 2026-08-14: E4-M1 done
     depends_on: [E4-M1]
     blocks: [E4-M3, E4-CLOSE]
     deliverable:
@@ -4720,6 +4721,11 @@ tasks:
       rather than E2-M3 doing it implicitly. MISC (no CLOSE gate): the API
       works as-is in the supported editable-install deployment; this is
       hygiene, not an E2/C1 definition-of-done item.
+      UPDATE (E4-M1, 2026-08-14): the loader now lives ONCE in
+      src/quant/console/health.py (load_monitor_module); api/app.py aliases it
+      and readers.data_status consumes it as a second caller (SLA verdicts in
+      the Data panel). The promotion should land the pure core there (or a
+      storage/ sibling) and update BOTH consumers via console.health.
 
   - id: E2-M4-PROMOTE-UI
     rank: 140
@@ -4799,3 +4805,56 @@ tasks:
       both closeout checks in FAST mode. OPTIONAL — the gates exist and pass;
       CI wiring is hygiene, not E2 definition-of-done, so deliberately NOT a
       retroactive E2-CLOSE dependency (E1 optional-follow-up precedent).
+
+  - id: C1-ALPACA-GAP-AUDIT
+    rank: 143
+    title: "Audit the 564 missing sessions in equity_bars_daily (Alpaca) surfaced by the E4-M1 gap scan"
+    project: C
+    sub_project: C1
+    status: ready
+    depends_on: []
+    blocks: [C-CLOSE]
+    deliverable:
+      file: docs/concepts/data-freshness-slas.md  # audit note (or a backfill run) — decide in-task
+    references:
+      primary: src/quant/console/health.py
+      ingestor: src/quant/ingest/alpaca_bars.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered by the E4-M1 live gap scan (readers.data_status over the real
+      lake, 2026-08-14): equity_bars_daily has n_gaps=564 missing NYSE sessions
+      inside its 2018-04-25..2026-06-05 observed span (clusters incl. 2020-07),
+      while equity_eod_tiingo is gap-free over 2001..2026. Ingestor data quality
+      is C1's domain (E4 PRD §2 non-goals: E4 monitors, C1 owns acquisition).
+      Decide: backfill via the Alpaca ingestor, or document-and-accept (alpaca
+      is NOT the modeling price source — see C1-POLICY-DATASET-PIN; tiingo is).
+      Either way the verdict lands in the C1-M1 SLA doc so the Data panel's
+      standing 564-gap report is explained. Added to C-CLOSE.depends_on per the
+      AGENT_OPERATION Step-7 corollary (real data-integrity work, not optional
+      polish).
+
+  - id: E4-GAP-PER-SYMBOL
+    rank: 144
+    title: "E4-M1 follow-up (optional): per-symbol lake gap detection (a symbol missing while the session has bars)"
+    project: E
+    sub_project: E4
+    status: ready
+    depends_on: [E4-M1]
+    blocks: []
+    deliverable:
+      file: src/quant/console/health.py
+    references:
+      primary: src/quant/console/health.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E4-M1: gap detection is DATASET-level — a session is a
+      gap only when NO symbol has a bar. A per-symbol hole (one universe symbol
+      missing while others traded) is invisible to it, yet corrupts that
+      symbol's features the same way. Extension: per-symbol observed-date scan
+      over settings.equity_universe, reported per symbol (bounded output; the
+      33-symbol x ~6000-session scan is one DISTINCT(symbol, date) DuckDB
+      query). OPTIONAL per the E2 optional-follow-up precedent — deliberately
+      NOT added to E4-CLOSE.depends_on; dataset-level gaps + the SLA verdicts
+      already satisfy the E4-M1 acceptance.
