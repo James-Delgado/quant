@@ -2641,7 +2641,8 @@ tasks:
     title: "E4-M1: Live feed health vs SLA + lake gap detection"
     project: E
     sub_project: E4
-    status: ready  # unblocked 2026-08-08: E2-CLOSE done (C1-M3 already done)
+    status: in_progress
+    started_at: 2026-08-14T01:04:41Z
     depends_on: [E2-CLOSE, C1-M3]
     blocks: [E4-M2, E4-CLOSE]
     deliverable:
