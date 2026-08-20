@@ -2072,7 +2072,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C2-M2-G1-REIMPL-REVIEW, C6-REGISTRY-CONCEPT-DOC, C3-M1, C3-M2, C3-M3, C4-M1, C4-M2, C4-M3, C1-ALPACA-GAP-AUDIT]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C2-M2-G1-REIMPL-REVIEW, C6-REGISTRY-CONCEPT-DOC, C3-M1, C3-M2, C3-M3, C4-M1, C4-M2, C4-M3, C1-ALPACA-GAP-AUDIT, C1-TIINGO-VINTAGE-SEAM]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
@@ -4858,3 +4858,46 @@ tasks:
       query). OPTIONAL per the E2 optional-follow-up precedent — deliberately
       NOT added to E4-CLOSE.depends_on; dataset-level gaps + the SLA verdicts
       already satisfy the E4-M1 acceptance.
+
+  - id: C1-TIINGO-VINTAGE-SEAM
+    rank: 145
+    title: "Heal + prevent the Tiingo adjusted-close vintage seam (incremental last+1d misses corporate-action rebases)"
+    project: C
+    sub_project: C1
+    status: ready
+    depends_on: []
+    blocks: [C-CLOSE]
+    deliverable:
+      file: src/quant/ingest/tiingo_eod.py  # re-fetch policy + a full-history heal run
+      doc_update: docs/concepts/data-freshness-slas.md
+    references:
+      primary: src/quant/ingest/tiingo_eod.py
+      vintage_context: docs/concepts/fred-publication-lag.md  # "Latest-vintage storage limitation"
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered 2026-08-19 while assessing vintage effects of the 10-week
+      ingest outage (lake stale 2026-06-05 -> backfilled 2026-08-19). VERIFIED
+      empirically: Tiingo's CURRENT adjClose for pre-2026-06-06 dates differs
+      from the lake's stored rows by a CONSTANT multiplicative offset for
+      dividend payers whose ex-div fell inside the outage — KO 0.651%,
+      PG 0.733%, JPM 0.442% (JNJ/MSFT/NVDA unaffected in the sample). Cause:
+      Tiingo rebases the ENTIRE adjusted history on each corporate action, but
+      ingest_tiingo_eod's incremental mode fetches only `last + 1d` with NO
+      overlap (unlike FRED's 45-day revision overlap), so pre-gap rows keep the
+      old adjustment basis while post-gap rows carry the new one.
+      Backtest impact: within-segment daily returns are unaffected (constant
+      factor cancels); the ONE cross-seam return (2026-06-05 -> next session)
+      is inflated by the offset (~+0.4-0.7% fake jump per affected symbol), and
+      level-based features spanning the seam (MA200 trend, vol windows) are
+      slightly distorted. Every future outage-spanning-an-ex-div recreates this.
+      Fix: (a) HEAL — one full-history Tiingo re-fetch; to_processed's
+      keep-last-by-ingested_at dedup overwrites every overlapping row with the
+      current vintage, erasing the seam; (b) PREVENT — policy decision: either
+      always re-fetch full history (rows are cheap at 33 symbols), or detect
+      rebases by comparing a re-fetched overlap window and trigger the full
+      re-fetch on mismatch (divCash/splitFactor columns are also available);
+      (c) document in the C1-M1 SLA doc next to the latest-vintage limitation.
+      Added to C-CLOSE.depends_on (data-integrity work, not optional polish).
+      Related-but-distinct: C1-ALPACA-GAP-AUDIT (missing sessions, same outage
+      review); the FRED latest-vintage limitation is already declared + screened.
