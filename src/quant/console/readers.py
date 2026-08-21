@@ -1038,30 +1038,150 @@ def data_status(sources: ConsoleSources | None = None) -> vm.DataStatusView:
     )
 
 
-# ── 8. Market snapshot ───────────────────────────────────────────────────────
+# ── 8. Market snapshot (E4-M3: live market environment) ──────────────────────
+
+# FRED series id backing the 2s10s curve's short leg (pinned; METHODOLOGY §1).
+CURVE_SHORT_SERIES_ID = "DGS2"
+
+
+def _last_label(labels: pd.Series) -> str | None:
+    """The most recent regime label, or ``None`` when nothing is labellable."""
+    if labels.empty:
+        return None
+    return str(labels.iloc[-1])
+
+
+def _curve_spread_2s10s(
+    ten: pd.Series | None, two: pd.Series | None
+) -> float | None:
+    """10Y − 2Y (percentage points) at the last date BOTH legs have an observation.
+
+    Aligning on the common calendar — rather than subtracting each leg's own
+    latest value — guarantees the spread is a same-day figure even when one
+    series lags the other; the staleness of either leg alerts separately via
+    the C1 SLA machinery. ``None`` when either leg is unavailable or they share
+    no dates (honest degrade, METHODOLOGY §9).
+    """
+    if ten is None or two is None:
+        return None
+    frame = pd.DataFrame({"ten": ten, "two": two}).dropna()
+    if frame.empty:
+        return None
+    row = frame.iloc[-1]
+    return float(row["ten"]) - float(row["two"])
+
+
+def _breadth_above_ma200(
+    prices: dict[str, pd.Series] | None,
+) -> tuple[float | None, int]:
+    """Fraction of universe symbols whose last close exceeds their trailing MA200.
+
+    Uses the SAME pinned ``TREND_MA_WINDOW`` the trend condition axis uses, so
+    "breadth > MA200" and the trend regime carve price-vs-average identically
+    (METHODOLOGY §6). A symbol with fewer than ``TREND_MA_WINDOW`` bars has no
+    average to judge against and is excluded from both numerator and
+    denominator; the returned count is the number of symbols actually judged.
+    ``(None, 0)`` when no symbol is judgeable (honest degrade, §9).
+    """
+    if not prices:
+        return None, 0
+    n_above = n_eligible = 0
+    for series in prices.values():
+        s = series.dropna()
+        if len(s) < TREND_MA_WINDOW:
+            continue
+        ma = float(s.iloc[-TREND_MA_WINDOW:].mean())
+        n_eligible += 1
+        if float(s.iloc[-1]) > ma:
+            n_above += 1
+    if n_eligible == 0:
+        return None, 0
+    return n_above / n_eligible, n_eligible
 
 
 def market_snapshot(sources: ConsoleSources | None = None) -> vm.MarketSnapshot:
-    """VIX / 10Y / Fed-funds from the lake; deferred metrics stated honestly."""
+    """The live market environment: values, curve, breadth, and regime labels.
+
+    E4-M3. The vol / trend / rates regime labels are computed by the SAME
+    labellers the Conditions panel uses (:func:`_vol_labels`,
+    :func:`_trend_labels`, :func:`_rates_labels` — with their pinned
+    thresholds), taken at the latest labellable date, so the live "current
+    regime" and the Conditions panel's historical carve can never disagree
+    (METHODOLOGY §6). Each input degrades independently to ``None`` plus an
+    explanatory note — never a fabricated figure (§9).
+    """
     sources = sources or ConsoleSources.default()
     market_fn = sources.market_value_fn
+    series_fn = sources.market_series_fn
 
     values: dict[str, float | None] = {field: None for field in MARKET_SERIES.values()}
     if market_fn is not None:
         for series_id, field in MARKET_SERIES.items():
             values[field] = market_fn(series_id)
 
-    notes = [
-        "2s10s spread and market breadth are not yet ingested (planned for E4).",
-    ]
+    notes: list[str] = []
     if market_fn is None:
-        notes.insert(0, "Market series source not configured.")
+        notes.append("Market series source not configured.")
+
+    def _series(series_id: str) -> pd.Series | None:
+        if series_fn is None:
+            return None
+        try:
+            return series_fn(series_id)
+        except Exception:
+            return None
+
+    vix_series = _series(VIX_SERIES_ID)
+    rates_series = _series(RATES_SERIES_ID)
+    two_year_series = _series(CURVE_SHORT_SERIES_ID)
+
+    spread = _curve_spread_2s10s(rates_series, two_year_series)
+    if spread is None:
+        notes.append("2s10s curve unavailable — DGS2/DGS10 series not readable.")
+
+    vol_regime = (
+        _last_label(_vol_labels(_by_date(vix_series))) if vix_series is not None else None
+    )
+    if vol_regime is None:
+        notes.append("Volatility regime unavailable — VIX series not readable.")
+
+    rates_regime = (
+        _last_label(_rates_labels(_by_date(rates_series)))
+        if rates_series is not None
+        else None
+    )
+    if rates_regime is None:
+        notes.append("Rates regime unavailable — 10Y series not readable.")
+
+    price = sources.benchmark_price_fn() if sources.benchmark_price_fn else None
+    trend_regime = (
+        _last_label(_trend_labels(_by_date(price))) if price is not None else None
+    )
+    if trend_regime is None:
+        notes.append("Trend regime unavailable — benchmark price not readable.")
+
+    universe_prices = None
+    if sources.universe_prices_fn is not None:
+        try:
+            universe_prices = sources.universe_prices_fn()
+        except Exception:
+            universe_prices = None
+    breadth, breadth_n = _breadth_above_ma200(universe_prices)
+    if breadth is None:
+        notes.append("Market breadth unavailable — universe prices not readable.")
 
     return vm.MarketSnapshot(
         asof=_iso_date(sources.now()),
         vix=values["vix"],
         ten_year=values["ten_year"],
         fed_funds=values["fed_funds"],
+        two_year=values["two_year"],
+        spread_2s10s=spread,
+        breadth_above_ma200=breadth,
+        breadth_n_symbols=breadth_n if breadth is not None else None,
+        vol_regime=vol_regime,
+        trend_regime=trend_regime,
+        rates_regime=rates_regime,
         notes=notes,
     )
 

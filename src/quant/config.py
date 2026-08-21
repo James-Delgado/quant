@@ -69,8 +69,10 @@ class Settings(BaseSettings):
         # Broad-market ETFs
         "SPY", "QQQ", "IWM",
     ]
-    # FRED macro series: 10y yield, fed funds, VIX, CPI, unemployment.
-    fred_series: list[str] = ["DGS10", "DFF", "VIXCLS", "CPIAUCSL", "UNRATE"]
+    # FRED macro series: 10y yield, fed funds, VIX, CPI, unemployment, plus the
+    # 2y yield (DGS2) for the console's live 2s10s curve (E4-M3; display-only —
+    # not a model feature, so it has no C1 SLA row or publication-lag entry).
+    fred_series: list[str] = ["DGS10", "DGS2", "DFF", "VIXCLS", "CPIAUCSL", "UNRATE"]
 
     # How far back to pull on a first-time (backfill) run.
     backfill_years: int = 5

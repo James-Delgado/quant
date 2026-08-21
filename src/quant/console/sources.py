@@ -106,6 +106,7 @@ DEFAULT_GAP_FEEDS: tuple[FeedSpec, ...] = (
 MARKET_SERIES = {
     "VIXCLS": "vix",
     "DGS10": "ten_year",
+    "DGS2": "two_year",  # E4-M3: backs the live 2s10s curve tile
     "DFF": "fed_funds",
 }
 
@@ -129,6 +130,11 @@ MarketSeriesFn = Callable[[str], "pd.Series | None"]
 # Nullary because the benchmark symbol is pinned (``BENCHMARK_SYMBOL``); the
 # Overview reader turns this into a buy-and-hold growth series.
 BenchmarkPriceFn = Callable[[], "pd.Series | None"]
+# A function returning the adjusted-close price history of every universe
+# symbol as ``{symbol: date-indexed (normalized, tz-naive) float Series}``, or
+# None when the lake is unavailable (E4-M3). Backs the live market-breadth
+# figure; nullary because the universe is pinned in ``settings.equity_universe``.
+UniversePricesFn = Callable[[], "dict[str, pd.Series] | None"]
 # A function returning monitoring stats for a feature, or None if unavailable.
 FeatureMonitorFn = Callable[[str], "dict | None"]
 # A clock, injectable for deterministic age computation in tests.
@@ -166,6 +172,10 @@ class ConsoleSources:
     # ``BENCHMARK_SYMBOL``; co-located with ``benchmark_price_fn`` so a test (or a
     # re-pin) sets price and name together.
     benchmark_name: str = BENCHMARK_SYMBOL
+    # E4-M3 seam: per-symbol universe price histories for the live market-breadth
+    # figure. ``None`` (the test default) renders an honest "not available"
+    # degrade in the market snapshot rather than a fabricated breadth.
+    universe_prices_fn: UniversePricesFn | None = None
     feature_monitor_fn: FeatureMonitorFn | None = None
     now_fn: NowFn | None = None
     # E4-M1 seams: per-ingestor SLA verdicts + gap-check inputs. ``None`` (the
@@ -208,6 +218,11 @@ class ConsoleSources:
         def _benchmark_price() -> pd.Series | None:
             return _benchmark_price_series(storage_catalog, BENCHMARK_SYMBOL)
 
+        def _universe_prices() -> dict[str, pd.Series] | None:
+            return _universe_price_series(
+                storage_catalog, list(settings.equity_universe)
+            )
+
         return cls(
             data_root=data_root,
             ledger_path=data_root / "ledger.yaml",
@@ -218,6 +233,7 @@ class ConsoleSources:
             market_value_fn=_market,
             market_series_fn=_market_series,
             benchmark_price_fn=_benchmark_price,
+            universe_prices_fn=_universe_prices,
             # Lake-backed monitor (E1-M1-FEATURE-MONITOR) over the disk-cached panel
             # provider (E1-M1-FEATURE-MONITOR-EXPORT-COST). The panel build is invoked
             # lazily on the first ``load_catalog`` call and memoized per process; the
@@ -317,6 +333,46 @@ def _benchmark_price_series(storage_catalog, symbol: str) -> pd.Series | None:
     )
     series = series[~series.index.duplicated(keep="last")].sort_index().dropna()
     return series if not series.empty else None
+
+
+def _universe_price_series(
+    storage_catalog, symbols: list[str]
+) -> dict[str, pd.Series] | None:
+    """Adjusted-close history per universe symbol, date-indexed and tz-naive.
+
+    One query over the Tiingo adjusted EOD table (the same ``adjClose`` column
+    every other console price read uses), split per symbol with the documented
+    NY↔UTC alignment care of :func:`_benchmark_price_series`. Backs the live
+    market-breadth figure (E4-M3). Returns ``None`` on any failure / empty
+    result (honest degrade, METHODOLOGY §9); a symbol with no bars simply has
+    no entry rather than an empty Series.
+    """
+    if not symbols:
+        return None
+    syms_sql = ", ".join("'" + s.replace("'", "''") + "'" for s in symbols)
+    try:
+        df = storage_catalog.query(
+            f"SELECT symbol, timestamp, adjClose "
+            f"FROM {storage_catalog.table('equity_eod_tiingo')} "
+            f"WHERE symbol IN ({syms_sql}) ORDER BY symbol, timestamp"
+        )
+    except Exception:
+        return None
+    if df.empty:
+        return None
+    dates = pd.to_datetime(df["timestamp"], utc=True).dt.normalize().dt.tz_localize(None)
+    values = pd.to_numeric(df["adjClose"], errors="coerce")
+    frame = pd.DataFrame(
+        {"symbol": df["symbol"].to_numpy(), "value": values.to_numpy()},
+        index=pd.DatetimeIndex(dates),
+    )
+    prices: dict[str, pd.Series] = {}
+    for sym, sub in frame.groupby("symbol"):
+        series = sub["value"]
+        series = series[~series.index.duplicated(keep="last")].sort_index().dropna()
+        if not series.empty:
+            prices[str(sym)] = series
+    return prices or None
 
 
 # ── Feature monitor (lake-backed coverage / mu-sigma / distribution / drift) ──

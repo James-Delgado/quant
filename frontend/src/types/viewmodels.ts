@@ -256,6 +256,16 @@ export interface MarketSnapshot {
   vix: number | null;
   ten_year: number | null;
   fed_funds: number | null;
+  // E4-M3 live market environment. Optional (`?`) so an export generated
+  // before E4-M3 still type-checks; each field is null when its backing
+  // input is unavailable (honest degrade — the UI renders a pending "—").
+  two_year?: number | null;
+  spread_2s10s?: number | null;
+  breadth_above_ma200?: number | null; // fraction 0–1 of the judged universe
+  breadth_n_symbols?: number | null;
+  vol_regime?: string | null; // low_vol | mid_vol | high_vol
+  trend_regime?: string | null; // uptrend | downtrend
+  rates_regime?: string | null; // rates_falling | rates_steady | rates_rising
   notes: string[];
 }
 

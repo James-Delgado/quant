@@ -120,7 +120,7 @@ describe("Overview panel", () => {
     expect(hero).not.toHaveTextContent(/it is not fabricated here/);
   });
 
-  it("hosts the Breadth + yield-curve ⓘ tips on the conditions snapshot, pending honestly (E1-M5-OVERVIEW-CONDITION-TIPS)", async () => {
+  it("hosts the Breadth + yield-curve ⓘ tips with live E4-M3 values (E1-M5-OVERVIEW-CONDITION-TIPS)", async () => {
     renderOverview();
     await screen.findByText(/Research mode\./);
     // The two condition tips moved here from Data & Market to match the mockup's
@@ -133,12 +133,36 @@ describe("Overview panel", () => {
       name: /Yield curve: 2s10s: the 10-year minus 2-year Treasury yield/,
     });
     expect(yieldCurve).toHaveClass("info");
-    // Neither metric is ingested yet, so the panel states the pending reason
-    // rather than fabricating a value (METHODOLOGY §9).
+    // E4-M3: both metrics are computed live from the lake and render real
+    // values (breadth fraction as a percent, 2s10s as a signed spread).
+    expect(screen.getByText("68%")).toBeInTheDocument();
+    expect(screen.getByText("+0.52pp")).toBeInTheDocument();
+  });
+
+  it("renders honest dashes for breadth / yield curve when the inputs degrade (E4-M3)", async () => {
+    stubExportFetch({
+      "market.json": {
+        asof: "2026-06-28",
+        vix: 15.4,
+        ten_year: 4.47,
+        fed_funds: 3.62,
+        two_year: null,
+        spread_2s10s: null,
+        breadth_above_ma200: null,
+        breadth_n_symbols: null,
+        vol_regime: null,
+        trend_regime: null,
+        rates_regime: null,
+        notes: ["Market breadth unavailable — universe prices not readable."],
+      },
+    });
+    renderOverview();
+    await screen.findByText(/Research mode\./);
+    expect(screen.queryByText("68%")).toBeNull();
+    expect(screen.queryByText("+0.52pp")).toBeNull();
+    // The degrade note surfaces instead of a fabricated value (METHODOLOGY §9).
     expect(
-      screen.getByText(
-        /2s10s spread and market breadth are not yet ingested \(planned for E4\)/,
-      ),
+      screen.getByText(/Market breadth unavailable/),
     ).toBeInTheDocument();
   });
 

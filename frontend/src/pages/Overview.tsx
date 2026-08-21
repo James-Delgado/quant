@@ -253,10 +253,11 @@ export function Overview() {
               </span>
             </li>
             {/* Breadth + yield-curve sit on the conditions snapshot per the mockup
-                (E1-M5-OVERVIEW-CONDITION-TIPS). Neither is ingested yet, so the
-                value reads an honest "—" and the note below explains why — never
-                a fabricated figure (METHODOLOGY §9). The InfoTip copy is verbatim
-                from the frozen mockup. */}
+                (E1-M5-OVERVIEW-CONDITION-TIPS). Live as of E4-M3 (breadth from
+                universe prices vs MA200, 2s10s from DGS10 − DGS2); a missing
+                input renders an honest "—", never a fabricated figure
+                (METHODOLOGY §9). The InfoTip copy is verbatim from the frozen
+                mockup. */}
             <li>
               <span className="k">
                 Breadth
@@ -265,7 +266,15 @@ export function Overview() {
                   tip="Share of the universe trading above its 200-day moving average — a gauge of how broad the uptrend is."
                 />
               </span>
-              <span className="v dim">—</span>
+              <span
+                className={
+                  market?.breadth_above_ma200 != null ? "v" : "v dim"
+                }
+              >
+                {market?.breadth_above_ma200 != null
+                  ? `${Math.round(market.breadth_above_ma200 * 100)}%`
+                  : "—"}
+              </span>
             </li>
             <li>
               <span className="k">
@@ -275,7 +284,11 @@ export function Overview() {
                   tip="2s10s: the 10-year minus 2-year Treasury yield. Negative (inverted) has historically preceded recessions; positive here."
                 />
               </span>
-              <span className="v dim">—</span>
+              <span className={market?.spread_2s10s != null ? "v" : "v dim"}>
+                {market?.spread_2s10s != null
+                  ? `${market.spread_2s10s >= 0 ? "+" : ""}${market.spread_2s10s.toFixed(2)}pp`
+                  : "—"}
+              </span>
             </li>
           </ul>
           {market?.notes?.length ? (

@@ -403,10 +403,29 @@ class AlertsView:
 
 @dataclass(frozen=True)
 class MarketSnapshot:
+    """Live market environment (E4-M3 extends the E1 value-only snapshot).
+
+    The regime labels are produced by the SAME condition machinery the
+    Conditions panel uses (``readers._vol_labels`` / ``_trend_labels`` /
+    ``_rates_labels`` with their pinned thresholds), taken at the latest
+    labellable date — so "the current regime" can never disagree between
+    surfaces (METHODOLOGY §6). Every E4-M3 field is nullable + defaulted: a
+    missing input degrades that field to ``None`` with an explanatory note,
+    never a fabricated value (§9).
+    """
+
     asof: str | None
     vix: float | None
     ten_year: float | None
     fed_funds: float | None
+    # ── E4-M3: curve, breadth, and live regime labels ────────────────────────
+    two_year: float | None = None  # latest DGS2 yield (%)
+    spread_2s10s: float | None = None  # 10Y − 2Y at their last common date (pp)
+    breadth_above_ma200: float | None = None  # fraction of universe above MA200
+    breadth_n_symbols: int | None = None  # symbols with enough history to judge
+    vol_regime: str | None = None  # low_vol | mid_vol | high_vol
+    trend_regime: str | None = None  # uptrend | downtrend
+    rates_regime: str | None = None  # rates_falling | rates_steady | rates_rising
     notes: list[str] = field(default_factory=list)  # deferred metrics, stated honestly
 
 

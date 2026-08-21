@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-21  # E4-M2 done (alert layer: staleness/gap/drift/regime-change, log channel pinned) — E4-M3 -> ready; appended E4-ALERTS-CRON-DOC (gates E4-CLOSE) + E4-ALERTS-PANEL / E4-GAP-ALERT-RECENT-COUNT (optional)
+last_updated: 2026-08-21  # E4-M3 done (live market env: regimes/breadth/2s10s in market.json + live drift surface; DGS2 ingested) — E4-CLOSE still gated on E4-ALERTS-CRON-DOC; appended C1-DGS2-SLA (gates C-CLOSE) + E4-BREADTH-STALE-SYMBOL (optional)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2072,7 +2072,7 @@ tasks:
     project: C
     sub_project: closeout
     status: blocked
-    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C2-M2-G1-REIMPL-REVIEW, C6-REGISTRY-CONCEPT-DOC, C3-M1, C3-M2, C3-M3, C4-M1, C4-M2, C4-M3, C1-ALPACA-GAP-AUDIT, C1-TIINGO-VINTAGE-SEAM]
+    depends_on: [C1-PRD, C1-M1, C1-M2, C1-M3, C2-PRD, C2-M1, C2-M2, C2-M3, C6-PRD, C6-M1, C6-M2, C3-PRD, C4-PRD, C2-M2-SIZING-PARITY, C2-M2-G1-HARNESS-EXACT, C2-M2-G1-REIMPL-REVIEW, C6-REGISTRY-CONCEPT-DOC, C3-M1, C3-M2, C3-M3, C4-M1, C4-M2, C4-M3, C1-ALPACA-GAP-AUDIT, C1-TIINGO-VINTAGE-SEAM, C1-DGS2-SLA]
     blocks: []
     deliverable:
       notebook: notebooks/14_project_c_closeout.ipynb
@@ -2693,8 +2693,9 @@ tasks:
     title: "E4-M3: Live market environment + live feature-drift monitor"
     project: E
     sub_project: E4
-    status: in_progress
+    status: done
     started_at: 2026-08-21T03:31:54Z
+    completed_at: 2026-08-21
     depends_on: [E4-M2]
     blocks: [E4-CLOSE]
     deliverable:
@@ -4982,3 +4983,57 @@ tasks:
       either way). Fix options: carry a separate exact recent-gap count on
       LakeGapReport, or raise the cap. Edge-case polish; OPTIONAL — does not
       gate E4-CLOSE.
+
+  - id: C1-DGS2-SLA
+    rank: 150
+    title: "Decide whether DGS2 gets a C1 SLA row (live 2s10s tile has no staleness alert for its short leg)"
+    project: C
+    sub_project: C1
+    status: ready
+    depends_on: []
+    blocks: [C-CLOSE]
+    deliverable:
+      file: scripts/monitor_freshness.py
+    references:
+      primary: docs/concepts/data-freshness-slas.md
+      consumer: src/quant/console/readers.py
+    est_complexity: small
+    notes: |
+      Discovered during E4-M3 (live market environment): DGS2 was added to
+      settings.fred_series for the console's live 2s10s curve, but the pinned
+      C1-M1 SLA table (scripts/monitor_freshness.SOURCE_SLAS) deliberately
+      covers only MODEL-RELEVANT FRED series (VIXCLS/DGS10/DFF), so a stale
+      DGS2 raises no staleness alert — the 2s10s spread would silently anchor
+      to an older last-common date (the math stays same-day-honest; the
+      lateness just goes unalerted). Decide: extend the SLA table with a
+      fred:DGS2 row (display-relevant class, mirroring FRED_PUBLICATION_LAGS
+      DGS10's lag), or record why display-only series stay un-SLA'd in
+      data-freshness-slas.md. Either resolution is small; C-CLOSE should
+      consciously resolve it (added to C-CLOSE.depends_on per the Step 7
+      corollary).
+
+  - id: E4-BREADTH-STALE-SYMBOL
+    rank: 151
+    title: "Breadth: exclude symbols whose last bar lags the panel's last session (optional polish)"
+    project: E
+    sub_project: E4
+    status: ready
+    depends_on: [E4-M3]
+    blocks: []
+    deliverable:
+      file: src/quant/console/readers.py
+      tests: tests/test_console.py
+    references:
+      primary: docs/project-e/E4-data-market-status.prd.md
+    est_complexity: small
+    notes: |
+      Discovered during E4-M3 post-task review: readers._breadth_above_ma200
+      judges each symbol at its OWN last close vs its trailing MA200. A symbol
+      whose feed stopped updating (delisting, per-symbol ingest gap) is still
+      judged as of its stale last bar, so breadth can quietly blend as-of
+      dates. Dataset-level staleness is covered by the C1 SLA + gap alerts,
+      but a PER-SYMBOL lag is not (see also E4-GAP-PER-SYMBOL). Option:
+      exclude symbols whose last bar is > N sessions behind the newest bar
+      across the universe (report them in breadth_n_symbols' complement /
+      a note). OPTIONAL — does not gate E4-CLOSE (mirrors the E4-M2
+      optional-follow-up precedent).

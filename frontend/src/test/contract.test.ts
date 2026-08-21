@@ -53,7 +53,21 @@ const PORTFOLIO_STRATEGY_KEYS = [
 ];
 const DATA_STATUS_KEYS = ["asof", "feeds"];
 const FEED_KEYS = ["feed", "last_timestamp", "age_days", "status"];
-const MARKET_KEYS = ["asof", "vix", "ten_year", "fed_funds", "notes"];
+const MARKET_KEYS = [
+  "asof",
+  "vix",
+  "ten_year",
+  "fed_funds",
+  // E4-M3 live market environment
+  "two_year",
+  "spread_2s10s",
+  "breadth_above_ma200",
+  "breadth_n_symbols",
+  "vol_regime",
+  "trend_regime",
+  "rates_regime",
+  "notes",
+];
 const LEDGER_KEYS = ["n_trials", "n_entries", "luck_bar", "best", "runs"];
 const CATALOG_KEYS = ["summary", "features"];
 const CATALOG_FEATURE_KEYS = [

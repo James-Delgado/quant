@@ -1099,6 +1099,39 @@ def test_load_prices_for_panel_degrades_to_empty():
     assert sources_mod._load_prices_for_panel(_FakeStorageCatalog(raises=True), ["AAA"]) == {}
 
 
+def test_universe_price_series_splits_per_symbol_tz_naive():
+    df = pd.DataFrame(
+        {
+            "symbol": ["AAA", "AAA", "BBB"],
+            "timestamp": pd.to_datetime(
+                [
+                    "2020-01-02 21:00:00+00:00",
+                    "2020-01-03 21:00:00+00:00",
+                    "2020-01-02 21:00:00+00:00",
+                ]
+            ),
+            "adjClose": [1.05, 1.15, 9.0],
+        }
+    )
+    prices = sources_mod._universe_price_series(_FakeStorageCatalog(df), ["AAA", "BBB"])
+    assert set(prices) == {"AAA", "BBB"}
+    assert prices["AAA"].index.tz is None  # normalized calendar dates, tz dropped
+    assert list(prices["AAA"]) == [1.05, 1.15]
+    assert len(prices["BBB"]) == 1
+
+
+def test_universe_price_series_degrades_to_none():
+    assert sources_mod._universe_price_series(_FakeStorageCatalog(), []) is None
+    assert (
+        sources_mod._universe_price_series(_FakeStorageCatalog(pd.DataFrame()), ["AAA"])
+        is None
+    )
+    assert (
+        sources_mod._universe_price_series(_FakeStorageCatalog(raises=True), ["AAA"])
+        is None
+    )
+
+
 def test_load_feature_panel_returns_none_without_lake(monkeypatch):
     # No usable bars → None, without ever touching build_features.
     monkeypatch.setattr(sources_mod, "_load_prices_for_panel", lambda *a, **k: {})
@@ -2034,6 +2067,141 @@ def test_market_snapshot_no_source(sources):
     mk = readers.market_snapshot(bare)
     assert mk.vix is None
     assert any("not configured" in n for n in mk.notes)
+    # E4-M3 fields degrade to None with honest notes — never fabricated (§9).
+    assert mk.spread_2s10s is None and mk.breadth_above_ma200 is None
+    assert mk.vol_regime is None and mk.trend_regime is None and mk.rates_regime is None
+
+
+# ── market snapshot: live market environment (E4-M3) ─────────────────────────
+
+
+def _universe_prices_fixture() -> dict[str, pd.Series]:
+    """Three universe symbols: one above MA200, one below, one too short to judge."""
+    idx = pd.date_range("2024-01-01", periods=260, freq="B")
+    return {
+        "UP": pd.Series(np.linspace(100.0, 200.0, 260), index=idx),
+        "DOWN": pd.Series(np.linspace(200.0, 100.0, 260), index=idx),
+        "SHORT": pd.Series(np.linspace(100.0, 110.0, 50), index=idx[:50]),
+    }
+
+
+def _live_env_sources(sources: ConsoleSources) -> ConsoleSources:
+    dgs2 = _DGS10_SERIES - 0.5  # same calendar as DGS10 → last common date = last date
+
+    def value_fn(series_id: str) -> float | None:
+        return {"VIXCLS": 15.4, "DGS10": 4.47, "DFF": 3.62, "DGS2": 3.95}.get(series_id)
+
+    def series_fn(series_id: str) -> pd.Series | None:
+        return {"VIXCLS": _VIX_SERIES, "DGS10": _DGS10_SERIES, "DGS2": dgs2}.get(series_id)
+
+    return dataclasses.replace(
+        sources,
+        market_value_fn=value_fn,
+        market_series_fn=series_fn,
+        benchmark_price_fn=_benchmark_prices,
+        universe_prices_fn=_universe_prices_fixture,
+    )
+
+
+def test_market_snapshot_live_environment(sources):
+    mk = readers.market_snapshot(_live_env_sources(sources))
+    assert mk.two_year == 3.95
+    assert mk.spread_2s10s == pytest.approx(0.5)
+    # Breadth: UP above its MA200, DOWN below, SHORT excluded (insufficient history).
+    assert mk.breadth_above_ma200 == pytest.approx(0.5)
+    assert mk.breadth_n_symbols == 2
+    # Steadily rising benchmark → uptrend; enum sanity on the other two axes.
+    assert mk.trend_regime == "uptrend"
+    assert mk.vol_regime in {"low_vol", "mid_vol", "high_vol"}
+    assert mk.rates_regime in {"rates_falling", "rates_steady", "rates_rising"}
+    # Every environment field computed → no degrade notes.
+    assert not any("unavailable" in n for n in mk.notes)
+
+
+def test_market_snapshot_regimes_match_condition_machinery(sources):
+    """Acceptance: the live labels equal the Conditions machinery's last labels."""
+    mk = readers.market_snapshot(_live_env_sources(sources))
+    vol = readers._vol_labels(readers._by_date(_VIX_SERIES))
+    rates = readers._rates_labels(readers._by_date(_DGS10_SERIES))
+    trend = readers._trend_labels(readers._by_date(_benchmark_prices()))
+    assert mk.vol_regime == str(vol.iloc[-1])
+    assert mk.rates_regime == str(rates.iloc[-1])
+    assert mk.trend_regime == str(trend.iloc[-1])
+
+
+def test_market_snapshot_regime_labels_hand_pinned(sources):
+    """Constructed series with known regimes → the pinned-threshold labels."""
+    idx = pd.date_range("2025-01-01", periods=300, freq="B")
+    vix = pd.Series(12.0, index=idx)
+    vix.iloc[-1] = 30.0  # ends above the pinned 25 threshold → high_vol
+    rising = pd.Series(np.linspace(2.0, 4.0, 300), index=idx)  # ≫ +25bp/quarter
+    dgs2 = rising - 1.0
+    falling_price = pd.Series(np.linspace(200.0, 100.0, 300), index=idx)
+
+    def series_fn(series_id: str) -> pd.Series | None:
+        return {"VIXCLS": vix, "DGS10": rising, "DGS2": dgs2}.get(series_id)
+
+    src = dataclasses.replace(
+        sources, market_series_fn=series_fn, benchmark_price_fn=lambda: falling_price
+    )
+    mk = readers.market_snapshot(src)
+    assert mk.vol_regime == "high_vol"
+    assert mk.rates_regime == "rates_rising"
+    assert mk.trend_regime == "downtrend"
+    assert mk.spread_2s10s == pytest.approx(1.0)
+
+
+def test_curve_spread_uses_last_common_date():
+    idx = pd.date_range("2025-01-01", periods=5, freq="B")
+    ten = pd.Series([4.0, 4.1, 4.2, 4.3, 4.4], index=idx)
+    two = pd.Series([3.0, 3.0, 3.0], index=idx[:3])  # short leg lags two sessions
+    # Spread is taken at the last COMMON date (4.2 − 3.0), not each leg's own latest.
+    assert readers._curve_spread_2s10s(ten, two) == pytest.approx(1.2)
+    assert readers._curve_spread_2s10s(ten, None) is None
+    assert readers._curve_spread_2s10s(None, two) is None
+    disjoint = pd.Series([1.0], index=pd.DatetimeIndex(["2010-01-04"]))
+    assert readers._curve_spread_2s10s(ten, disjoint) is None  # no shared dates
+
+
+def test_breadth_degrades_without_judgeable_symbols():
+    assert readers._breadth_above_ma200(None) == (None, 0)
+    assert readers._breadth_above_ma200({}) == (None, 0)
+    short_only = {
+        "X": pd.Series([1.0, 2.0], index=pd.date_range("2025-01-01", periods=2))
+    }
+    assert readers._breadth_above_ma200(short_only) == (None, 0)
+
+
+def test_seeded_distribution_shift_flags_drift_on_live_surface(tmp_path, sources):
+    """Acceptance (E4-M3): a seeded shift → catalog verdict 'drifting' → drift alert.
+
+    The live drift monitor is the lake-backed feature monitor evaluated at read
+    time; this drives a distribution-shifted panel through
+    ``build_feature_monitor`` → ``load_catalog`` → ``load_alerts`` and asserts
+    the shift surfaces on BOTH the catalog panel and the alert channel.
+    """
+    catalog_path = tmp_path / "drift_catalog.yaml"
+    _write_catalog(catalog_path)  # registers ret_1d + DGS10
+    rng = np.random.default_rng(1234)
+    idx = pd.date_range("2020-01-01", periods=60, freq="B")
+    shifted = rng.normal(0.0, 0.01, 60)
+    shifted[-10:] += 5.0  # seeded distribution shift in the recent window
+    panel = pd.DataFrame(
+        {"ret_1d": shifted, "DGS10": rng.normal(4.0, 0.05, 60)}, index=idx
+    )
+    src = dataclasses.replace(
+        sources,
+        catalog_path=catalog_path,
+        feature_monitor_fn=sources_mod.build_feature_monitor(
+            lambda: panel, recent_bars=10, stale_bars=5
+        ),
+    )
+    cat = readers.load_catalog(src)
+    assert {f.name: f.stability for f in cat.features}["ret_1d"] == "drifting"
+    view = readers.load_alerts(src)
+    drift_alerts = [a for a in view.alerts if a.kind == "drift"]
+    assert len(drift_alerts) == 1
+    assert "ret_1d" in drift_alerts[0].message
 
 
 # ── export ───────────────────────────────────────────────────────────────────

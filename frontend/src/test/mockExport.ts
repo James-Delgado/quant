@@ -269,14 +269,21 @@ export const DATA_STATUS: DataStatusView = {
   notes: [],
 };
 
+// Live market environment (E4-M3): values + regimes labelled by the same
+// condition machinery the Conditions panel uses.
 export const MARKET: MarketSnapshot = {
   asof: "2026-06-28",
   vix: 15.4,
   ten_year: 4.47,
   fed_funds: 3.62,
-  notes: [
-    "2s10s spread and market breadth are not yet ingested (planned for E4).",
-  ],
+  two_year: 3.95,
+  spread_2s10s: 0.52,
+  breadth_above_ma200: 0.68,
+  breadth_n_symbols: 31,
+  vol_regime: "mid_vol",
+  trend_regime: "uptrend",
+  rates_regime: "rates_steady",
+  notes: [],
 };
 
 // Monitoring stats are null on purpose: the lake-backed feature monitor

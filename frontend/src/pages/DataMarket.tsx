@@ -3,12 +3,28 @@ import { dataClient } from "@/lib/dataClient";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { ErrorState, Loading } from "@/components/ui/StatePanel";
 import type {
+  CatalogView,
   DataStatusView,
   FeedStatus,
   LakeGapReport,
   MarketSnapshot,
   SlaFeedStatus,
 } from "@/types/viewmodels";
+
+/** "mid_vol" → "mid vol" — regime labels come from the condition machinery. */
+function fmtRegime(label: string): string {
+  return label.replace(/_/g, " ");
+}
+
+/** Signed 2s10s spread in percentage points, e.g. "+0.52pp". */
+function fmtSpread(spread: number): string {
+  return `${spread >= 0 ? "+" : ""}${spread.toFixed(2)}pp`;
+}
+
+/** Breadth fraction → whole-percent display, e.g. "68%". */
+function fmtBreadth(fraction: number): string {
+  return `${Math.round(fraction * 100)}%`;
+}
 
 /** Feed status string -> pill variant (honest: stale/lag reads as warn). */
 function feedPill(status: string): "ok" | "warn" | "bad" {
@@ -111,13 +127,20 @@ function MarketTile({
 function DataMarketBody({
   status,
   market,
+  catalog,
 }: {
   status: DataStatusView;
   market: MarketSnapshot;
+  catalog: CatalogView | null;
 }) {
   const sla = status.sla ?? [];
   const gaps = status.gaps ?? [];
   const notes = status.notes ?? [];
+  // Live feature-drift figures from the catalog monitor's verdicts (E4-M3) —
+  // the single source of truth the alerts also consume (one signal, one judge).
+  const monitored = catalog
+    ? catalog.summary.stable + catalog.summary.drifting + catalog.summary.stale
+    : 0;
   return (
     <>
       <div className="sec">
@@ -193,16 +216,86 @@ function DataMarketBody({
         {/* Bare tiles, matching the mockup's Data & Market figs. The Breadth +
             yield-curve ⓘ definitions live on the Overview conditions snapshot
             (E1-M5-OVERVIEW-CONDITION-TIPS) — the mockup's single home for them —
-            rather than being retrofitted here. */}
+            rather than being retrofitted here. Values are live as of E4-M3; a
+            missing input renders an honest pending "—", never a fabricated
+            figure. */}
         <MarketTile
           label="Breadth > MA200"
-          value="—"
-          sub="lands with E4"
-          pending
+          value={
+            market.breadth_above_ma200 != null
+              ? fmtBreadth(market.breadth_above_ma200)
+              : "—"
+          }
+          sub={
+            market.breadth_above_ma200 != null
+              ? `${market.breadth_n_symbols ?? 0} symbols judged`
+              : "universe prices unavailable"
+          }
+          pending={market.breadth_above_ma200 == null}
         />
-        <MarketTile label="2s10s" value="—" sub="lands with E4" pending />
+        <MarketTile
+          label="2s10s"
+          value={
+            market.spread_2s10s != null ? fmtSpread(market.spread_2s10s) : "—"
+          }
+          sub={
+            market.spread_2s10s != null
+              ? `10Y ${market.ten_year ?? "—"} · 2Y ${market.two_year ?? "—"}`
+              : "DGS2/DGS10 unavailable"
+          }
+          pending={market.spread_2s10s == null}
+        />
       </div>
-      {market.notes?.length ? <p className="note">{market.notes[0]}</p> : null}
+
+      <div className="sec">
+        Market environment{" "}
+        <span className="dim">
+          — live regimes, labelled by the same condition machinery as the
+          Conditions panel
+        </span>
+        <span className="ln" />
+      </div>
+      <div className="grid c4">
+        <MarketTile
+          label="Volatility regime"
+          value={market.vol_regime ? fmtRegime(market.vol_regime) : "—"}
+          sub={market.vol_regime ? "VIX vs pinned 15/25" : "VIX unavailable"}
+          pending={!market.vol_regime}
+        />
+        <MarketTile
+          label="Trend regime"
+          value={market.trend_regime ? fmtRegime(market.trend_regime) : "—"}
+          sub={
+            market.trend_regime
+              ? "benchmark vs MA200"
+              : "benchmark unavailable"
+          }
+          pending={!market.trend_regime}
+        />
+        <MarketTile
+          label="Rates regime"
+          value={market.rates_regime ? fmtRegime(market.rates_regime) : "—"}
+          sub={
+            market.rates_regime
+              ? "10Y trailing-quarter change"
+              : "10Y unavailable"
+          }
+          pending={!market.rates_regime}
+        />
+        <MarketTile
+          label="Feature drift"
+          value={monitored > 0 ? `${catalog!.summary.drifting} drifting` : "—"}
+          sub={
+            monitored > 0
+              ? `${monitored} features monitored live`
+              : "feature monitor not wired"
+          }
+          pending={monitored === 0}
+        />
+      </div>
+      {market.notes?.length ? (
+        <p className="note">{market.notes.join(" ")}</p>
+      ) : null}
       <p className="note">
         33-symbol universe · union timeline 2003 → 2026 · point-in-time
         validated. SLA verdicts mirror the C1 freshness monitor; intraday quotes
@@ -214,11 +307,14 @@ function DataMarketBody({
 
 export function DataMarket() {
   const state = useAsyncData(async (signal) => {
-    const [status, market] = await Promise.all([
+    // catalog.json feeds only the live feature-drift tile; its absence must
+    // not take down the whole panel (honest degrade → pending tile).
+    const [status, market, catalog] = await Promise.all([
       dataClient.dataStatus(signal),
       dataClient.market(signal),
+      dataClient.catalog(signal).catch(() => null),
     ]);
-    return { status, market };
+    return { status, market, catalog };
   }, []);
 
   return (
@@ -232,7 +328,11 @@ export function DataMarket() {
       {state.status === "loading" && <Loading label="Loading data status…" />}
       {state.status === "error" && <ErrorState error={state.error} />}
       {state.status === "ready" && (
-        <DataMarketBody status={state.data.status} market={state.data.market} />
+        <DataMarketBody
+          status={state.data.status}
+          market={state.data.market}
+          catalog={state.data.catalog}
+        />
       )}
     </section>
   );
