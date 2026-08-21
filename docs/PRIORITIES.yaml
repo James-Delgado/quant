@@ -2667,7 +2667,8 @@ tasks:
     title: "E4-M2: Staleness/gap/drift alerting (pinned thresholds)"
     project: E
     sub_project: E4
-    status: ready  # unblocked 2026-08-14: E4-M1 done
+    status: in_progress
+    started_at: 2026-08-21T02:20:41Z
     depends_on: [E4-M1]
     blocks: [E4-M3, E4-CLOSE]
     deliverable:
