@@ -10,7 +10,9 @@ describe("Data & Market panel", () => {
   it("renders per-feed freshness with an honest stale pill", async () => {
     render(<DataMarket />);
     // The label appears on both the age-based feed card and its gap report.
-    expect((await screen.findAllByText("Daily equity bars")).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText("Daily equity bars")).length,
+    ).toBeGreaterThan(0);
     expect(screen.getAllByText("stale").length).toBeGreaterThan(0);
   });
 

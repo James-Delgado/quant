@@ -20,6 +20,11 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
+# Coverage.py artifacts — regenerated on every `pytest --cov` run.
+.coverage
+.coverage.*
+htmlcov/
+
 # Prefect
 .prefect/
 

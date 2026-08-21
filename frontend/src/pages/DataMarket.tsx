@@ -47,10 +47,16 @@ function SlaCard({ s }: { s: SlaFeedStatus }) {
 }
 
 /** Gap-report pill: verified 0, N gaps, or an honest "unchecked" (E4-M1). */
-function gapPill(g: LakeGapReport): { variant: "ok" | "warn" | "bad"; label: string } {
+function gapPill(g: LakeGapReport): {
+  variant: "ok" | "warn" | "bad";
+  label: string;
+} {
   if (g.n_gaps == null) return { variant: "warn", label: "unchecked" };
   if (g.n_gaps === 0) return { variant: "ok", label: "no gaps" };
-  return { variant: "bad", label: `${g.n_gaps} gap${g.n_gaps === 1 ? "" : "s"}` };
+  return {
+    variant: "bad",
+    label: `${g.n_gaps} gap${g.n_gaps === 1 ? "" : "s"}`,
+  };
 }
 
 function GapCard({ g }: { g: LakeGapReport }) {
@@ -199,8 +205,8 @@ function DataMarketBody({
       {market.notes?.length ? <p className="note">{market.notes[0]}</p> : null}
       <p className="note">
         33-symbol universe · union timeline 2003 → 2026 · point-in-time
-        validated. SLA verdicts mirror the C1 freshness monitor; intraday
-        quotes arrive with the execution layer.
+        validated. SLA verdicts mirror the C1 freshness monitor; intraday quotes
+        arrive with the execution layer.
       </p>
     </>
   );
