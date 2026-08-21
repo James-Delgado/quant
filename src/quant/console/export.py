@@ -56,6 +56,7 @@ TOP_LEVEL_READERS: dict[str, Callable[[ConsoleSources], Any]] = {
     "ledger.json": readers.load_ledger,
     "data_status.json": readers.data_status,
     "market.json": readers.market_snapshot,
+    "alerts.json": readers.load_alerts,
 }
 
 

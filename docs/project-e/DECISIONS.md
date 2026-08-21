@@ -106,7 +106,12 @@ immediately-valuable E1 on infrastructure that doesn't exist yet.
 
 - **Charting library:** Plotly default; ECharts acceptable — decide in E1-M3. Service
   layer emits **neutral chart-ready series** so the choice stays reversible.
-- **Alert channel (E4):** log / email / push — TBD in E4.
+- **Alert channel (E4):** ~~log / email / push — TBD in E4~~ **RESOLVED in E4-M2
+  (2026-08-21): the log channel** — structured stderr + non-zero exit from
+  `python -m quant.console alerts` (cron mail-on-output), extending the delivery
+  contract C1-M3's freshness monitor pinned, with zero new secrets/infra (YAGNI).
+  Email/push remain future `AlertChannel` implementations behind the same `emit`
+  seam in `src/quant/console/alerts.py` — a config swap, not a redesign.
 - **PRD location:** these live in `docs/project-e/`; could also be mirrored to
   `.claude/prds/` if the planning pipeline expects them there.
 

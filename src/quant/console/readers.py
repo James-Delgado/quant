@@ -1,4 +1,4 @@
-"""The eight console readers (PRD §4.1).
+"""The console readers (PRD §4.1 + the E4-M2 alerts reader).
 
 Each reader takes a :class:`quant.console.sources.ConsoleSources` (defaulting to
 the production sources) and returns a frozen view-model from
@@ -1062,5 +1062,39 @@ def market_snapshot(sources: ConsoleSources | None = None) -> vm.MarketSnapshot:
         vix=values["vix"],
         ten_year=values["ten_year"],
         fed_funds=values["fed_funds"],
+        notes=notes,
+    )
+
+
+# ── 9. Alerts (E4-M2) ────────────────────────────────────────────────────────
+
+
+def load_alerts(sources: ConsoleSources | None = None) -> vm.AlertsView:
+    """Evaluate the E4-M2 alert set: staleness / gap / drift / regime-change.
+
+    Composes the other readers' outputs — the SLA verdicts + gap reports from
+    :func:`data_status` and the feature-monitor verdicts from
+    :func:`load_catalog` — through the pure producers in
+    :mod:`quant.console.alerts`, so an alert can never disagree with what the
+    Data & Market / Feature Catalog panels display (METHODOLOGY §6). The VIX
+    series for the regime axis comes from the same ``market_series_fn`` seam
+    the conditions panel uses; an unavailable series degrades to an explicit
+    could-not-check note (§9).
+    """
+    from quant.console import alerts as alerts_mod
+
+    sources = sources or ConsoleSources.default()
+    vix = None
+    if sources.market_series_fn is not None:
+        try:
+            vix = sources.market_series_fn(VIX_SERIES_ID)
+        except Exception:
+            vix = None
+    items, notes = alerts_mod.evaluate_alerts(
+        data_status(sources), load_catalog(sources), vix
+    )
+    return vm.AlertsView(
+        asof=_iso_date(sources.now()) or "",
+        alerts=items,
         notes=notes,
     )

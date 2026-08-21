@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-14  # E4-M1 done (SLA verdicts + lake gap detection in the console) — E4-M2 unblocked -> ready; C1-ALPACA-GAP-AUDIT (564-gap finding, gates C-CLOSE) + E4-GAP-PER-SYMBOL (optional) appended
+last_updated: 2026-08-21  # E4-M2 done (alert layer: staleness/gap/drift/regime-change, log channel pinned) — E4-M3 -> ready; appended E4-ALERTS-CRON-DOC (gates E4-CLOSE) + E4-ALERTS-PANEL / E4-GAP-ALERT-RECENT-COUNT (optional)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1758,7 +1758,7 @@ tasks:
       unrun hardening task cannot deadlock closeout.
 
   - id: C2-DOC-PLATFORM-SYNC
-    rank: 66
+    rank: 148  # was 66; rank ceded 2026-08-21 to E4-ALERTS-CRON-DOC (this task is done — rank inert)
     title: "Sync the LEAN→Alpaca platform decision across the C2 PRD, ROADMAP §7, and C2-M2/M3 task wording"
     project: C
     sub_project: C2
@@ -2667,8 +2667,9 @@ tasks:
     title: "E4-M2: Staleness/gap/drift alerting (pinned thresholds)"
     project: E
     sub_project: E4
-    status: in_progress
+    status: done
     started_at: 2026-08-21T02:20:41Z
+    completed_at: 2026-08-21
     depends_on: [E4-M1]
     blocks: [E4-M3, E4-CLOSE]
     deliverable:
@@ -2692,7 +2693,7 @@ tasks:
     title: "E4-M3: Live market environment + live feature-drift monitor"
     project: E
     sub_project: E4
-    status: blocked
+    status: ready  # unblocked 2026-08-21: E4-M2 done
     depends_on: [E4-M2]
     blocks: [E4-CLOSE]
     deliverable:
@@ -2722,7 +2723,11 @@ tasks:
     project: E
     sub_project: E4
     status: blocked
-    depends_on: [E4-M1, E4-M2, E4-M3]
+    # E4-ALERTS-CRON-DOC added 2026-08-21 (Step 7 corollary): the E4-M2 alert
+    # channel is cron-delivered, so closeout must not certify E4 before the
+    # cron wiring is documented. The optional E4-M2 follow-ups (panel, exact
+    # recent-gap count) do NOT gate closeout, per the E4-GAP-PER-SYMBOL precedent.
+    depends_on: [E4-M1, E4-M2, E4-M3, E4-ALERTS-CRON-DOC]
     blocks: []
     deliverable:
       report: docs/project-e/E4_CLOSEOUT.md
@@ -4902,3 +4907,77 @@ tasks:
       Added to C-CLOSE.depends_on (data-integrity work, not optional polish).
       Related-but-distinct: C1-ALPACA-GAP-AUDIT (missing sessions, same outage
       review); the FRED latest-vintage limitation is already declared + screened.
+
+  - id: E4-ALERTS-CRON-DOC
+    rank: 66
+    title: "Document cron wiring for `python -m quant.console alerts` (the E4-M2 channel in production)"
+    project: E
+    sub_project: E4
+    status: ready
+    depends_on: [E4-M2]
+    blocks: [E4-CLOSE]
+    deliverable:
+      file: docs/concepts/freshness-monitor.md
+    references:
+      primary: src/quant/console/alerts.py
+      cron_precedent: docs/concepts/freshness-monitor.md
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E4-M2 (the alerting layer): the pinned alert channel is
+      cron mail-on-stderr + non-zero exit, mirroring the C1-M3 monitor — but
+      only the C1-M3 monitor's cron wiring is documented. Without a documented
+      schedule the E4 alerting protects nothing in production. Extend
+      docs/concepts/freshness-monitor.md (or a sibling section) with the
+      `console alerts` invocation, recommended time-of-day (after the parity-safe
+      Tiingo T+1 bar, matching trade_daily), and the --no-monitor tradeoff
+      (fast staleness/gap/regime check vs. the ~1-2 min drift panel build).
+      GATES E4-CLOSE (Step 7 corollary): closeout must not certify a
+      cron-delivered alert channel whose cron wiring is undocumented.
+
+  - id: E4-ALERTS-PANEL
+    rank: 146
+    title: "E4-M2 follow-up (optional): render alerts.json in the console Data & Market panel"
+    project: E
+    sub_project: E4
+    status: ready
+    depends_on: [E4-M2]
+    blocks: []
+    deliverable:
+      app: frontend/
+    references:
+      primary: src/quant/console/alerts.py
+      export_contract: src/quant/console/schemas.py
+    est_complexity: small
+    notes: |
+      Discovered during E4-M2: the alerts surface ships in the export/API
+      (alerts.json, schema-checked) and the log channel, but no SPA panel
+      renders it yet. A severity-badged alert list (critical-first ordering is
+      already baked into the payload) in the Data & Market panel would make
+      breaches visible in the console, not just in cron mail. OPTIONAL — does
+      not gate E4-CLOSE (E4-GAP-PER-SYMBOL precedent); E4-M3's frontend work
+      may be the natural place to fold this in.
+
+  - id: E4-GAP-ALERT-RECENT-COUNT
+    rank: 147
+    title: "E4-M2 follow-up (optional): exact recent-gap count when >MAX_GAP_DATES_SURFACED gaps fall in the alert window"
+    project: E
+    sub_project: E4
+    status: ready
+    depends_on: [E4-M2]
+    blocks: []
+    deliverable:
+      file: src/quant/console/health.py
+    references:
+      primary: src/quant/console/alerts.py
+      cap_constant: src/quant/console/health.py
+    est_complexity: small
+    notes: |
+      Discovered during E4-M2 post-task review: gap_alerts() counts recent gaps
+      from LakeGapReport.gap_dates, which E4-M1 caps at
+      health.MAX_GAP_DATES_SURFACED (10) most-recent dates. If MORE than 10
+      gaps fall inside the 21-session alert window, the alert message
+      understates the count (severity is unaffected — such a lake is critical
+      either way). Fix options: carry a separate exact recent-gap count on
+      LakeGapReport, or raise the cap. Edge-case polish; OPTIONAL — does not
+      gate E4-CLOSE.

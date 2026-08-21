@@ -83,6 +83,7 @@ EXPORT_SCHEMAS: dict[str, dict] = {
     "ledger.json": schema_for(vm.LedgerView),
     "data_status.json": schema_for(vm.DataStatusView),
     "market.json": schema_for(vm.MarketSnapshot),
+    "alerts.json": schema_for(vm.AlertsView),
 }
 
 # Files produced by per-run fan-out share one schema each.

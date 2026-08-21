@@ -9,6 +9,7 @@ drift-checked against :mod:`quant.console.schemas`.
 No method on these types computes anything — all computation lives in
 :mod:`quant.console.readers`.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -373,6 +374,31 @@ class DataStatusView:
     sla: list[SlaFeedStatus] = field(default_factory=list)
     gaps: list[LakeGapReport] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)  # degrade states, stated honestly
+
+
+@dataclass(frozen=True)
+class AlertItem:
+    """One breach alert (E4-M2). Vocabulary + thresholds pinned in ``alerts.py``."""
+
+    kind: str  # staleness | gap | drift | regime_change
+    severity: str  # warning | critical
+    subject: str  # feed / dataset / axis the breach concerns, e.g. "tiingo"
+    message: str
+
+
+@dataclass(frozen=True)
+class AlertsView:
+    """The evaluated alert set at one instant (E4-M2).
+
+    ``alerts`` is sorted critical-first (then kind/subject) so every consumer —
+    export JSON, API route, log channel — presents the same order. ``notes``
+    carries could-not-check degrades, stated honestly (METHODOLOGY §9): an
+    empty ``alerts`` list with a non-empty ``notes`` list is *not* an all-clear.
+    """
+
+    asof: str
+    alerts: list[AlertItem] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

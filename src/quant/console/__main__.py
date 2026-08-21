@@ -3,6 +3,7 @@
 Canonical invocation (no reinstall needed):
 
     python -m quant.console export [--out DIR] [--no-monitor]
+    python -m quant.console alerts [--now ISO] [--no-monitor]
     python -m quant.console feedback promote <issue> [--priorities PATH]
     python -m quant.console feedback submit --title T --type bug --severity high \\
         --description D
@@ -16,6 +17,7 @@ two-click pre-filled ``issues/new`` page) when a GitHub token is present locally
 A ``console`` console-script is also declared in ``pyproject.toml`` and activates
 on the next editable install; until then use the module form above.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,6 +55,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
 
+    alerts_parser = sub.add_parser(
+        "alerts",
+        help=(
+            "Evaluate staleness/gap/drift/regime-change alerts (E4-M2); "
+            "non-zero exit + stderr echo when any alert fires (cron channel)"
+        ),
+    )
+    alerts_parser.add_argument(
+        "--now",
+        default=None,
+        help="Evaluate as of this UTC instant (ISO-8601); defaults to current time.",
+    )
+    alerts_parser.add_argument(
+        "--no-monitor",
+        action="store_true",
+        help=(
+            "Skip the lake-backed feature monitor (drift degrades to an "
+            "explicit could-not-check note). Avoids the ~1-2 min panel build."
+        ),
+    )
+
     feedback_parser = sub.add_parser(
         "feedback", help="Issue-tracker tooling (promote a feedback issue to a task)"
     )
@@ -84,15 +107,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--severity", required=True, choices=("low", "med", "high"), help="Severity"
     )
     submit_parser.add_argument("--description", required=True, help="What happened")
-    submit_parser.add_argument(
-        "--panel", default="CLI", help='Where it was seen (default: "CLI")'
-    )
-    submit_parser.add_argument(
-        "--build-sha", default="local", help='Build SHA (default: "local")'
-    )
-    submit_parser.add_argument(
-        "--app-version", default="cli", help='App version (default: "cli")'
-    )
+    submit_parser.add_argument("--panel", default="CLI", help='Where it was seen (default: "CLI")')
+    submit_parser.add_argument("--build-sha", default="local", help='Build SHA (default: "local")')
+    submit_parser.add_argument("--app-version", default="cli", help='App version (default: "cli")')
 
     args = parser.parse_args(argv)
 
@@ -127,11 +144,33 @@ def main(argv: Sequence[str] | None = None) -> int:
                 # --check turns the warning into a hard failure so CI / the
                 # E1-CLOSE build step can GATE on a populated fan-out
                 # (E1-EXPORT-FANOUT-CHECK; METHODOLOGY §9).
-                print(
-                    "  ERROR: --check requires complete fan-out coverage; "
-                    "exiting non-zero."
-                )
+                print("  ERROR: --check requires complete fan-out coverage; exiting non-zero.")
                 return 1
+        return 0
+
+    if args.command == "alerts":
+        # Imported here so `--help` does not trigger settings/credential loading.
+        import dataclasses
+        import datetime as dt
+
+        from quant.console import alerts as alerts_mod
+        from quant.console.readers import load_alerts
+        from quant.console.sources import ConsoleSources
+
+        sources = ConsoleSources.default(feature_monitor=not args.no_monitor)
+        if args.now is not None:
+            now = dt.datetime.fromisoformat(args.now)
+            if now.tzinfo is None:
+                now = now.replace(tzinfo=dt.timezone.utc)
+            sources = dataclasses.replace(sources, now_fn=lambda: now)
+        view = load_alerts(sources)
+        # Report to stdout; on any alert also emit via the pinned log channel
+        # (stderr) and exit non-zero, so cron's mail-on-output surfaces the
+        # breach — the same delivery contract as the C1-M3 freshness monitor.
+        print(alerts_mod.format_report(view))
+        if view.alerts:
+            alerts_mod.LogChannel().emit(view)
+            return 1
         return 0
 
     if args.command == "feedback" and args.feedback_command == "promote":

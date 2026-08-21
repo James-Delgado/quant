@@ -2065,7 +2065,7 @@ def test_export_idempotent(sources, tmp_path):
 
     files1, files2 = payloads(out1), payloads(out2)
     # 7 top-level + 2 strategy detail + 2 provenance (2 strategies in fixture).
-    assert files1 == files2 and len(files1) == 11
+    assert files1 == files2 and len(files1) == 12  # incl. E4-M2 alerts.json
     for rel in files1:
         assert (out1 / rel).read_bytes() == (out2 / rel).read_bytes()
 
@@ -2220,8 +2220,9 @@ def test_cli_export(monkeypatch, sources, tmp_path, capsys):
     monkeypatch.setattr(ConsoleSources, "default", classmethod(lambda cls, **kw: sources))
     rc = cli.main(["export", "--out", str(tmp_path / "cli")])
     assert rc == 0
-    # 11 schema-validated payloads + the freshness manifest side artifact.
-    assert "Wrote 12 export files" in capsys.readouterr().out
+    # 12 schema-validated payloads (incl. E4-M2 alerts.json) + the freshness
+    # manifest side artifact.
+    assert "Wrote 13 export files" in capsys.readouterr().out
 
 
 def test_cli_export_no_monitor_passes_flag(monkeypatch, sources, tmp_path):
