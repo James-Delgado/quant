@@ -2693,7 +2693,8 @@ tasks:
     title: "E4-M3: Live market environment + live feature-drift monitor"
     project: E
     sub_project: E4
-    status: ready  # unblocked 2026-08-21: E4-M2 done
+    status: in_progress
+    started_at: 2026-08-21T03:31:54Z
     depends_on: [E4-M2]
     blocks: [E4-CLOSE]
     deliverable:
