@@ -161,9 +161,7 @@ describe("Overview panel", () => {
     expect(screen.queryByText("68%")).toBeNull();
     expect(screen.queryByText("+0.52pp")).toBeNull();
     // The degrade note surfaces instead of a fabricated value (METHODOLOGY §9).
-    expect(
-      screen.getByText(/Market breadth unavailable/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Market breadth unavailable/)).toBeInTheDocument();
   });
 
   it("retrofits an inline ⓘ tooltip onto the Sharpe figure (E1-M5)", async () => {

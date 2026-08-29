@@ -266,9 +266,7 @@ function DataMarketBody({
           label="Trend regime"
           value={market.trend_regime ? fmtRegime(market.trend_regime) : "—"}
           sub={
-            market.trend_regime
-              ? "benchmark vs MA200"
-              : "benchmark unavailable"
+            market.trend_regime ? "benchmark vs MA200" : "benchmark unavailable"
           }
           pending={!market.trend_regime}
         />

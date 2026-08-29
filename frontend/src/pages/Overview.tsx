@@ -267,9 +267,7 @@ export function Overview() {
                 />
               </span>
               <span
-                className={
-                  market?.breadth_above_ma200 != null ? "v" : "v dim"
-                }
+                className={market?.breadth_above_ma200 != null ? "v" : "v dim"}
               >
                 {market?.breadth_above_ma200 != null
                   ? `${Math.round(market.breadth_above_ma200 * 100)}%`
