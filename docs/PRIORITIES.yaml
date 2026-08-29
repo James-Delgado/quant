@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-21  # E4-M3 done (live market env: regimes/breadth/2s10s in market.json + live drift surface; DGS2 ingested) — E4-CLOSE still gated on E4-ALERTS-CRON-DOC; appended C1-DGS2-SLA (gates C-CLOSE) + E4-BREADTH-STALE-SYMBOL (optional)
+last_updated: 2026-08-29  # E4-ALERTS-CRON-DOC done (console-alerts cron wiring documented in freshness-monitor.md) — E4-CLOSE flipped ready (all deps done); appended MISC-SCHED-INSTALL (operator launchd install; non-gating, enables C6-M2-LIVE-ACCRUAL)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -1926,7 +1926,7 @@ tasks:
   # ------ C6-M2 follow-ups (discovered during the daily-executor build) ------
 
   - id: C6-M2-MODEL-DISPATCH
-    rank: 78
+    rank: 149  # renumbered from 78 on 2026-08-29 (done; rank inert) to free 78 for MISC-SCHED-INSTALL ahead of C6-M2-LIVE-ACCRUAL
     title: "Generalize trade_daily._strategy_signal beyond the ARIMA placeholder"
     project: C
     sub_project: C6
@@ -2724,7 +2724,7 @@ tasks:
     title: "E4-CLOSE: E4 closeout — live status + a fired alert on a seeded breach + report"
     project: E
     sub_project: E4
-    status: blocked
+    status: ready
     # E4-ALERTS-CRON-DOC added 2026-08-21 (Step 7 corollary): the E4-M2 alert
     # channel is cron-delivered, so closeout must not certify E4 before the
     # cron wiring is documented. The optional E4-M2 follow-ups (panel, exact
@@ -4915,8 +4915,9 @@ tasks:
     title: "Document cron wiring for `python -m quant.console alerts` (the E4-M2 channel in production)"
     project: E
     sub_project: E4
-    status: in_progress
+    status: done
     started_at: 2026-08-29T22:44:58Z
+    completed_at: 2026-08-29
     depends_on: [E4-M2]
     blocks: [E4-CLOSE]
     deliverable:
@@ -4984,6 +4985,39 @@ tasks:
       either way). Fix options: carry a separate exact recent-gap count on
       LakeGapReport, or raise the cap. Edge-case polish; OPTIONAL — does not
       gate E4-CLOSE.
+
+  - id: MISC-SCHED-INSTALL
+    rank: 78
+    title: "Install + verify operator scheduler entries (launchd) for the daily ingest flow and console alerts"
+    project: MISC
+    sub_project: ops
+    status: ready
+    depends_on: [E4-ALERTS-CRON-DOC]
+    blocks: []
+    deliverable:
+      file: docs/concepts/freshness-monitor.md
+      plists: "~/Library/LaunchAgents/com.quant.*.plist"
+    references:
+      primary: docs/concepts/freshness-monitor.md
+      launchd_precedent: docs/concepts/data-freshness-slas.md
+      trade_daily_runbook: docs/concepts/strategy-registry.md
+    est_complexity: small
+    notes: |
+      Discovered during E4-ALERTS-CRON-DOC (2026-08-29): the cron/launchd wiring
+      for the E4-M2 alerts channel is now DOCUMENTED, but on the operator machine
+      only com.quant.measure-availability is actually installed — the 22:30 UTC
+      batch ingest flow (flows/daily.py) and every alert check are unscheduled.
+      Live evidence: `console alerts --no-monitor` on 2026-08-29 fired 8 staleness
+      warnings because the lake's latest ingest is 2026-08-19. Install LaunchAgents
+      (launchd over cron per the data-freshness-slas.md "Scheduler" caveat) for:
+      (a) the daily ingest flow at 22:30 UTC weekdays, (b) `python -m
+      quant.console alerts` at 12:15 UTC weekdays per the freshness-monitor.md
+      recipe; record the installed plists in the doc. trade_daily scheduling
+      stays with C6-M2-LIVE-ACCRUAL (which this enables — hence ranked just
+      ahead of it). NON-GATING for E4-CLOSE: E4's deliverables are code + docs;
+      operator-machine scheduler state is deployment ops (C6-M2-LIVE-ACCRUAL /
+      C2-M3 live-accrual precedent). Requires the operator's machine awake at
+      the scheduled times — surface any asleep-window tradeoffs to the user.
 
   - id: C1-DGS2-SLA
     rank: 150

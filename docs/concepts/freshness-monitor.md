@@ -8,7 +8,10 @@
 > *values* are frozen in the C1-M1 doc and live in **one module constant**
 > (`SOURCE_SLAS`) under a drift test — this doc describes the runner, it does
 > **not** redefine the contract (METHODOLOGY §2). Update it when the runner's
-> CLI, exit-code contract, or cron recipe changes.
+> CLI, exit-code contract, or cron recipe changes. It also hosts the
+> **E4-ALERTS-CRON-DOC deliverable**: the production cron wiring for the E4-M2
+> `python -m quant.console alerts` channel (see §"The console alerts channel"),
+> which shares this monitor's delivery contract.
 
 ---
 
@@ -131,6 +134,103 @@ read-only, so it is safe to run as often as desired.
 
 ---
 
+## The console alerts channel (E4-M2) — cron wiring
+
+E4-M2 ([`src/quant/console/alerts.py`](../../src/quant/console/alerts.py))
+extended the alerting surface beyond staleness: **staleness + lake gaps +
+feature drift + VIX regime-change**, evaluated in one invocation. Its pinned
+delivery channel is the **same contract as this monitor** — structured lines to
+stderr plus a non-zero exit, so cron's mail-on-output surfaces a breach with
+zero new infrastructure (the "Alert channel (E4)" decision,
+`docs/project-e/DECISIONS.md`). This section is that channel's production
+wiring; without a scheduled invocation the E4 alerting protects nothing.
+
+### Running it
+
+```bash
+# Evaluate all four signals as of now; exit non-zero if any alert fires.
+.venv/bin/python -m quant.console alerts
+
+# Replay a past instant (testing, post-mortem):
+.venv/bin/python -m quant.console alerts --now 2026-08-28T13:00:00Z
+
+# Fast check: skip the lake-backed feature-drift panel (~1–2 min build).
+.venv/bin/python -m quant.console alerts --no-monitor
+```
+
+### Exit-code contract
+
+| Exit | Meaning |
+|---|---|
+| `0` | no alerts — every evaluated signal is clean |
+| `1` | at least one alert fired |
+
+The report always goes to **stdout**; on any alert it is additionally emitted
+via the `LogChannel` to **stderr**, so cron mails exactly when something is
+wrong. Signals that *cannot* be evaluated (e.g. drift under `--no-monitor`)
+produce an explicit `[    NOTE]` line, never a fabricated all-clear
+(METHODOLOGY §9) — notes alone do not trip the exit code.
+
+The staleness signal **consumes this monitor's C1-M3 SLA verdicts verbatim**
+(one source of truth, METHODOLOGY §6); the alert-specific thresholds (severity
+mapping, gap materiality windows, systemic-drift escalation, regime bounds) are
+pinned in `alerts.py` and `backtest/regimes.py` — this doc does not restate
+them.
+
+### Recommended schedule
+
+Same anchor as the C1-M3 recipe above — after the loosest SLA (Tiingo `T+1
+12:00 UTC`) so a genuinely-late feed is the only thing that trips it — and
+**before the 12:30 UTC `trade_daily` executor run**
+([`strategy-registry.md`](strategy-registry.md) "Cron runbook"), so the
+operator's mail carries the breach before the executor acts on the same
+session. (The executor independently halts on stale data via its own
+in-process freshness gate; the alerts run is the *operator-facing* channel, not
+the trading safety interlock.)
+
+```cron
+# Console alerts — 12:15 UTC weekdays: after Tiingo's T+1 12:00 UTC SLA,
+# before the 12:30 UTC trade_daily run. Non-zero exit + stderr ⇒ cron mail.
+15 12 * * 1-5  cd /Users/jamesdelgado/Projects/quant && .venv/bin/python -m quant.console alerts
+```
+
+### The `--no-monitor` tradeoff
+
+The full run builds the lake-backed feature panel behind the E1 feature
+monitor (~1–2 minutes) to evaluate drift. `--no-monitor` skips that build:
+staleness / gap / regime-change still evaluate in seconds, and drift degrades
+to an explicit *could-not-check* note. For the **daily cron, run the full
+evaluation** — drift is one of the four E4 signals and 1–2 minutes at daily
+cadence costs nothing. Reserve `--no-monitor` for interactive spot-checks or an
+optional second same-evening staleness pass (after Alpaca's 23:00 UTC settle),
+where re-building the drift panel buys nothing new.
+
+### Declared cadence approximations (METHODOLOGY §9)
+
+- **Friday's Tiingo bar lands Saturday.** The `T+1 12:00 UTC` deadline for a
+  Friday session falls on Saturday, so a weekday-only schedule first checks it
+  on Monday — a late Friday bar is detected one session late, never missed.
+  Mirrors the C1-M3 weekday cadence; add a Saturday entry (`15 12 * * 6`) to
+  close the window if desired. (The C1-M1-MEASURE availability agent runs
+  daily for exactly this reason.)
+- **macOS: prefer launchd.** Crontab writes hang without Full Disk Access
+  (observed at C1-M1-MEASURE install — see
+  [`data-freshness-slas.md`](data-freshness-slas.md) "Scheduler"); a
+  LaunchAgent with the same 12:15 UTC schedule is the working local
+  equivalent.
+
+### Relationship to the C1-M3 monitor cron
+
+The alerts staleness signal is a strict superset of the standalone monitor
+cron's check (same verdicts, same channel), so once the 12:15 UTC alerts entry
+is wired the 13:00 UTC `monitor_freshness.py` entry is **redundant as a cron
+job** and may be retired or kept (both are read-only and idempotent).
+`monitor_freshness.py` itself remains load-bearing regardless: it is the
+tested G3 gate `trade_daily` calls in-process and the source of the SLA
+verdicts the alerts run consumes.
+
+---
+
 ## Declared approximations (METHODOLOGY §9)
 
 - **Business days = NYSE trading days.** The FRED publication-lag arithmetic
@@ -155,12 +255,18 @@ read-only, so it is safe to run as often as desired.
   [`../../.claude/prds/c1-live-data.prd.md`](../../.claude/prds/c1-live-data.prd.md).
 - FRED publication lags reused as the parity lever —
   [`fred-publication-lag.md`](fred-publication-lag.md).
+- E4-M2 alerting layer (the console alerts channel) —
+  [`../../src/quant/console/alerts.py`](../../src/quant/console/alerts.py);
+  channel decision in `docs/project-e/DECISIONS.md`.
+- `trade_daily` cron runbook (the 12:30 UTC anchor) —
+  [`strategy-registry.md`](strategy-registry.md).
 - METHODOLOGY §1 (pinned thresholds), §2 (gates in code), §6 (drift contracts),
   §9 (declared deviations) — [`../METHODOLOGY.md`](../METHODOLOGY.md).
 
 ---
 
-*Status: ACTIVE (C1-M3, 2026-06-28) — the runner enforces the frozen C1-M1 SLA
+*Status: ACTIVE (C1-M3, 2026-06-28; E4 alerts cron wiring added by
+E4-ALERTS-CRON-DOC, 2026-08-29) — the runner enforces the frozen C1-M1 SLA
 table. The pinned SLA values live in `scripts/monitor_freshness.py::SOURCE_SLAS`
 under the `tests/test_monitor_freshness.py` drift test; changes follow the C1-M1
 update protocol (PRD revision + ledger entry).*
