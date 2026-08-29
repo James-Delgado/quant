@@ -4915,7 +4915,8 @@ tasks:
     title: "Document cron wiring for `python -m quant.console alerts` (the E4-M2 channel in production)"
     project: E
     sub_project: E4
-    status: ready
+    status: in_progress
+    started_at: 2026-08-29T22:44:58Z
     depends_on: [E4-M2]
     blocks: [E4-CLOSE]
     deliverable:
