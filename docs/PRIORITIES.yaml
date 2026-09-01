@@ -2724,7 +2724,8 @@ tasks:
     title: "E4-CLOSE: E4 closeout — live status + a fired alert on a seeded breach + report"
     project: E
     sub_project: E4
-    status: ready
+    status: in_progress
+    started_at: 2026-09-01T19:52:53Z
     # E4-ALERTS-CRON-DOC added 2026-08-21 (Step 7 corollary): the E4-M2 alert
     # channel is cron-delivered, so closeout must not certify E4 before the
     # cron wiring is documented. The optional E4-M2 follow-ups (panel, exact
