@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-08-29  # E4-ALERTS-CRON-DOC done (console-alerts cron wiring documented in freshness-monitor.md) — E4-CLOSE flipped ready (all deps done); appended MISC-SCHED-INSTALL (operator launchd install; non-gating, enables C6-M2-LIVE-ACCRUAL)
+last_updated: 2026-09-01  # E4-CLOSE done (scripts/e4_closeout_check.sh gate PASS + docs/project-e/E4_CLOSEOUT.md) — Project E4 certified; E4-CLOSE.blocks empty (nothing to flip); appended E4-CLOSE-CI (optional FAST-gate CI wiring)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -2724,8 +2724,9 @@ tasks:
     title: "E4-CLOSE: E4 closeout — live status + a fired alert on a seeded breach + report"
     project: E
     sub_project: E4
-    status: in_progress
+    status: done
     started_at: 2026-09-01T19:52:53Z
+    completed_at: 2026-09-01
     # E4-ALERTS-CRON-DOC added 2026-08-21 (Step 7 corollary): the E4-M2 alert
     # channel is cron-delivered, so closeout must not certify E4 before the
     # cron wiring is documented. The optional E4-M2 follow-ups (panel, exact
@@ -5073,3 +5074,30 @@ tasks:
       across the universe (report them in breadth_n_symbols' complement /
       a note). OPTIONAL — does not gate E4-CLOSE (mirrors the E4-M2
       optional-follow-up precedent).
+
+  - id: E4-CLOSE-CI
+    rank: 152
+    title: "E4-CLOSE follow-up (optional): wire scripts/e4_closeout_check.sh (FAST mode) into CI"
+    project: E
+    sub_project: E4
+    status: ready
+    depends_on: [E4-CLOSE]
+    blocks: []
+    deliverable:
+      file: .github/workflows/
+    references:
+      primary: scripts/e4_closeout_check.sh
+      precedent: scripts/e2_closeout_check.sh
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during E4-CLOSE (commit of scripts/e4_closeout_check.sh +
+      docs/project-e/E4_CLOSEOUT.md): the E4 gate is reproducible headless in
+      FAST mode (--no-monitor everywhere) and would catch regressions in the
+      SLA/gap/market export surface, the alerts CLI exit-code channel, and the
+      cron-doc drift check. Mirrors E2-CLOSE-CI (rank 142) — consider wiring
+      both closeout gates into the same workflow as E1-CI-WORKFLOW (rank 116)
+      rather than three separate ones. CAVEAT: stages 4-5 need a lake; in CI
+      the export runs over whatever artifacts are checked in/cached, so the
+      honest-current-state stage may report missing feeds — the gate already
+      accepts either verdict, but validate before enabling as a required check.
