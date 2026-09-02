@@ -57,6 +57,11 @@ Run
 ---
     .venv/bin/python scripts/reconcile_paper_backtest.py            # reconcile + write report + ledger
     .venv/bin/python scripts/reconcile_paper_backtest.py --no-ledger
+    .venv/bin/python scripts/reconcile_paper_backtest.py --live-replay
+        # C2-M3-LIVE-REPLAY: paper multiple sourced from the LIVE Alpaca paper
+        # fill log (a genuine independent engine) via ``paper_multiple_override``
+        # — the ``unexplained`` residual is load-bearing in this mode. Exits 3
+        # until the account accrues ≥ LIVE_MIN_FILL_SESSIONS fill sessions.
 """
 
 from __future__ import annotations
@@ -66,6 +71,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -118,6 +124,15 @@ __all__ = [
     "g2_reconciliation_gate_report",
     "growth_multiple",
     "relative_delta",
+    # Live-replay surface (C2-M3-LIVE-REPLAY)
+    "Fill",
+    "InsufficientLiveAccrualError",
+    "LIVE_MIN_FILL_SESSIONS",
+    "fetch_paper_fills",
+    "fills_to_position_series",
+    "signals_from_positions",
+    "live_growth_multiple",
+    "run_live_replay",
 ]
 
 # A daily-signal emitter: ``(asof, symbols=…) -> {symbol: TargetSignal}`` — the
@@ -259,17 +274,34 @@ def run_paper_loop(
 # ─── Report rendering ──────────────────────────────────────────────────────────
 
 
+# The default provenance line for the report's paper-side curve. The live-replay
+# mode (C2-M3-LIVE-REPLAY) overrides it so a report whose paper multiple came from
+# the real broker fill log is labeled as such — a reader must never mistake a
+# live-sourced verdict for the deterministic simulate()-vs-simulate() replay.
+DEFAULT_PAPER_SOURCE: str = (
+    "the same simulator under the Alpaca paper cost model "
+    "(commission-free; slippage + fill matched)"
+)
+LIVE_PAPER_SOURCE: str = (
+    "the LIVE Alpaca paper account fill log (an independent engine — the "
+    "`unexplained` residual is load-bearing in this mode)"
+)
+
+
 def format_reconciliation_report(
     results: Mapping[str, ReconciliationResult],
     *,
     window: tuple[str, str] = RECON_WINDOW,
     max_relative_delta: float = G2_MAX_RELATIVE_DELTA,
+    paper_source: str = DEFAULT_PAPER_SOURCE,
 ) -> str:
     """Render the per-symbol G2 verdicts as a markdown reconciliation report.
 
     The verdict line quotes the gate output verbatim (no paraphrase — METHODOLOGY
     §9 / "verdicts from gate functions"); the residual is named component-by-
-    component so no basis point of the delta is left unexplained.
+    component so no basis point of the delta is left unexplained. *paper_source*
+    names where the paper-side growth multiple came from (the simulate() paper
+    config by default; the live fill log in ``--live-replay`` mode).
     """
     overall = bool(results) and all(r.passed for r in results.values())
     lines = [
@@ -280,8 +312,7 @@ def format_reconciliation_report(
         "residual fully decomposed (no unexplained component).",
         "Ground truth: a single continuous replay through `backtest/simulator.py` "
         "under the Phase-1 cost model (execution mechanics are fold-independent).",
-        "Paper engine: the same simulator under the Alpaca paper cost model "
-        "(commission-free; slippage + fill matched).",
+        f"Paper engine: {paper_source}.",
         "",
         f"**Overall G2 verdict: {'PASS' if overall else 'FAIL'}**",
         "",
@@ -301,9 +332,281 @@ def format_reconciliation_report(
                 lines.append(f"    - {k}: {v:+.6%}")
         else:
             lines.append("    - (none — cost models identical)")
-        lines.append(f"- unexplained residual: {r.unexplained:.2e} (must be ≤ {UNEXPLAINED_EPS:.0e})")
+        lines.append(
+            f"- unexplained residual: {r.unexplained:.2e} (must be ≤ {UNEXPLAINED_EPS:.0e})"
+        )
         lines.append("")
     return "\n".join(lines)
+
+
+# ─── Live-replay reconciliation (C2-M3-LIVE-REPLAY) ────────────────────────────
+# The deterministic replay above runs BOTH curves through the same ``simulate()``,
+# so its decomposition closes exactly and the ``unexplained`` guard is structurally
+# satisfied (~1e-16). This section sources the paper growth multiple from a genuine
+# independent engine — the live Alpaca paper account's historical fill log — and
+# feeds it through ``paper_multiple_override``, making the guard load-bearing: any
+# execution mechanic the cost-model decomposition cannot name (real fill prices vs
+# the 5 bps model, same-session mid-day fills vs the simulator's next-open fills,
+# partial fills) surfaces as a REAL unexplained residual to investigate.
+#
+# Declared framings (METHODOLOGY §9 — named, not silent):
+#   * SESSION KEY. A fill's session is its UTC calendar date; daily lake bars carry
+#     their session date in the index the same way. RTH fills (13:30–21:00 UTC)
+#     always share the session's UTC date, and ``trade_daily`` runs ~12:30 UTC.
+#   * SIGNAL ALIGNMENT. ``signal[t] = sign(live position at close of session t)``.
+#     ``simulate()`` fills signal[t] at the open of t+1, so the replay holds the
+#     same sign the live account held, one transition lagged by the close→next-open
+#     gap (the live fill lands mid-session). That timing gap is an execution
+#     mechanic DELIBERATELY left in the residual — naming it away in the cost model
+#     would defeat the point of the independent replay.
+#   * FUNDING BASE. The live per-symbol multiple treats the first fill's notional
+#     as the funding base (cash₀). ``simulate()`` starts from ``initial_capital``
+#     and leaves a sub-share cash remainder undeployed; the (< 1 share) scale
+#     difference is part of the residual, bounded and declared.
+
+
+# Minimum distinct fill SESSIONS per symbol before a live-replay verdict is
+# meaningful — pinned BEFORE any live fill history exists (METHODOLOGY §1).
+# Mirrors the G3 ≥5-clean-cycles liveness bar: fewer sessions than a trading week
+# reconciles noise, not execution mechanics.
+LIVE_MIN_FILL_SESSIONS: int = 5
+
+# CLI exit code for "live accrual insufficient — no verdict produced". Distinct
+# from 1 (no symbols reconciled) and 2 (gate FAIL) so cron/CI can tell "not yet
+# runnable" from "ran and failed" (an honest refusal, never a silent pass).
+LIVE_REPLAY_EXIT_INSUFFICIENT: int = 3
+
+
+# Alpaca's per-page order-query maximum (the API default is a silently small 50).
+_ORDERS_PAGE_LIMIT: int = 500
+
+
+class InsufficientLiveAccrualError(RuntimeError):
+    """Raised when the paper account's fill log has too few sessions to reconcile."""
+
+
+@dataclass(frozen=True)
+class Fill:
+    """One executed (fully or partially filled) paper order, normalized.
+
+    ``filled_at`` is tz-aware UTC; ``side`` is ``"BUY"`` or ``"SELL"``; ``qty`` and
+    ``price`` are the filled quantity and average fill price the broker reports.
+    """
+
+    symbol: str
+    filled_at: pd.Timestamp
+    side: str
+    qty: float
+    price: float
+
+
+def _order_side(side: object) -> str:
+    """Normalize an Alpaca ``OrderSide`` (or raw string) to ``"BUY"`` / ``"SELL"``."""
+    raw = str(getattr(side, "value", side)).lower()
+    if raw.endswith("buy"):
+        return "BUY"
+    if raw.endswith("sell"):
+        return "SELL"
+    raise ValueError(f"unrecognized order side: {side!r}")
+
+
+def _utc_timestamp(ts: object) -> pd.Timestamp:
+    """Coerce *ts* to a tz-aware UTC Timestamp (naive input is assumed UTC)."""
+    out = pd.Timestamp(ts)  # type: ignore[arg-type]
+    return out.tz_localize("UTC") if out.tzinfo is None else out.tz_convert("UTC")
+
+
+def _session_date(ts: object) -> object:
+    """The session key for a timestamp: its UTC calendar date (declared framing)."""
+    return _utc_timestamp(ts).date()
+
+
+def fetch_paper_fills(
+    client: object,
+    symbols: Sequence[str],
+    *,
+    window: tuple[str, str] | None = None,
+) -> list[Fill]:
+    """Fetch the paper account's executed fills for *symbols*, oldest first.
+
+    Thin adapter over ``TradingClient.get_orders`` (closed orders): orders that
+    never filled (``filled_qty`` 0/None, no ``filled_at``) are dropped — a
+    cancelled order has no execution to replay. *window* optionally bounds the
+    query (``after``/``until``). The client is injected so the adapter is
+    unit-testable against a fake, exactly like ``AlpacaPaperBridge``.
+
+    The query requests Alpaca's per-page maximum (500 orders; the API default is
+    only 50). A full 500-order page is flagged loudly as possible truncation — a
+    silently incomplete fill log would corrupt the live multiple (METHODOLOGY §9).
+    Pagination lands with the verdict follow-up if accrual ever exceeds a page.
+    """
+    from alpaca.trading.enums import QueryOrderStatus
+    from alpaca.trading.requests import GetOrdersRequest
+
+    kwargs: dict[str, object] = {
+        "status": QueryOrderStatus.CLOSED,
+        "symbols": list(symbols),
+        "limit": _ORDERS_PAGE_LIMIT,
+    }
+    if window is not None:
+        kwargs["after"] = _utc_timestamp(window[0]).to_pydatetime()
+        kwargs["until"] = _utc_timestamp(window[1]).to_pydatetime()
+    orders = client.get_orders(GetOrdersRequest(**kwargs))  # type: ignore[attr-defined]
+    if len(orders) >= _ORDERS_PAGE_LIMIT:
+        logger.warning(
+            "get_orders returned a full page (%d) — the fill log may be TRUNCATED; "
+            "bound the query with --live-window or add pagination before trusting "
+            "the live multiple",
+            len(orders),
+        )
+
+    fills: list[Fill] = []
+    for order in orders:
+        qty = float(getattr(order, "filled_qty", 0) or 0)
+        price = float(getattr(order, "filled_avg_price", 0) or 0)
+        filled_at = getattr(order, "filled_at", None)
+        if qty <= 0 or price <= 0 or filled_at is None:
+            continue  # never executed — nothing to replay
+        fills.append(
+            Fill(
+                symbol=str(order.symbol),
+                filled_at=_utc_timestamp(filled_at),
+                side=_order_side(order.side),
+                qty=qty,
+                price=price,
+            )
+        )
+    return sorted(fills, key=lambda f: f.filled_at)
+
+
+def fills_to_position_series(fills: Sequence[Fill], sessions: pd.DatetimeIndex) -> pd.Series:
+    """Signed share position held at the close of each session in *sessions*.
+
+    Fills accumulate chronologically (BUY adds, SELL subtracts); fills dated
+    before the first session establish the opening position; fills after the last
+    session are ignored. Sessions with no fill carry the prior position forward.
+    """
+    session_dates = [_session_date(ts) for ts in sessions]
+    deltas = sorted(
+        (_session_date(f.filled_at), f.qty if f.side == "BUY" else -f.qty) for f in fills
+    )
+    position = 0.0
+    out: list[float] = []
+    i = 0
+    for date in session_dates:
+        while i < len(deltas) and deltas[i][0] <= date:
+            position += deltas[i][1]
+            i += 1
+        out.append(position)
+    return pd.Series(out, index=sessions, dtype=float)
+
+
+def signals_from_positions(positions: pd.Series) -> pd.Series:
+    """Map a signed position series to the {-1, 0, +1} signal ``simulate()`` takes.
+
+    ``signal[t] = sign(position at close of session t)`` — the pinned alignment:
+    the replay holds the live account's sign on the live account's sessions, with
+    the close→next-open transition lag declared above left in the residual.
+    """
+    return pd.Series(np.sign(positions).astype(int), index=positions.index)
+
+
+def live_growth_multiple(fills: Sequence[Fill], closes: pd.Series) -> float:
+    """Realized growth multiple of the live fill log, valued at the last close.
+
+    A per-symbol sub-ledger: the funding base is the first fill's notional
+    (``cash₀ = qty × price``); each BUY debits cash, each SELL credits it; the
+    terminal equity is ``cash + position × last close``. Returns
+    ``equity_end / cash₀`` — the live-engine analog of :func:`growth_multiple`.
+    NaN if there are no fills or the base is non-positive.
+    """
+    ordered = sorted(fills, key=lambda f: f.filled_at)
+    if not ordered or len(closes) == 0:
+        return float("nan")
+    base = ordered[0].qty * ordered[0].price
+    if base <= 0:
+        return float("nan")
+    cash = base
+    position = 0.0
+    for f in ordered:
+        if f.side == "BUY":
+            cash -= f.qty * f.price
+            position += f.qty
+        else:
+            cash += f.qty * f.price
+            position -= f.qty
+    equity_end = cash + position * float(closes.iloc[-1])
+    return equity_end / base
+
+
+def run_live_replay(
+    client: object,
+    symbols: Sequence[str] = RECON_UNIVERSE,
+    *,
+    window: tuple[str, str] | None = None,
+    min_sessions: int = LIVE_MIN_FILL_SESSIONS,
+    prices_loader: Callable[[Sequence[str], tuple[str, str]], dict[str, pd.DataFrame]]
+    | None = None,
+) -> dict[str, ReconciliationResult]:
+    """Reconcile the live fill log against the backtest replay (the real G2 seam).
+
+    Per symbol with ≥ *min_sessions* distinct fill sessions: rebuild the held
+    position per session, derive the signal series, replay it through the
+    backtest engine, and gate with ``paper_multiple_override`` set to the live
+    fill-log multiple — the ``unexplained`` residual is now load-bearing.
+
+    Symbols below the session floor are skipped (logged); if NO symbol qualifies,
+    raises :class:`InsufficientLiveAccrualError` naming the accrual prerequisites
+    (an honest refusal — METHODOLOGY §9 — never a vacuous verdict). *window*
+    defaults to first-fill session → today.
+    """
+    fills = fetch_paper_fills(client, symbols, window=window)
+    by_symbol: dict[str, list[Fill]] = {}
+    for f in fills:
+        by_symbol.setdefault(f.symbol, []).append(f)
+
+    qualified = {
+        sym: sym_fills
+        for sym, sym_fills in by_symbol.items()
+        if len({_session_date(f.filled_at) for f in sym_fills}) >= min_sessions
+    }
+    for sym in sorted(set(by_symbol) - set(qualified)):
+        n = len({_session_date(f.filled_at) for f in by_symbol[sym]})
+        logger.warning(
+            "symbol=%s skipped — %d fill session(s) < LIVE_MIN_FILL_SESSIONS=%d",
+            sym,
+            n,
+            min_sessions,
+        )
+    if not qualified:
+        total = len({_session_date(f.filled_at) for f in fills})
+        raise InsufficientLiveAccrualError(
+            f"live paper fill log has too few sessions to reconcile "
+            f"({total} distinct fill session(s) across {sorted(by_symbol) or 'no symbols'}; "
+            f"need ≥ {min_sessions} per symbol). Accrue live sessions first — "
+            "see PRIORITIES tasks C6-M2-LIVE-ACCRUAL (run the daily paper loop "
+            "≥5 sessions) and MISC-SCHED-INSTALL (install the scheduler)."
+        )
+
+    if window is None:
+        first = min(f.filled_at for f in fills)
+        window = (str(_session_date(first)), str(pd.Timestamp.now("UTC").date()))
+
+    loader = prices_loader if prices_loader is not None else _load_window_prices
+    prices_by_symbol = loader(sorted(qualified), window)
+    results: dict[str, ReconciliationResult] = {}
+    for sym, sym_fills in qualified.items():
+        prices = prices_by_symbol.get(sym)
+        if prices is None or prices.empty:
+            logger.warning("symbol=%s skipped — no lake bars over %s", sym, window)
+            continue
+        positions = fills_to_position_series(sym_fills, prices.index)
+        signals = signals_from_positions(positions)
+        live_mult = live_growth_multiple(sym_fills, prices["close"])
+        results[sym] = g2_reconciliation_gate_report(
+            prices, signals, paper_multiple_override=live_mult
+        )
+    return results
 
 
 # ─── Runner ────────────────────────────────────────────────────────────────────
@@ -392,9 +695,109 @@ def _record_ledger(
         n_comparisons=0,  # infrastructure — no deflation contribution
         verdict="gate_passed" if overall else "gate_failed",
         agent="human",
-        artifacts=["data/c2/reconciliation/reconciliation_report.md"],  # repo-relative (audit trail)
+        artifacts=[
+            "data/c2/reconciliation/reconciliation_report.md"
+        ],  # repo-relative (audit trail)
         notes="C2-M3 backtest↔paper reconciliation (G2). Audit-only; no edge claim.",
     )
+
+
+def _live_config_hash(window: tuple[str, str] | None) -> str:
+    """Deterministic hash of the live-replay config (audit trail; mode-tagged)."""
+    payload = json.dumps(
+        {
+            "mode": "live_replay",
+            "window": window,
+            "universe": RECON_UNIVERSE,
+            "backtest_cost": BACKTEST_COST_MODEL,
+            "g2_tol": G2_MAX_RELATIVE_DELTA,
+            "min_sessions": LIVE_MIN_FILL_SESSIONS,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _run_live_replay_cli(args: argparse.Namespace) -> int:
+    """The ``--live-replay`` CLI path: fill-log-sourced G2 (unexplained load-bearing).
+
+    Writes ``live_replay_report.md`` + ``live_metadata.json`` alongside — never
+    over — the deterministic replay's shipped artifacts. Exit codes: 0 PASS,
+    2 gate FAIL, 1 nothing reconciled, ``LIVE_REPLAY_EXIT_INSUFFICIENT`` (3) when
+    the account has not accrued enough fill sessions for a verdict.
+    """
+    from alpaca.trading.client import TradingClient
+
+    from quant.config import settings
+
+    started_at = pd.Timestamp.now("UTC").isoformat()
+    window = tuple(args.live_window) if args.live_window else None
+    client = TradingClient(settings.alpaca_api_key, settings.alpaca_secret_key, paper=True)
+    try:
+        results = run_live_replay(client, window=window)  # type: ignore[arg-type]
+    except InsufficientLiveAccrualError as exc:
+        logger.error("live replay refused: %s", exc)
+        return LIVE_REPLAY_EXIT_INSUFFICIENT
+    if not results:
+        logger.error("no symbols reconciled from the live fill log")
+        return 1
+
+    display_window = window or (
+        "first live fill session",
+        str(pd.Timestamp.now("UTC").date()),
+    )
+    report = format_reconciliation_report(
+        results, window=display_window, paper_source=LIVE_PAPER_SOURCE
+    )
+    args.output.mkdir(parents=True, exist_ok=True)
+    (args.output / "live_replay_report.md").write_text(report)
+    finished_at = pd.Timestamp.now("UTC").isoformat()
+    metadata = {
+        "mode": "live_replay",
+        "config_hash": _live_config_hash(window),
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "window": list(display_window),
+        "universe": list(results),
+        "g2_tolerance": G2_MAX_RELATIVE_DELTA,
+        "min_sessions": LIVE_MIN_FILL_SESSIONS,
+        "per_symbol": {
+            sym: {
+                "passed": r.passed,
+                "relative_delta": r.relative_delta,
+                "unexplained": r.unexplained,
+                "n_trades": r.n_trades,
+            }
+            for sym, r in results.items()
+        },
+        "overall_passed": all(r.passed for r in results.values()),
+    }
+    (args.output / "live_metadata.json").write_text(json.dumps(metadata, indent=2))
+
+    print(report)
+    if not args.no_ledger:
+        from quant.ledger import record_run
+
+        overall = all(r.passed for r in results.values())
+        record_run(
+            {
+                "config_hash": _live_config_hash(window),
+                "started_at": started_at,
+                "finished_at": finished_at,
+            },
+            prd="c2",
+            milestone="C2-M3-LIVE-REPLAY",
+            preregistration=".claude/prds/c2-lean-paper.prd.md#pre-committed-gate",
+            n_comparisons=0,  # infrastructure — no deflation contribution
+            verdict="gate_passed" if overall else "gate_failed",
+            agent="human",
+            artifacts=["data/c2/reconciliation/live_replay_report.md"],
+            notes=(
+                "C2-M3-LIVE-REPLAY: G2 against the live Alpaca paper fill log "
+                "(unexplained residual load-bearing). Audit-only; no edge claim."
+            ),
+        )
+    return 0 if all(r.passed for r in results.values()) else 2
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -403,9 +806,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--output", type=Path, default=RECON_OUTPUT_DIR, help="output directory for the report"
     )
+    parser.add_argument(
+        "--live-replay",
+        action="store_true",
+        help="reconcile against the LIVE Alpaca paper fill log (independent engine; "
+        "the unexplained residual is load-bearing)",
+    )
+    parser.add_argument(
+        "--live-window",
+        nargs=2,
+        metavar=("START", "END"),
+        default=None,
+        help="bound the live fill query (ISO dates); default: first fill → today",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    if args.live_replay:
+        return _run_live_replay_cli(args)
+
     started_at = pd.Timestamp.now("UTC").isoformat()
 
     results = reconcile_universe()

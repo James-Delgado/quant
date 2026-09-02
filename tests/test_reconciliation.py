@@ -201,7 +201,10 @@ def test_decompose_residual_identical_models_is_empty():
     prices = _ohlcv()
     signals = _alternating_signals(prices.index)
     components = recon.decompose_residual(
-        prices, signals, backtest_cost=recon.BACKTEST_COST_MODEL, paper_cost=recon.BACKTEST_COST_MODEL
+        prices,
+        signals,
+        backtest_cost=recon.BACKTEST_COST_MODEL,
+        paper_cost=recon.BACKTEST_COST_MODEL,
     )
     assert components == {}
 
@@ -322,7 +325,9 @@ def test_run_paper_loop_state_round_trips(tmp_path):
         pos = 1 if asofs.index(str(asof)) % 2 == 0 else 0
         return {"SPY": rpb.TargetSignal("SPY", pd.Timestamp(asof), 0.01, pos)}
 
-    states = rpb.run_paper_loop(asofs, bridge, state_path, daily_signal_fn=fake_signal, symbols=["SPY"])
+    states = rpb.run_paper_loop(
+        asofs, bridge, state_path, daily_signal_fn=fake_signal, symbols=["SPY"]
+    )
     assert len(states) == rpb.G3_MIN_CYCLES
     # Each cycle's persisted state is reloaded at the next cycle's open: the loop
     # never errored and the final on-disk state matches the last returned state.
@@ -370,7 +375,9 @@ def test_run_paper_loop_first_cycle_has_no_prior_state(tmp_path):
     def fake_signal(asof, symbols=None):
         return {"SPY": rpb.TargetSignal("SPY", pd.Timestamp(asof), 0.01, 1)}
 
-    states = rpb.run_paper_loop(["2024-01-02"], bridge, state_path, daily_signal_fn=fake_signal, symbols=["SPY"])
+    states = rpb.run_paper_loop(
+        ["2024-01-02"], bridge, state_path, daily_signal_fn=fake_signal, symbols=["SPY"]
+    )
     assert len(states) == 1
     assert states[0].holdings["SPY"] == pytest.approx(1.0)
 
@@ -387,6 +394,200 @@ def test_format_reconciliation_report_quotes_verdict():
     # The rendered verdict must match the gate result, not merely contain a verdict word.
     assert ("PASS" if result.passed else "FAIL") in report
     assert "commission_per_share" in report  # the decomposed residual is named
+
+
+# ─── Live-replay reconciliation (C2-M3-LIVE-REPLAY) ────────────────────────────
+# The deterministic replay's `unexplained` guard is structurally satisfied (both
+# curves share one simulate()); these tests cover the machinery that makes it
+# load-bearing — sourcing the paper multiple from the live Alpaca fill log via
+# `paper_multiple_override`. All broker I/O is a fake client; no network.
+
+from types import SimpleNamespace  # noqa: E402
+
+
+def _fill(day: str, side: str, qty: float, price: float, symbol: str = "SPY"):
+    """A Fill with a mid-session (15:00 UTC) execution timestamp."""
+    return rpb.Fill(
+        symbol=symbol,
+        filled_at=pd.Timestamp(day, tz="UTC") + pd.Timedelta(hours=15),
+        side=side,
+        qty=qty,
+        price=price,
+    )
+
+
+def _fake_order(day: str, side: object, qty, price, symbol: str = "SPY"):
+    """An Alpaca-shaped order object (only the fields the adapter reads)."""
+    return SimpleNamespace(
+        symbol=symbol,
+        filled_at=pd.Timestamp(day, tz="UTC") + pd.Timedelta(hours=15),
+        side=side,
+        filled_qty=qty,
+        filled_avg_price=price,
+    )
+
+
+class _FakeTradingClient:
+    """Returns a canned order list; records the request it was queried with."""
+
+    def __init__(self, orders) -> None:
+        self._orders = list(orders)
+        self.last_request = None
+
+    def get_orders(self, request):
+        self.last_request = request
+        return self._orders
+
+
+def test_live_pinned_constants():
+    # Pinned BEFORE any live fill history exists (METHODOLOGY §1); the session
+    # floor mirrors the G3 ≥5-clean-cycles liveness bar.
+    assert rpb.LIVE_MIN_FILL_SESSIONS == 5
+    assert rpb.LIVE_REPLAY_EXIT_INSUFFICIENT == 3
+
+
+def test_fetch_paper_fills_normalizes_and_filters():
+    orders = [
+        # Later fill listed first: the adapter must sort oldest-first.
+        _fake_order("2024-01-05", "sell", "4", "101.5"),
+        # Enum-shaped side + string numerics (Alpaca returns strings).
+        _fake_order("2024-01-03", SimpleNamespace(value="buy"), "10", "100.0"),
+        # Never executed (cancelled): no filled qty/price/timestamp → dropped.
+        SimpleNamespace(
+            symbol="SPY", filled_at=None, side="buy", filled_qty=None, filled_avg_price=None
+        ),
+    ]
+    fills = rpb.fetch_paper_fills(_FakeTradingClient(orders), ["SPY"])
+    assert [f.side for f in fills] == ["BUY", "SELL"]  # sorted oldest-first, normalized
+    assert fills[0].qty == pytest.approx(10.0)
+    assert fills[1].price == pytest.approx(101.5)
+    assert all(f.filled_at.tzinfo is not None for f in fills)
+
+
+def test_fetch_paper_fills_window_bounds_the_query():
+    client = _FakeTradingClient([])
+    rpb.fetch_paper_fills(client, ["SPY"], window=("2024-01-01", "2024-02-01"))
+    assert client.last_request is not None
+    assert client.last_request.after is not None
+    assert client.last_request.until is not None
+    # The query must request the per-page maximum (the API default is only 50 —
+    # a silently short page would truncate the fill log).
+    assert client.last_request.limit == rpb._ORDERS_PAGE_LIMIT == 500
+
+
+def test_fetch_paper_fills_full_page_warns_of_truncation(caplog):
+    # A full 500-order page may mean the fill log was cut off — that must be
+    # flagged loudly, never silently folded into the live multiple (§9).
+    orders = [_fake_order("2024-01-03", "buy", "1", "100.0") for _ in range(500)]
+    with caplog.at_level("WARNING"):
+        fills = rpb.fetch_paper_fills(_FakeTradingClient(orders), ["SPY"])
+    assert len(fills) == 500
+    assert any("TRUNCATED" in rec.message for rec in caplog.records)
+
+
+def test_fills_to_position_series_carries_forward_and_opening_position():
+    sessions = pd.DatetimeIndex(
+        ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-08"]
+    )
+    fills = [
+        _fill("2024-01-01", "BUY", 10, 100.0),  # before first session → opening position
+        _fill("2024-01-03", "SELL", 4, 101.0),
+        _fill("2024-01-05", "BUY", 1, 102.0),  # same-session net: +1 −1 = 0
+        _fill("2024-01-05", "SELL", 1, 102.5),
+        _fill("2024-01-09", "BUY", 99, 103.0),  # after last session → ignored
+    ]
+    positions = rpb.fills_to_position_series(fills, sessions)
+    assert positions.tolist() == [10.0, 6.0, 6.0, 6.0, 6.0]
+    assert positions.index.equals(sessions)
+
+
+def test_signals_from_positions_signs():
+    positions = pd.Series([10.0, -3.0, 0.0], index=pd.RangeIndex(3))
+    signals = rpb.signals_from_positions(positions)
+    assert signals.tolist() == [1, -1, 0]
+    assert set(signals.unique()).issubset({-1, 0, 1})
+
+
+def test_live_growth_multiple_round_trip():
+    # Buy 10 @ 100 (base 1000), sell 10 @ 110 → terminal cash 1100, flat → 1.1.
+    fills = [_fill("2024-01-02", "BUY", 10, 100.0), _fill("2024-01-04", "SELL", 10, 110.0)]
+    closes = pd.Series([100.0, 105.0, 110.0])
+    assert rpb.live_growth_multiple(fills, closes) == pytest.approx(1.1)
+
+
+def test_live_growth_multiple_values_open_position_at_last_close():
+    fills = [_fill("2024-01-02", "BUY", 10, 100.0)]
+    closes = pd.Series([100.0, 120.0])
+    assert rpb.live_growth_multiple(fills, closes) == pytest.approx(1.2)
+
+
+def test_live_growth_multiple_no_fills_is_nan():
+    assert np.isnan(rpb.live_growth_multiple([], pd.Series([100.0])))
+
+
+def test_run_live_replay_insufficient_accrual_raises():
+    # Two fill sessions < the pinned 5-session floor → an honest refusal that
+    # names the accrual prerequisites, never a vacuous verdict.
+    orders = [
+        _fake_order("2024-01-03", "buy", "10", "100.0"),
+        _fake_order("2024-01-04", "sell", "10", "101.0"),
+    ]
+    with pytest.raises(rpb.InsufficientLiveAccrualError, match="C6-M2-LIVE-ACCRUAL"):
+        rpb.run_live_replay(
+            _FakeTradingClient(orders),
+            ["SPY"],
+            window=("2024-01-01", "2024-02-01"),
+            prices_loader=lambda syms, window: {},
+        )
+
+
+def test_run_live_replay_unexplained_residual_is_load_bearing():
+    # Fills on 5 distinct sessions whose realized multiple is INDEPENDENT of the
+    # simulate() paper config: the decomposition can no longer close the gap, so
+    # a genuine unexplained residual surfaces and fails the gate — exactly the
+    # forward drift contract this task makes real. A below-floor second symbol is
+    # skipped without blocking the qualifying one.
+    prices = _ohlcv(n=60)
+    days = [str(prices.index[i].date()) for i in (5, 10, 15, 20, 25)]
+    orders = [
+        _fake_order(days[0], "buy", "10", "100.0"),
+        _fake_order(days[1], "sell", "10", "104.0"),
+        _fake_order(days[2], "buy", "10", "99.0"),
+        _fake_order(days[3], "sell", "10", "103.0"),
+        _fake_order(days[4], "buy", "10", "101.0"),
+        _fake_order(days[0], "buy", "5", "100.0", symbol="AAPL"),  # 1 session → skipped
+    ]
+    client = _FakeTradingClient(orders)
+    window = (str(prices.index[0].date()), str(prices.index[-1].date()))
+    results = rpb.run_live_replay(
+        client,
+        ["SPY", "AAPL"],
+        window=window,
+        prices_loader=lambda syms, w: {"SPY": prices},
+    )
+    assert set(results) == {"SPY"}
+    r = results["SPY"]
+    fills = [f for f in rpb.fetch_paper_fills(client, ["SPY"]) if f.symbol == "SPY"]
+    # The paper multiple is the live fill-log multiple, not a simulate() output.
+    assert r.paper_multiple == pytest.approx(rpb.live_growth_multiple(fills, prices["close"]))
+    # The config-toggle decomposition still names only commission…
+    assert set(r.components) == {"commission_per_share"}
+    # …so the independent live multiple leaves a REAL unexplained residual → FAIL.
+    assert abs(r.unexplained) > recon.UNEXPLAINED_EPS
+    assert r.passed is False
+    assert r.n_trades > 0
+
+
+def test_format_report_labels_the_paper_source():
+    prices = _ohlcv()
+    signals = _alternating_signals(prices.index)
+    result = recon.g2_reconciliation_gate_report(prices, signals)
+    default_report = rpb.format_reconciliation_report({"SPY": result})
+    assert rpb.DEFAULT_PAPER_SOURCE in default_report
+    live_report = rpb.format_reconciliation_report(
+        {"SPY": result}, paper_source=rpb.LIVE_PAPER_SOURCE
+    )
+    assert "LIVE Alpaca paper account fill log" in live_report
 
 
 if __name__ == "__main__":  # pragma: no cover

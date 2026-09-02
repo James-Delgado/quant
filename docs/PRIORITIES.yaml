@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-09-02  # C2-M3-LIVE-REPLAY picked up (in_progress) — live Alpaca fill-log replay machinery for a non-vacuous G2 unexplained residual
+last_updated: 2026-09-02  # C2-M3-LIVE-REPLAY done — live Alpaca fill-log replay machinery shipped (unexplained residual now load-bearing via paper_multiple_override); appended C2-M3-LIVE-REPLAY-VERDICT (blocked on C6-M2-LIVE-ACCRUAL)
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -3467,8 +3467,9 @@ tasks:
     title: "Non-vacuous G2 unexplained-residual: reconcile against a genuine independent engine replay (live Alpaca / LEAN), not a second simulate() config"
     project: C
     sub_project: C2
-    status: in_progress
+    status: done
     started_at: 2026-09-02T18:17:24Z
+    completed_at: 2026-09-02
     depends_on: [C2-M3]
     blocks: []
     deliverable:
@@ -3499,6 +3500,54 @@ tasks:
       merge-blocking gate is the deterministic simulate()-vs-simulate() replay,
       which PASSED (data/c2/reconciliation/, ledger-2026-06-28-0001); this task is a
       strengthening beyond C2's pinned scope. Low priority.
+      COMPLETED 2026-09-02: shipped the live-replay machinery — Fill +
+      fetch_paper_fills (Alpaca closed-order adapter, 500/page + truncation
+      warning), fills_to_position_series / signals_from_positions (pinned
+      alignment: signal[t] = sign(live position at close of session t)),
+      live_growth_multiple (first-fill-notional funding base), run_live_replay
+      (per-symbol gate with paper_multiple_override = live multiple), CLI
+      --live-replay / --live-window (exit 3 = insufficient accrual; writes
+      live_replay_report.md, never clobbering the shipped G2 artifacts), pinned
+      LIVE_MIN_FILL_SESSIONS=5. Live CLI exercised against the real paper
+      account: 0 fill sessions -> honest refusal, exit 3. The live VERDICT is
+      gated on accrual -> C2-M3-LIVE-REPLAY-VERDICT.
+
+  - id: C2-M3-LIVE-REPLAY-VERDICT
+    rank: 153
+    title: "Run the live-replay G2 verdict once >=5 live fill sessions accrue; investigate any unexplained residual"
+    project: C
+    sub_project: C2
+    status: blocked
+    depends_on: [C2-M3-LIVE-REPLAY, C6-M2-LIVE-ACCRUAL]
+    blocks: []
+    deliverable:
+      file: data/c2/reconciliation/live_replay_report.md
+    references:
+      primary: scripts/reconcile_paper_backtest.py
+      methodology: docs/METHODOLOGY.md
+    est_complexity: small
+    notes: |
+      Discovered during C2-M3-LIVE-REPLAY: the live Alpaca paper account has
+      ZERO executed fills (verified 2026-09-02 — the --live-replay CLI refused
+      with exit 3, "0 distinct fill session(s)"), so the load-bearing
+      unexplained-residual verdict cannot be produced until the daily paper loop
+      accrues >= LIVE_MIN_FILL_SESSIONS=5 distinct fill sessions per symbol
+      (C6-M2-LIVE-ACCRUAL; scheduler install is MISC-SCHED-INSTALL). Then run:
+        .venv/bin/python scripts/reconcile_paper_backtest.py --live-replay
+      It writes live_replay_report.md + live_metadata.json (never overwriting
+      the deterministic G2 artifacts) and appends an audit-only ledger entry
+      (milestone C2-M3-LIVE-REPLAY, n_comparisons=0). EXPECT a FAIL verdict on
+      the first run: the live engine's real fill prices and same-session mid-day
+      fill timing are execution mechanics the cost-model decomposition
+      deliberately cannot name — investigating and BOUNDING that residual IS the
+      deliverable (quantify it in the report; if a named cost-model component is
+      warranted, that is a PRD revision + new ledger entry, METHODOLOGY §1). If
+      the account ever nears a 500-order page, add pagination to
+      fetch_paper_fills first (it warns "TRUNCATED" loudly but does not yet
+      paginate). NON-GATING for C-CLOSE (mirrors the parent's precedent —
+      closeout must not deadlock on wall-clock accrual). Rank parked at the
+      tail; re-rank into the high-70s C band (next to C6-M2-LIVE-ACCRUAL, rank
+      79) when it unblocks.
 
   - id: C6-REGISTRY-CONCEPT-DOC
     rank: 76
