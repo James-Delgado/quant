@@ -14,7 +14,7 @@
 # `execution_model` section below.
 
 version: 1
-last_updated: 2026-09-01  # E4-CLOSE done (scripts/e4_closeout_check.sh gate PASS + docs/project-e/E4_CLOSEOUT.md) — Project E4 certified; E4-CLOSE.blocks empty (nothing to flip); appended E4-CLOSE-CI (optional FAST-gate CI wiring)
+last_updated: 2026-09-02  # C2-M3-LIVE-REPLAY picked up (in_progress) — live Alpaca fill-log replay machinery for a non-vacuous G2 unexplained residual
 
 # -----------------------------------------------------------------------------
 # Schema
@@ -3467,7 +3467,8 @@ tasks:
     title: "Non-vacuous G2 unexplained-residual: reconcile against a genuine independent engine replay (live Alpaca / LEAN), not a second simulate() config"
     project: C
     sub_project: C2
-    status: ready
+    status: in_progress
+    started_at: 2026-09-02T18:17:24Z
     depends_on: [C2-M3]
     blocks: []
     deliverable:
